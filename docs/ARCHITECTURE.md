@@ -15,12 +15,16 @@ Existing Vercel project (GitHub main → production)
   ├─ DELETE /api/session      clear this browser's session
   ├─ GET    /api/workspace    read shared state + revision
   └─ PUT    /api/workspace    validate and compare-and-swap
-             │ Neon serverless HTTPS driver
+             │ Neon serverless HTTPS driver (via PgBouncer pooler)
              │ server-only DATABASE_URL, parameterized queries
              ▼
 Neon Free PostgreSQL
   ├─ orbit_workspace: one versioned JSONB state document
-  └─ orbit_login_limits: hashed address + expiring attempt window
+  ├─ orbit_login_limits: hashed address + expiring attempt window
+  ├─ orbit_images: image metadata with shard tracking
+  ├─ orbit_id_sequences: distributed ID generation coordination
+  ├─ orbit_cache_invalidations: cache invalidation audit log
+  └─ orbit_infra_health: infrastructure health checks
 ```
 
 Three Vercel function entry points import a common native Node HTTP handler. There is no always-running server in production, no cross-origin API URL, and no database credential in a `VITE_*` variable. The local development server mounts the exact same API alongside Vite on a single port.
@@ -48,7 +52,138 @@ The shared password protects the whole workspace. Signed cookies are HttpOnly, S
 
 **Every password holder can read and modify every record.** Persona switching and `src/lib/permissions.ts` are product previews only, not authorization. Audit entries can be edited with a snapshot and are not immutable evidence. The pilot must not contain sensitive real employee/payroll data.
 
-## 2. Existing product model
+## 2. New Infrastructure Components (v2.0)
+
+### 2.1 PgBouncer Connection Pooling (`server/pgbouncer.mjs`)
+
+Neon's built-in connection pooler (PgBouncer) is used via the `-pooler` endpoint. This provides:
+
+- **Session-level pooling** (default): Connections reused per session, compatible with prepared statements
+- **Transaction-level pooling**: For higher concurrency (requires disabling prepared statements)
+- **Configuration**: `max_client_conn=1000`, `default_pool_size=25`, `server_idle_timeout=600s`
+- **Automatic pooler URL detection**: Converts standard Neon URLs to pooler endpoints
+
+```javascript
+// Automatic pooler URL conversion
+const poolerUrl = createPooledConnectionString(databaseUrl);
+// postgresql://user:pass@ep-xxx-pooler.region.aws.neon.tech/db?sslmode=require&pgbouncer=true
+```
+
+### 2.2 Read Replicas + Memcached (`server/read-replicas.mjs`)
+
+**Read Replicas:**
+- Routes SELECT queries to Neon read replicas automatically
+- Round-robin, random, or least-connections routing strategies
+- Health checks with replication lag monitoring (max 5s default)
+- Automatic fallback to primary on replica failure
+- Write queries always go to primary
+
+**Memcached Caching:**
+- Distributed caching for read-heavy queries (workspace, entities, activities, analytics)
+- TTL-based expiration with configurable defaults per data type
+- In-memory fallback when Memcached unavailable
+- Cache key generation with consistent hashing
+- Automatic invalidation on writes
+
+```javascript
+// Cached read with automatic invalidation
+const result = await cachedExecutor.read('workspace:v123', async () => {
+  return await db.query('SELECT * FROM orbit_workspace WHERE id = 1');
+}, 60); // 60s TTL
+
+// Write with cache invalidation
+await cachedExecutor.write(['workspace:v123', 'entities:all'], async () => {
+  return await db.save(newVersion, newState);
+});
+```
+
+**Cache TTL Defaults:**
+| Data Type | TTL | Rationale |
+|-----------|-----|-----------|
+| Workspace | 60s | Changes frequently |
+| Reference (countries, entities) | 3600s | Rarely changes |
+| Employees | 300s | Moderate change rate |
+| Activities | 120s | Frequent updates |
+| Time Entries | 60s | High write volume |
+| Holidays | 86400s | Static reference data |
+| Analytics | 120s | Computed, can be stale briefly |
+
+### 2.3 Logical Sharding for Images (`server/image-sharding.mjs`)
+
+**Consistent Hashing:**
+- 8,192 logical shards distributed across physical machines
+- 160 virtual nodes per machine for uniform distribution
+- Configurable replication factor (default: 3)
+- Machine capacity weighting for heterogeneous clusters
+
+**Machine Mapping:**
+- Multi-region, multi-zone awareness
+- Machine health states: active, draining, maintenance, offline
+- Automatic shard reassignment on machine failure
+- Online rebalancing with configurable thresholds
+
+**Image Key Structure:**
+```
+orbit-img/ent:{entityId}/dept:{departmentId}/emp:{employeeId}/{type}/{timestamp}-{random}-{filename}
+```
+
+```javascript
+const keyInfo = keyGenerator.generateKey({
+  entityId: 'ent-001',
+  departmentId: 'dept-001',
+  employeeId: 'emp-001',
+  type: 'avatar',
+  filename: 'photo.jpg'
+});
+// Returns: { key, shardId, primaryMachine, replicaMachines, metadata }
+```
+
+### 2.4 64-bit NextID Generator (`server/id-generator.mjs`)
+
+**Bit Layout (64 bits):**
+```
+┌─────────────────────┬───────────────┬──────────────┐
+│  41 bits Timestamp  │ 13 bits Shard │ 10 bits Ctr  │
+│   (ms since epoch)  │   (0-8191)    │   (0-1023)   │
+└─────────────────────┴───────────────┴──────────────┘
+   Bit 63-23             Bit 22-10         Bit 9-0
+```
+
+**Properties:**
+- **Timestamp**: 41 bits = ~69 years from 2024-01-01 epoch
+- **Shard**: 13 bits = 8,192 logical shards
+- **Counter**: 10 bits = 1,024 IDs per millisecond per shard
+- **Naturally sortable**: Lexicographic sort = chronological sort
+- **Shard affinity**: IDs embed shard for routing
+
+**Usage:**
+```javascript
+const generator = new NextIDGenerator({ shardId: 5 });
+const id = generator.nextId();           // Single ID
+const ids = generator.nextIds(100);      // Batch
+const parsed = generator.parseId(id);    // Extract components
+
+// Distributed coordinator with automatic shard resolution
+const coordinator = new DistributedIDCoordinator({
+  shardResolver: (key) => hash(key) % 8192
+});
+const id = coordinator.nextIdForKey('entity-123');
+```
+
+**Database Formats:**
+```javascript
+IDUtils.toDatabaseFormats(id)
+// {
+//   bigint,           // For PostgreSQL BIGINT
+//   string,           // Decimal string
+//   hex,              // 0x-prefixed hex
+//   base64url,        // 11-char URL-safe
+//   display,          // XXXX-XXXX-XXXX-XXXX
+//   sortable          // Zero-padded for lexical sort
+// }
+```
+
+## 3. Existing product model
 
 The TypeScript model in `src/types.ts` contains:
 
@@ -64,7 +199,7 @@ The current metrics run in the browser. Capacity excludes weekly off/public holi
 
 Two rules keep the screen and its guidance honest. **Entity focus**: `src/lib/entities.ts` resolves a legal-entity selection to the entity plus its sub-companies, and the command centre intersects that tree with the departments already in role scope — narrowing only, never widening. **Live guide context**: `src/lib/ai-guide-live.ts` derives the top-of-tab guide panel's figures from the same store snapshot and filters the page uses, so the note cannot drift from the numbers above it.
 
-## 3. Before production: individual authentication and authorization
+## 4. Before production: individual authentication and authorization
 
 The next phase must replace the shared-password model with individual identities (for example Microsoft Entra ID / Google through an OIDC library). Neon supplies PostgreSQL storage; the current implementation does not provide managed SSO, realtime subscriptions, or employee-level authorization.
 
@@ -80,7 +215,7 @@ Enforce these scopes **on the server** before returning records, not just in Rea
 
 Validate tenant boundaries and edits server-side. Use least-privilege database roles and explicit policies/queries. Do not pass a database owner's credentials to browsers. An authenticated employee must not be able to select a CEO persona to acquire rights.
 
-## 4. Record-level PostgreSQL migration
+## 5. Record-level PostgreSQL migration
 
 Before concurrent use or data growth makes full snapshots impractical:
 
@@ -93,7 +228,7 @@ Before concurrent use or data growth makes full snapshots impractical:
 
 [`schema.sql`](schema.sql) is a **legacy, Supabase-specific design reference**. It assumes `auth.uid()` and Supabase identity services that this Neon application does not have. It is not a runnable Neon migration; adapt its identities, policies and ID types before using the relational design. The actual runtime tables are in [`neon.sql`](neon.sql), mirrored by `server/repository.mjs`.
 
-## 5. Calendar synchronization — not implemented
+## 6. Calendar synchronization — not implemented
 
 The UI connection flows and sync jobs remain simulations. `.ics` downloads are real and can be imported into Outlook, Google or Apple Calendar; they are not a live subscription or OAuth connection.
 
@@ -109,13 +244,13 @@ For a real connector:
 
 A free Vercel deployment does not imply a reliable high-frequency scheduler. Choose a supported durable queue/scheduler and budget separately when enabling this phase.
 
-## 6. Escalation and email — not implemented server-side
+## 7. Escalation and email — not implemented server-side
 
 The current application can calculate scores and compose escalation emails. It does not send them automatically. A future worker should scan closed periods, enforce one escalation per `(department, period, period_start)`, send to the department head with the Head of Operations copied, and record provider delivery IDs with retries and deduplication.
 
 Never describe simulated sync jobs or generated email text as evidence that a mailbox or external calendar has been touched.
 
-## 7. Holidays, availability and operations
+## 8. Holidays, availability and operations
 
 - The seeded holiday engine covers 12 countries and multiple future years, with per-country weekly off. Future lunar-calendar dates remain tentative; validate authoritative announcements before operational use.
 - Choose a Neon region available near the intended users; do not promise a specific region on every free plan.
@@ -124,46 +259,34 @@ Never describe simulated sync jobs or generated email text as evidence that a ma
 - Do not defeat scale-to-zero with keep-alive requests. Cold starts are a normal free-tier trade-off.
 - Vercel Hobby is restricted to eligible personal/non-commercial usage. A business portal may need a different plan or hosting provider. No free production SLA or unlimited capacity is promised.
 
-## 8. Delivery checklist
+## 9. Delivery checklist
 
 | Phase | State |
 | --- | --- |
 | Browser product demo, analytics, export | Implemented |
 | Vercel API + Neon snapshot persistence + shared-password pilot | Implemented in this repository; requires account/environment setup |
 | Provision/confirm a live Neon project and production secrets | Owner dashboard action; not performed merely by merging code |
+| **PgBouncer connection pooling** | **Implemented (via Neon pooler)** |
+| **Read replicas + Memcached caching** | **Implemented** |
+| **Logical image sharding** | **Implemented** |
+| **64-bit NextID generator** | **Implemented** |
 | Individual login + server-enforced permissions + normalized records | Planned |
 | Real OAuth calendar sync, durable worker and email delivery | Planned |
 | Backups/PITR, compliance controls, tamper-evident audit and production SLA | Planned / provider setup |
 
+## 10. IT project portfolio and time capitalisation
 
-## IT project portfolio and time capitalisation
+The workspace model now carries three additive collections alongside the original domain model (nothing was removed or renamed):
 
-The workspace model now carries three additive collections alongside the original
-domain model (nothing was removed or renamed):
-
-- `projects` — 110 IT projects (30 capital, 80 operational) with capex, WBS code,
-  capitalisation rate/window, sponsor, PM and task breakdown. Each project task
-  points at a real activity (`activityId`), so it appears in the calendar,
-  timesheets and roadmap like any other work.
-- `capitalisation` — the AASB 138 / IAS 38 policy: eligible and excluded
-  development phases, hourly role cost bands, evidence checklist and approver.
-- `capitalisationApprovals` — immutable snapshots of the board submission for an
-  entity and calendar month (hours, cost, utilisation, status, submitter, decision
-  and note).
+- `projects` — 110 IT projects (30 capital, 80 operational) with capex, WBS code, capitalisation rate/window, sponsor, PM and task breakdown. Each project task points at a real activity (`activityId`), so it appears in the calendar, timesheets and roadmap like any other work.
+- `capitalisation` — the AASB 138 / IAS 38 policy: eligible and excluded development phases, hourly role cost bands, evidence checklist and approver.
+- `capitalisationApprovals` — immutable snapshots of the board submission for an entity and calendar month (hours, cost, utilisation, status, submitter, decision and note).
 
 `src/lib/capitalisation.ts` classifies every timesheet entry in scope:
 
-1. Only activities linked to a **capital** project, in an eligible phase and
-   inside the project's capitalisation window are capitalised.
-2. Capitalised hours are the logged hours multiplied by the project's
-   capitalisation rate; value uses the resource's fully-loaded AUD rate.
-3. Operational projects, non-capitalisable phases (support, training, discovery)
-   and non-project BAU remain in the utilisation denominator and are reported as
-   excluded effort with an auditable reason.
-4. Every in-scope entry ends up in exactly one bucket, so the board pack
-   reconciles logged hours to capitalised + excluded effort.
+1. Only activities linked to a **capital** project, in an eligible phase and inside the project's capitalisation window are capitalised.
+2. Capitalised hours are the logged hours multiplied by the project's capitalisation rate; value uses the resource's fully-loaded AUD rate.
+3. Operational projects, non-capitalisable phases (support, training, discovery) and non-project BAU remain in the utilisation denominator and are reported as excluded effort with an auditable reason.
+4. Every in-scope entry ends up in exactly one bucket, so the board pack reconciles logged hours to capitalised + excluded effort.
 
-The board workflow (submit → refresh → approve/reject) is stored through the same
-shared-workspace persistence and audit log as the rest of the portal. As with the
-performance scores, calculations run client-side for the pilot; move the same
-queries server-side before using the numbers for statutory reporting.
+The board workflow (submit → refresh → approve/reject) is stored through the same shared-workspace persistence and audit log as the rest of the portal. As with the performance scores, calculations run client-side for the pilot; move the same queries server-side before using the numbers for statutory reporting.
