@@ -26,6 +26,34 @@ const brandedSnapshot = {
 assert.equal(workspaceSchema.safeParse(brandedSnapshot).success, true, 'entity theme configuration must persist through the shared workspace API');
 console.log('PASS: full seeded dataset and entity theme branding validate against the Neon API schema');
 
+/* Entity focus: the command centre reads one legal entity at a time and a
+   selection covers that entity plus every company beneath it — never a
+   sibling group, and never outside the departments already in scope. */
+const { entitySubtreeIds, scopeEntityOptions, departmentsInEntityScope } = await import('../src/lib/entities.ts');
+const entitySeed = createSeedState();
+const contractingTree = entitySubtreeIds(entitySeed.entities, 'ent-contracting');
+assert.ok(contractingTree.has('ent-contracting') && contractingTree.has('ent-qatar'), 'a company selection includes its sub-companies');
+assert.equal(contractingTree.has('ent-group'), false, 'a company selection never rolls up to the group');
+assert.equal(contractingTree.has('ent-hra-group'), false, 'a company selection never bleeds into a sibling group');
+
+const contractingDepartments = departmentsInEntityScope(entitySeed.entities, entitySeed.departments, 'ent-contracting');
+assert.ok(contractingDepartments.length > 0 && contractingDepartments.length < entitySeed.departments.length, 'entity focus narrows the dashboard');
+assert.ok(contractingDepartments.every((dept) => contractingTree.has(dept.entityId)), 'every focused department belongs to the selected entity tree');
+
+const allDepartments = departmentsInEntityScope(entitySeed.entities, entitySeed.departments, 'all');
+assert.equal(allDepartments.length, entitySeed.departments.length, "'all' keeps the whole scope in view");
+
+const contractingScope = entitySeed.departments.filter((dept) => ['ent-contracting', 'ent-qatar'].includes(dept.entityId));
+const contractingOptions = scopeEntityOptions(entitySeed.entities, contractingScope);
+assert.equal(contractingOptions[0].entity.id, 'ent-group', 'the picker anchors on the root group of company');
+assert.deepEqual(
+  contractingOptions.map(({ entity, depth }) => `${entity.id}@${depth}`),
+  ['ent-group@0', 'ent-contracting@1', 'ent-qatar@2'],
+  'the picker offers the ancestors and the companies that hold a department in scope, in tree order',
+);
+assert.ok(contractingOptions.every(({ entity }) => entity.id !== 'ent-hra-group'), 'the picker never offers an entity outside the role scope');
+console.log('PASS: dashboard entity focus covers the entity tree and stays inside role scope');
+
 /* Capitalisation guardrails: only capital-project development tasks may be
    capitalised, and every logged hour is either capitalised or reconciled. */
 const { capitalisationReport, monthScope, monthKey } = await import('../src/lib/capitalisation.ts');

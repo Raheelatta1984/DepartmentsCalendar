@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useStore } from '../store';
 import { ROLE_LABELS, ROLE_RANK, describeScope } from '../lib/permissions';
+import { entityRoot, entitySubtree } from '../lib/entities';
 import type { Entity, ViewKey } from '../types';
 import { Avatar, Badge, Button, Field, IconButton, SearchInput, Select } from './ui';
 import { AiGuideToggle } from './AiGuide';
@@ -34,33 +35,6 @@ const ENTITY_TYPE_LABELS: Record<Entity['type'], string> = {
   company: 'Company',
   sub_company: 'Sub-company',
 };
-
-/** Walks up the entity tree to the root group of company. */
-function entityRoot(entities: Entity[], entity: Entity | undefined): Entity | undefined {
-  let current = entity;
-  const seen = new Set<string>();
-  while (current?.parentId) {
-    if (seen.has(current.id)) break;
-    seen.add(current.id);
-    const parentId: string = current.parentId;
-    current = entities.find((e) => e.id === parentId);
-  }
-  return current;
-}
-
-/** The group root plus every company / sub-company beneath it, with depth for indenting. */
-function entitySubtree(entities: Entity[], rootId: string): { entity: Entity; depth: number }[] {
-  const root = entities.find((e) => e.id === rootId);
-  if (!root) return [];
-  const out: { entity: Entity; depth: number }[] = [{ entity: root, depth: 0 }];
-  for (let i = 0; i < out.length; i += 1) {
-    const depth = out[i].depth;
-    entities
-      .filter((e) => e.parentId === out[i].entity.id)
-      .forEach((child) => out.push({ entity: child, depth: depth + 1 }));
-  }
-  return out;
-}
 
 export const NAV_ITEMS: { id: ViewKey; label: string; icon: React.ReactNode; group: string; hint: string }[] = [
   { id: 'dashboard', label: 'Command centre', icon: <LayoutDashboard className="h-4 w-4" />, group: 'Workspace', hint: 'Live workload & performance' },

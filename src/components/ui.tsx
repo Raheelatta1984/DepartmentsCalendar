@@ -511,11 +511,14 @@ export function Tabs<T extends string>({
   value,
   onChange,
   className = '',
+  guideSkip = false,
 }: {
   tabs: { id: T; label: string; count?: number }[];
   value: T;
   onChange: (v: T) => void;
   className?: string;
+  /** Filter-style tabs (period grain, status chips) are not sub-sections of the screen. */
+  guideSkip?: boolean;
 }) {
   return (
     <div className={`flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1 ${className}`}>
@@ -523,7 +526,8 @@ export function Tabs<T extends string>({
         <button
           key={t.id}
           onClick={() => onChange(t.id)}
-          data-guide-tab="true"
+          data-guide-tab={guideSkip ? undefined : 'true'}
+          data-guide-skip={guideSkip ? 'true' : undefined}
           data-guide-label={t.label}
           data-guide-active={value === t.id ? 'true' : undefined}
           className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
