@@ -28,8 +28,12 @@ Built with React + TypeScript, with a deterministic product demo and an optional
 | Roadmap with department/employee/task/subtask rows, columns for year, quarter, month, week number, day and date | **Roadmap timeline** with all six header rows, collapsible hierarchy, holiday shading and today marker |
 | Country-specific weekly off + public holidays for the next 5 years, with reason shown | **Master setup → Holidays & weekends** (12 countries, multi-year generation, per-country weekend toggles) and shading in calendar/roadmap |
 | Track IT effort by project/task and capitalise it for the board | **IT projects & capex** portfolio (110 projects) + **Capitalisation pack** (AASB 138, AUD) with monthly board approval of resource hours |
+| AI guide that helps on every screen, toggleable on/off | **AI guide sticky note** on every tab, section and sub-section — auto width/height, contextual tips, enable/disable toggle in the note and the top bar |
+| Select a profile only after group of company and entity, scoped to that company’s people | **Avatar menu → Select profile** — group of company → entity → profile list showing only that entity’s employees |
 
-### Demo personas (switch from the avatar menu, top-right)
+### Demo profiles (switch from the avatar menu, top-right)
+
+Pick the **group of company**, then the **entity** — the profile list then shows only that entity’s employees, never all profiles from multiple entities at once.
 
 | Persona | Role | Sees |
 | --- | --- | --- |

@@ -523,6 +523,9 @@ export function Tabs<T extends string>({
         <button
           key={t.id}
           onClick={() => onChange(t.id)}
+          data-guide-tab="true"
+          data-guide-label={t.label}
+          data-guide-active={value === t.id ? 'true' : undefined}
           className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
             value === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
           }`}

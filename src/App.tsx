@@ -4,6 +4,7 @@ import { useStore } from './store';
 import type { AppFilters, ViewKey } from './types';
 import { toISO, fromISO } from './lib/dates';
 import { Sidebar, Topbar, NAV_ITEMS } from './components/Layout';
+import { AiGuide } from './components/AiGuide';
 import { ActivityModal } from './components/ActivityModal';
 import { EmployeeModal } from './components/EmployeeModal';
 import { Avatar, Badge, IconButton, Modal } from './components/ui';
@@ -296,6 +297,8 @@ export function App() {
           </div>
         </div>
       </Modal>
+
+      <AiGuide view={view} />
     </div>
   );
 }

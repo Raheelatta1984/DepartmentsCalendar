@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Bell,
@@ -25,8 +25,42 @@ import {
 } from 'lucide-react';
 import { useStore } from '../store';
 import { ROLE_LABELS, ROLE_RANK, describeScope } from '../lib/permissions';
-import type { ViewKey } from '../types';
-import { Avatar, Badge, Button, IconButton } from './ui';
+import type { Entity, ViewKey } from '../types';
+import { Avatar, Badge, Button, Field, IconButton, SearchInput, Select } from './ui';
+import { AiGuideToggle } from './AiGuide';
+
+const ENTITY_TYPE_LABELS: Record<Entity['type'], string> = {
+  group: 'Group',
+  company: 'Company',
+  sub_company: 'Sub-company',
+};
+
+/** Walks up the entity tree to the root group of company. */
+function entityRoot(entities: Entity[], entity: Entity | undefined): Entity | undefined {
+  let current = entity;
+  const seen = new Set<string>();
+  while (current?.parentId) {
+    if (seen.has(current.id)) break;
+    seen.add(current.id);
+    const parentId: string = current.parentId;
+    current = entities.find((e) => e.id === parentId);
+  }
+  return current;
+}
+
+/** The group root plus every company / sub-company beneath it, with depth for indenting. */
+function entitySubtree(entities: Entity[], rootId: string): { entity: Entity; depth: number }[] {
+  const root = entities.find((e) => e.id === rootId);
+  if (!root) return [];
+  const out: { entity: Entity; depth: number }[] = [{ entity: root, depth: 0 }];
+  for (let i = 0; i < out.length; i += 1) {
+    const depth = out[i].depth;
+    entities
+      .filter((e) => e.parentId === out[i].entity.id)
+      .forEach((child) => out.push({ entity: child, depth: depth + 1 }));
+  }
+  return out;
+}
 
 export const NAV_ITEMS: { id: ViewKey; label: string; icon: React.ReactNode; group: string; hint: string }[] = [
   { id: 'dashboard', label: 'Command centre', icon: <LayoutDashboard className="h-4 w-4" />, group: 'Workspace', hint: 'Live workload & performance' },
@@ -178,10 +212,36 @@ export function Topbar({
       ),
     [openEscalations, scope],
   );
-  const sortedUsers = useMemo(
-    () => [...state.employees].sort((a, b) => ROLE_RANK[b.role] - ROLE_RANK[a.role] || a.name.localeCompare(b.name)),
-    [state.employees],
+
+  /* Profile selection is a cascade: group of company → entity → profile.
+     The profile list only ever shows the selected entity's own employees. */
+  const [profileGroupId, setProfileGroupId] = useState<string>(
+    () => entityRoot(state.entities, state.entities.find((e) => e.id === scope.user.entityId))?.id ?? '',
   );
+  const [profileEntityId, setProfileEntityId] = useState<string>(scope.user.entityId ?? '');
+  const [profileQuery, setProfileQuery] = useState('');
+
+  useEffect(() => {
+    const entity = state.entities.find((e) => e.id === scope.user.entityId);
+    setProfileGroupId(entityRoot(state.entities, entity)?.id ?? '');
+    setProfileEntityId(scope.user.entityId ?? '');
+    setProfileQuery('');
+  }, [scope.user.entityId, state.entities]);
+
+  const groupOptions = useMemo(() => state.entities.filter((e) => !e.parentId), [state.entities]);
+  const entityOptions = useMemo(() => entitySubtree(state.entities, profileGroupId), [state.entities, profileGroupId]);
+  const entityEmployees = useMemo(
+    () =>
+      state.employees
+        .filter((e) => e.entityId === profileEntityId)
+        .sort((a, b) => ROLE_RANK[b.role] - ROLE_RANK[a.role] || a.name.localeCompare(b.name)),
+    [state.employees, profileEntityId],
+  );
+  const visibleProfiles = useMemo(() => {
+    const q = profileQuery.trim().toLowerCase();
+    return q ? entityEmployees.filter((u) => `${u.name} ${u.email} ${u.code}`.toLowerCase().includes(q)) : entityEmployees;
+  }, [entityEmployees, profileQuery]);
+  const selectedEntityName = state.entities.find((e) => e.id === profileEntityId)?.name ?? '';
 
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/85 backdrop-blur">
@@ -204,6 +264,8 @@ export function Topbar({
         >
           Search people, tasks… <kbd className="rounded border border-slate-200 bg-slate-50 px-1 text-[10px] text-slate-400">⌘K</kbd>
         </button>
+
+        <AiGuideToggle />
 
         <div className="relative">
           <IconButton title="Escalations" onClick={() => setNotifMenu((v) => !v)} active={notifMenu}>
@@ -273,13 +335,60 @@ export function Topbar({
               <div className="fixed inset-0 z-10" onClick={() => setUserMenu(false)} />
               <div className="absolute right-0 z-20 mt-2 w-80 rounded-xl border border-slate-200 bg-white shadow-xl">
                 <div className="border-b border-slate-100 px-3 py-2.5">
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Switch demo persona</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Select profile</div>
                   <p className="mt-1 text-[11px] leading-snug text-slate-500">
-                    Each role sees a different slice of the group. CEO and Head of Operations see every department.
+                    Select the group of company and entity first — profiles are listed for that company’s employees only, not every entity in the workspace.
+                  </p>
+                  <div className="mt-2.5 space-y-2">
+                    <Field label="Group of company">
+                      <Select
+                        value={profileGroupId}
+                        onChange={(e) => {
+                          setProfileGroupId(e.target.value);
+                          setProfileEntityId('');
+                          setProfileQuery('');
+                        }}
+                      >
+                        <option value="">Select group…</option>
+                        {groupOptions.map((g) => (
+                          <option key={g.id} value={g.id}>
+                            {g.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="Entity / company" hint={profileEntityId ? `${entityEmployees.length} people` : 'Required'}>
+                      <Select
+                        value={profileEntityId}
+                        disabled={!profileGroupId}
+                        onChange={(e) => {
+                          setProfileEntityId(e.target.value);
+                          setProfileQuery('');
+                        }}
+                      >
+                        <option value="">Select entity…</option>
+                        {entityOptions.map(({ entity, depth }) => (
+                          <option key={entity.id} value={entity.id}>
+                            {'\u00A0'.repeat(depth * 2)}
+                            {entity.name} · {ENTITY_TYPE_LABELS[entity.type]}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  </div>
+                  <p className="mt-2 text-[10px] text-slate-400">
+                    Active profile: <span className="font-medium text-slate-600">{scope.user.name}</span> · {ROLE_LABELS[scope.user.role]}
                   </p>
                 </div>
-                <div className="max-h-80 overflow-y-auto p-1.5">
-                  {sortedUsers.map((u) => {
+                <div className="border-b border-slate-100 px-3 py-2">
+                  <SearchInput
+                    value={profileQuery}
+                    onChange={setProfileQuery}
+                    placeholder={profileEntityId ? `Search profiles in ${selectedEntityName}…` : 'Select an entity first…'}
+                  />
+                </div>
+                <div className="max-h-72 overflow-y-auto p-1.5">
+                  {visibleProfiles.map((u) => {
                     const dept = state.departments.find((d) => d.id === u.departmentId);
                     return (
                       <button
@@ -304,6 +413,13 @@ export function Topbar({
                       </button>
                     );
                   })}
+                  {visibleProfiles.length === 0 ? (
+                    <p className="px-2 py-4 text-center text-[11px] leading-relaxed text-slate-400">
+                      {profileEntityId
+                        ? `No profiles match in ${selectedEntityName}.`
+                        : 'Select a group of company and entity to list its profiles.'}
+                    </p>
+                  ) : null}
                 </div>
                 {workspace.mode === 'demo' ? <div className="border-t border-slate-100 p-2">
                   <button
