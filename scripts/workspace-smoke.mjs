@@ -10,7 +10,21 @@ const initial = toSharedState(createSeedState());
 const parsed = workspaceSchema.safeParse(initial);
 assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
 assert.equal('activeUserId' in initial.settings, false);
-console.log('PASS: full seeded dataset validates against the Neon API schema');
+const brandedSnapshot = {
+  ...initial,
+  entities: initial.entities.map((entity, index) => index === 0 ? {
+    ...entity,
+    logoUrl: 'data:image/png;base64,AA==',
+    portalHeader: 'Meridian Workspace',
+    portalFooter: '© Meridian Group',
+    brandColor: '#126a84',
+    backgroundColor: '#f2f8fa',
+    fontFamily: 'Inter',
+    headingFont: 'Georgia',
+  } : entity),
+};
+assert.equal(workspaceSchema.safeParse(brandedSnapshot).success, true, 'entity theme configuration must persist through the shared workspace API');
+console.log('PASS: full seeded dataset and entity theme branding validate against the Neon API schema');
 
 /* Capitalisation guardrails: only capital-project development tasks may be
    capitalised, and every logged hour is either capitalised or reconciled. */

@@ -18,6 +18,9 @@ export const workspaceSchema = record({
   entities: rows({
     id, name: text, code: text, type: z.enum(['group', 'company', 'sub_company']),
     parentId: id.nullable(), countryCode: text, timezone: text, industry: text.optional(), currency: text.optional(),
+    logoUrl: z.string().max(500_000).optional(), portalHeader: text.optional(), portalFooter: text.optional(),
+    brandColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), backgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+    fontFamily: z.enum(['Inter', 'Arial', 'Georgia', 'system']).optional(), headingFont: z.enum(['Inter', 'Arial', 'Georgia', 'system']).optional(),
   }).min(1),
   departments: rows({
     id, entityId: id, name: text, code: text, headId: id.nullable(), opsOwnerId: id.nullable(),

@@ -1,16 +1,53 @@
 import React from 'react';
-import { ArrowUpRight, CalendarDays, Palette, Sparkles } from 'lucide-react';
-import { Card, PageHeader } from '../components/ui';
+import { ArrowUpRight, CalendarDays, CheckCircle2, Clock3, Palette, Sparkles, WandSparkles } from 'lucide-react';
+import { Badge, Button, Card, PageHeader } from '../components/ui';
 
 const updates = [
-  { date: 'Just shipped', title: 'Your portal, your brand', text: 'Build an entity-aware visual identity with a logo, colours, typography, and branded header and footer.', icon: <Palette className="h-4 w-4" />, tone: 'bg-violet-50 text-violet-700' },
-  { date: 'Just shipped', title: 'AI-assisted theme generation', text: 'Describe the feel you want and generate a complete theme proposal. Review it, tweak it, and apply it when you are ready.', icon: <Sparkles className="h-4 w-4" />, tone: 'bg-amber-50 text-amber-700' },
-  { date: 'In your workspace', title: 'A clearer view of what matters', text: 'Use the command centre, department calendar, activity register, and roadmap to stay aligned across teams.', icon: <CalendarDays className="h-4 w-4" />, tone: 'bg-sky-50 text-sky-700' },
+  {
+    label: 'Just added',
+    date: 'October 2026',
+    title: 'A portal that feels like your brand',
+    description: 'Set a logo, header and footer for each entity, then tune accent and background colours plus body and heading fonts. Preview changes and apply them to the entity in Theme Studio.',
+    icon: <Palette className="h-4 w-4" />,
+    tone: 'brand' as const,
+    bullets: ['Per-entity portal identity', 'Live preview before applying', 'Prompt-guided theme suggestions'],
+  },
+  {
+    label: 'New workspace',
+    date: 'October 2026',
+    title: 'A dedicated place for portal updates',
+    description: 'The What’s new area keeps recent improvements and useful release highlights separate from day-to-day calendar work.',
+    icon: <Sparkles className="h-4 w-4" />,
+    tone: 'good' as const,
+    bullets: ['Find new capabilities quickly', 'See the latest portal improvements'],
+  },
+  {
+    label: 'Available',
+    date: 'Recently added',
+    title: 'Projects and capitalisation workflow',
+    description: 'Keep delivery milestones, project effort and capitalisation approvals connected to the wider department activity picture.',
+    icon: <CalendarDays className="h-4 w-4" />,
+    tone: 'info' as const,
+    bullets: ['Project portfolio visibility', 'Capitalisation review and approval'],
+  },
 ];
 
-export function WhatsNewPage({ onOpenTheme }: { onOpenTheme: () => void }) {
-  return <div><PageHeader eyebrow="Product updates" title="What's new" description="A quick look at the latest improvements to your Departments Calendar portal." />
-    <div className="grid gap-3 lg:grid-cols-3">{updates.map((item) => <Card key={item.title} className="flex min-h-52 flex-col"><div className="flex items-center justify-between"><span className={`rounded-lg p-2 ${item.tone}`}>{item.icon}</span><span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{item.date}</span></div><h2 className="mt-5 text-sm font-semibold text-slate-900">{item.title}</h2><p className="mt-2 flex-1 text-xs leading-5 text-slate-500">{item.text}</p>{item.title.includes('theme') ? <button onClick={onOpenTheme} className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:text-brand-900">Open theme studio <ArrowUpRight className="h-3 w-3" /></button> : null}</Card>)}</div>
-    <p className="mt-5 text-[11px] text-slate-400">Updates will appear here as new capabilities are released.</p>
-  </div>;
+export function WhatsNewPage({ onOpenThemeStudio }: { onOpenThemeStudio: () => void }) {
+  return (
+    <div>
+      <PageHeader eyebrow="Portal updates" title="What’s new" description="A quick look at recent improvements to your department calendar portal." actions={<Badge tone="good"><CheckCircle2 className="h-3 w-3" /> You’re up to date</Badge>} />
+      <Card className="mb-4 overflow-hidden !p-0">
+        <div className="relative overflow-hidden bg-gradient-to-br from-ink-900 via-ink-800 to-brand-900 px-5 py-6 text-white sm:px-7">
+          <div className="absolute -right-8 -top-12 h-48 w-48 rounded-full border border-white/10" /><div className="absolute -right-1 -top-5 h-32 w-32 rounded-full border border-white/10" />
+          <div className="relative max-w-2xl"><Badge tone="brand" className="!bg-white/10 !text-blue-100 !ring-white/10"><WandSparkles className="h-3 w-3" /> New · Theme Studio</Badge><h2 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">Make the portal unmistakably yours.</h2><p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-300">Create an entity-specific look with its own logo, colours and typography. Generate a theme concept, preview it, and apply it when you’re ready.</p><Button className="mt-4 !border-white/15 !bg-white !text-slate-900 hover:!bg-slate-100" onClick={onOpenThemeStudio}><Palette className="h-3.5 w-3.5" /> Open Theme Studio <ArrowUpRight className="h-3.5 w-3.5" /></Button></div>
+        </div>
+      </Card>
+      <div className="mb-3 flex items-center gap-2"><Clock3 className="h-4 w-4 text-slate-400" /><h2 className="text-sm font-semibold text-slate-800">Recent updates</h2></div>
+      <div className="space-y-3">
+        {updates.map((update) => <Card key={update.title}>
+          <div className="flex gap-3"><div className="flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-slate-100 text-slate-600">{update.icon}</div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-semibold text-slate-900">{update.title}</h3><Badge tone={update.tone}>{update.label}</Badge><span className="text-[10px] text-slate-400">{update.date}</span></div><p className="mt-1 text-xs leading-relaxed text-slate-500">{update.description}</p><ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1">{update.bullets.map((bullet) => <li key={bullet} className="flex items-center gap-1.5 text-[11px] text-slate-600"><CheckCircle2 className="h-3 w-3 text-emerald-500" />{bullet}</li>)}</ul></div></div>
+        </Card>)}
+      </div>
+    </div>
+  );
 }
