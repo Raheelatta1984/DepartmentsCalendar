@@ -6,6 +6,16 @@ const updates = [
   {
     label: 'Just added',
     date: 'October 2026',
+    title: 'AI guide and entity-scoped profile selection',
+    description:
+      'A contextual AI guide sticky note now follows you across every tab, section and sub-section, auto-adjusting its width and height to the content, with an enable/disable toggle in the note and the top bar. Profile switching now flows through group of company → entity, so only the selected company’s employees are listed.',
+    icon: <WandSparkles className="h-4 w-4" />,
+    tone: 'brand' as const,
+    bullets: ['AI guide on every screen, auto-fitted to its content', 'One-click enable/disable toggle everywhere', 'Profiles scoped to the selected entity’s employees'],
+  },
+  {
+    label: 'Just added',
+    date: 'October 2026',
     title: 'A portal that feels like your brand',
     description: 'Set a logo, header and footer for each entity, then tune accent and background colours plus body and heading fonts. Preview changes and apply them to the entity in Theme Studio.',
     icon: <Palette className="h-4 w-4" />,
