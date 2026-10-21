@@ -19,8 +19,11 @@ import { IntegrationsPage } from './pages/IntegrationsPage';
 import { AdminPage } from './pages/AdminPage';
 import { TypeIcon } from './components/activity-ui';
 import { WorkspaceStatus } from './components/WorkspaceStatus';
+import { WhatsNewPage } from './pages/WhatsNewPage';
+import { ThemeStudioPage } from './pages/ThemeStudioPage';
+import { fontStack, getEntityTheme } from './lib/portal-theme';
 
-const VIEWS: ViewKey[] = ['dashboard', 'calendar', 'activities', 'roadmap', 'timesheet', 'projects', 'capitalisation', 'performance', 'integrations', 'admin'];
+const VIEWS: ViewKey[] = ['dashboard', 'calendar', 'activities', 'roadmap', 'timesheet', 'projects', 'capitalisation', 'performance', 'integrations', 'admin', 'whats-new', 'theme-studio'];
 
 function viewFromHash(): ViewKey {
   const hash = window.location.hash.replace(/^#\/?/, '').split('?')[0];
@@ -89,6 +92,15 @@ export function App() {
 
   const editingActivity = editingActivityId ? state.activities.find((a) => a.id === editingActivityId) ?? null : null;
   const activeNav = NAV_ITEMS.find((n) => n.id === view);
+  const activeEntity = state.entities.find((entity) => entity.id === scope.user.entityId);
+  const activeTheme = getEntityTheme(activeEntity);
+  const portalStyle = {
+    backgroundColor: activeTheme.backgroundColor,
+    fontFamily: fontStack(activeTheme.fontFamily),
+    '--portal-accent': activeTheme.brandColor,
+    '--portal-accent-soft': `color-mix(in srgb, ${activeTheme.brandColor} 12%, white)`,
+    '--portal-heading-font': fontStack(activeTheme.headingFont),
+  } as React.CSSProperties;
 
   const paletteResults = useMemo(() => {
     const q = paletteQuery.trim().toLowerCase();
@@ -104,7 +116,7 @@ export function App() {
   }, [paletteQuery, state.employees, state.activities, scope.visibleEmployeeIds, scope.visibleDepartmentIds]);
 
   return (
-    <div className="min-h-screen bg-slate-100/70" inert={workspace.status === 'refreshing'}>
+    <div className="portal-theme min-h-screen bg-slate-100/70" style={portalStyle} inert={workspace.status === 'refreshing'}>
       <Sidebar view={view} onNavigate={navigate} mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} />
       <div className="lg:pl-[248px]">
         <Topbar
@@ -146,12 +158,11 @@ export function App() {
             {view === 'performance' ? <PerformancePage filters={filters} setFilters={setFilters} onOpenEmployee={setEmployeeId} /> : null}
             {view === 'integrations' ? <IntegrationsPage /> : null}
             {view === 'admin' ? <AdminPage /> : null}
+            {view === 'whats-new' ? <WhatsNewPage onOpenThemeStudio={() => navigate('theme-studio')} /> : null}
+            {view === 'theme-studio' ? <ThemeStudioPage /> : null}
           </div>
           <footer className="mt-8 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 py-3 text-[10px] text-slate-400">
-            <span>
-              Orbit · activity, workload & roadmap portal for {state.settings.groupName} · {state.entities.length} entities ·{' '}
-              {state.departments.length} departments · {state.employees.length} people
-            </span>
+            <span>{activeTheme.portalFooter || `Orbit · activity, workload & roadmap portal for ${state.settings.groupName}`} · {state.entities.length} entities · {state.departments.length} departments · {state.employees.length} people</span>
             <span className="flex items-center gap-1">
               <Command className="h-3 w-3" /> K to search · {workspace.mode === 'shared' ? 'shared data stored in Neon' : 'demo data stored locally in your browser'}
             </span>

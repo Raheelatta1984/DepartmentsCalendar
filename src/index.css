@@ -21,6 +21,29 @@
   }
 }
 
+/* Entity-owned brand tokens applied at the portal shell. */
+.portal-theme h1,
+.portal-theme h2,
+.portal-theme h3 {
+  font-family: var(--portal-heading-font, inherit);
+}
+.portal-theme [class*='bg-brand-600'] {
+  background-color: var(--portal-accent, #2947d6) !important;
+}
+.portal-theme [class*='bg-brand-50'] {
+  background-color: var(--portal-accent-soft, #eef4ff) !important;
+}
+.portal-theme [class*='text-brand-600'],
+.portal-theme [class*='text-brand-700'] {
+  color: var(--portal-accent, #2947d6) !important;
+}
+.portal-theme [class*='border-brand-'] {
+  border-color: color-mix(in srgb, var(--portal-accent, #2947d6) 38%, white) !important;
+}
+.portal-theme [class*='ring-brand-'] {
+  --tw-ring-color: color-mix(in srgb, var(--portal-accent, #2947d6) 18%, transparent) !important;
+}
+
 @layer utilities {
   .scrollbar-thin {
     scrollbar-width: thin;

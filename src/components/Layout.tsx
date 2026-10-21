@@ -14,6 +14,8 @@ import {
   Plug,
   Plus,
   RefreshCw,
+  Sparkles,
+  Palette,
   Settings2,
   ShieldCheck,
   TrendingUp,
@@ -37,6 +39,8 @@ export const NAV_ITEMS: { id: ViewKey; label: string; icon: React.ReactNode; gro
   { id: 'performance', label: 'Performance & escalation', icon: <TrendingUp className="h-4 w-4" />, group: 'Governance', hint: 'Scores, alerts, escalation log' },
   { id: 'integrations', label: 'Calendar sync', icon: <Plug className="h-4 w-4" />, group: 'Governance', hint: 'Outlook & Google connectors' },
   { id: 'admin', label: 'Master setup', icon: <Settings2 className="h-4 w-4" />, group: 'Configuration', hint: 'Entities, departments, people, holidays' },
+  { id: 'theme-studio', label: 'Theme Studio', icon: <Palette className="h-4 w-4" />, group: 'Configuration', hint: 'Entity identity, colour and typography' },
+  { id: 'whats-new', label: 'What’s new', icon: <Sparkles className="h-4 w-4" />, group: 'Workspace', hint: 'Recent portal improvements' },
 ];
 
 export function Sidebar({
@@ -53,6 +57,8 @@ export function Sidebar({
   const { state, scope } = useStore();
   const groups = ['Workspace', 'Governance', 'Configuration'];
   const openEscalations = state.escalations.filter((e) => e.status === 'open').length;
+  const entity = state.entities.find((item) => item.id === scope.user.entityId);
+  const brandName = entity?.portalHeader || entity?.name || 'Orbit';
 
   return (
     <>
@@ -65,11 +71,11 @@ export function Sidebar({
         }`}
       >
         <div className="flex items-center gap-2.5 px-4 pb-4 pt-5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-700 shadow-lg shadow-brand-900/40">
-            <GanttChartSquare className="h-5 w-5 text-white" />
+          <div className="flex h-9 w-9 flex-none items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-brand-400 to-brand-700 shadow-lg shadow-brand-900/40">
+            {entity?.logoUrl ? <img src={entity.logoUrl} alt={`${entity.name} logo`} className="h-full w-full bg-white object-contain p-1" /> : <GanttChartSquare className="h-5 w-5 text-white" />}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold text-white">Orbit</div>
+            <div className="truncate text-sm font-semibold text-white">{brandName}</div>
             <div className="truncate text-[10px] uppercase tracking-[0.16em] text-slate-500">Activity & delivery</div>
           </div>
           <button className="lg:hidden" onClick={onCloseMobile} aria-label="Close menu">
@@ -184,7 +190,7 @@ export function Topbar({
           <Menu className="h-5 w-5 text-slate-600" />
         </button>
         <div className="hidden min-w-0 items-center gap-2 text-xs text-slate-400 sm:flex">
-          <span>Orbit</span>
+          <span>{state.entities.find((entity) => entity.id === scope.user.entityId)?.portalHeader || 'Orbit'}</span>
           <span className="text-slate-300">/</span>
           <span className="truncate font-medium text-slate-600">{active?.label}</span>
         </div>

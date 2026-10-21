@@ -144,6 +144,14 @@ export interface Entity {
   industry?: string;
   /** Local reporting currency for entity-level financial reports. */
   currency?: string;
+  /** Entity-owned portal brand layer. Logo may be a URL or uploaded data URL. */
+  logoUrl?: string;
+  portalHeader?: string;
+  portalFooter?: string;
+  brandColor?: string;
+  backgroundColor?: string;
+  fontFamily?: 'Inter' | 'Arial' | 'Georgia' | 'system';
+  headingFont?: 'Inter' | 'Arial' | 'Georgia' | 'system';
 }
 
 export interface Department {
@@ -364,4 +372,6 @@ export type ViewKey =
   | 'capitalisation'
   | 'performance'
   | 'admin'
-  | 'integrations';
+  | 'integrations'
+  | 'whats-new'
+  | 'theme-studio';
