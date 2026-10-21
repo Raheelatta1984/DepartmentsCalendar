@@ -1,34 +1,44 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   addDays,
   addMonths,
+  addQuarters,
+  addYears,
+  eachMonthOfInterval,
   endOfMonth,
+  endOfQuarter,
   endOfWeek,
+  endOfYear,
   format,
   startOfMonth,
+  startOfQuarter,
   startOfWeek,
+  startOfYear,
 } from 'date-fns';
-import {
-  CalendarDays,
-  ChevronLeft,
-  ChevronRight,
-  Clock,
-  Filter,
-  Globe2,
-  MapPin,
-  Plus,
-  Search,
-  Users,
-  Wand2,
-} from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Filter, Globe2, Plus, Search, Users } from 'lucide-react';
 import { useStore } from '../store';
-import type { AppFilters, TimeEntry } from '../types';
-import { TYPE_LABELS, filterActivities, typeDistribution } from '../lib/analytics';
-import { WEEKDAY_LABELS, buildDayMeta, fromISO, humanHours, monthName, toISO } from '../lib/dates';
-import { Avatar, Badge, Button, Card, EmptyState, IconButton, PageHeader, Progress, SectionHeader, Select, Tabs } from '../components/ui';
-import { ActivityLine, StatusBadge, SyncPips, TypeBadge, TypeIcon, TYPE_COLORS } from '../components/activity-ui';
+import type { Activity, AppFilters, Department, Holiday } from '../types';
+import { TYPE_LABELS, filterActivities } from '../lib/analytics';
+import { WEEKDAY_LABELS, buildDayMeta, fromISO, humanHours, isoWeek, monthName, quarterOf, toISO, type DayMeta } from '../lib/dates';
+import { Avatar, Badge, Button, Card, EmptyState, PageHeader, SectionHeader, Select, Tabs } from '../components/ui';
+import { ActivityLine, StatusBadge, TypeIcon } from '../components/activity-ui';
 
-type Mode = 'month' | 'week' | 'day';
+type Mode = 'year' | 'quarter' | 'month' | 'week' | 'day';
+
+const MODE_TABS: { id: Mode; label: string }[] = [
+  { id: 'year', label: 'Year' },
+  { id: 'quarter', label: 'Quarter' },
+  { id: 'month', label: 'Month' },
+  { id: 'week', label: 'Week' },
+  { id: 'day', label: 'Day' },
+];
+
+/** How many chips a day cell shows before it offers an inline “+N more”. */
+const CELL_LIMIT: Record<'full' | 'dense', number> = { full: 4, dense: 3 };
+/** How many chips an expanded cell renders before handing off to the day panel. */
+const EXPAND_LIMIT = 12;
+
+type MonthPanelData = { month: Date; weeks: DayMeta[][] };
 
 export function CalendarPage({
   filters,
@@ -40,19 +50,39 @@ export function CalendarPage({
   filters: AppFilters;
   setFilters: (patch: Partial<AppFilters>) => void;
   onOpenActivity: (id: string) => void;
-  onNewActivity: () => void;
+  onNewActivity: (defaults?: Record<string, unknown>) => void;
   onOpenEmployee: (id: string) => void;
 }) {
   const { state, scope } = useStore();
-  const [mode, setMode] = useState<Mode>('month');
+  /* The grain is also the shared period filter: Year → Quarter → Month →
+     Week → Day, so the guide's live context and every other screen agree
+     with the grid on show. The calendar opens on a month unless a coarser
+     grain was already selected elsewhere. */
+  const [mode, setModeState] = useState<Mode>(
+    filters.period === 'year' || filters.period === 'quarter' ? filters.period : 'month',
+  );
   const [selectedDay, setSelectedDay] = useState<string>(toISO(new Date()));
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [peopleQuery, setPeopleQuery] = useState('');
   const [showHolidays, setShowHolidays] = useState(true);
+  const [expandedCells, setExpandedCells] = useState<string[]>([]);
 
+  const weekStartsOn = Number(state.settings.weekStartsOn) as 0 | 1 | 6;
   const anchor = fromISO(filters.anchor);
+  const today = toISO(new Date());
   const deptMap = useMemo(() => new Map(state.departments.map((d) => [d.id, d])), [state.departments]);
   const empMap = useMemo(() => new Map(state.employees.map((e) => [e.id, e])), [state.employees]);
+
+  const setMode = (next: Mode) => {
+    setModeState(next);
+    setExpandedCells([]);
+  };
+
+  /* Keep the shared period in step with the grid the reader is looking at. */
+  useEffect(() => {
+    if (filters.period !== mode) setFilters({ period: mode });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
 
   const people = useMemo(
     () =>
@@ -73,18 +103,12 @@ export function CalendarPage({
   const gridRange = useMemo(() => {
     if (mode === 'day') return { start: anchor, end: anchor };
     if (mode === 'week') {
-      return {
-        start: startOfWeek(anchor, { weekStartsOn: Number(state.settings.weekStartsOn) as 0 | 1 | 6 }),
-        end: endOfWeek(anchor, { weekStartsOn: Number(state.settings.weekStartsOn) as 0 | 1 | 6 }),
-      };
+      return { start: startOfWeek(anchor, { weekStartsOn }), end: endOfWeek(anchor, { weekStartsOn }) };
     }
-    const monthStart = startOfMonth(anchor);
-    const monthEnd = endOfMonth(anchor);
-    return {
-      start: startOfWeek(monthStart, { weekStartsOn: Number(state.settings.weekStartsOn) as 0 | 1 | 6 }),
-      end: endOfWeek(monthEnd, { weekStartsOn: Number(state.settings.weekStartsOn) as 0 | 1 | 6 }),
-    };
-  }, [anchor, mode, state.settings.weekStartsOn]);
+    if (mode === 'month') return { start: startOfMonth(anchor), end: endOfMonth(anchor) };
+    if (mode === 'quarter') return { start: startOfQuarter(anchor), end: endOfQuarter(anchor) };
+    return { start: startOfYear(anchor), end: endOfYear(anchor) };
+  }, [anchor, mode, weekStartsOn]);
 
   const selectedEmp = filters.employeeId !== 'all' ? empMap.get(filters.employeeId) : undefined;
   const countryCode = selectedEmp?.countryCode;
@@ -100,14 +124,7 @@ export function CalendarPage({
   );
 
   const days = useMemo(
-    () =>
-      buildDayMeta(
-        gridRange.start,
-        gridRange.end,
-        [0, 6],
-        showHolidays ? countryHolidays : [],
-        countryCode,
-      ),
+    () => buildDayMeta(gridRange.start, gridRange.end, [0, 6], showHolidays ? countryHolidays : [], countryCode),
     [gridRange, countryHolidays, showHolidays, countryCode],
   );
 
@@ -123,7 +140,7 @@ export function CalendarPage({
   );
 
   const activityDays = useMemo(() => {
-    const map = new Map<string, typeof activitiesInGrid>();
+    const map = new Map<string, Activity[]>();
     activitiesInGrid.forEach((a) => {
       let cursor = fromISO(a.startDate) < gridRange.start ? gridRange.start : fromISO(a.startDate);
       const last = fromISO(a.endDate) > gridRange.end ? gridRange.end : fromISO(a.endDate);
@@ -135,6 +152,9 @@ export function CalendarPage({
         cursor = addDays(cursor, 1);
       }
     });
+    // A day can hold many activities: order them by start time so the cell
+    // reads like a schedule, all-day items first.
+    map.forEach((list) => list.sort((a, b) => (a.startTime ?? '00:00').localeCompare(b.startTime ?? '00:00')));
     return map;
   }, [activitiesInGrid, gridRange]);
 
@@ -146,7 +166,7 @@ export function CalendarPage({
     );
   }, [state.timeEntries, peopleIds, gridRange]);
 
-  const selectedActivities = (activityDays.get(selectedDay) ?? []).slice().sort((a, b) => (a.startTime ?? '23:59').localeCompare(b.startTime ?? '23:59'));
+  const selectedActivities = (activityDays.get(selectedDay) ?? []).slice();
   const selectedEntries = state.timeEntries.filter((t) => t.date === selectedDay && peopleIds.has(t.employeeId));
   const loggedOnSelected = selectedEntries.reduce((a, b) => a + b.hours, 0);
 
@@ -158,42 +178,83 @@ export function CalendarPage({
     holiday ? (countryCode ? holiday.name : `${holiday.name} (${holiday.countryCode})`) : '';
 
   const shift = (dir: -1 | 1) => {
-    if (mode === 'day') setFilters({ anchor: toISO(addDays(anchor, dir)) });
-    else if (mode === 'week') setFilters({ anchor: toISO(addDays(anchor, dir * 7)) });
-    else setFilters({ anchor: toISO(addMonths(anchor, dir)) });
+    const next =
+      mode === 'year'
+        ? addYears(anchor, dir)
+        : mode === 'quarter'
+          ? addQuarters(anchor, dir)
+          : mode === 'month'
+            ? addMonths(anchor, dir)
+            : mode === 'week'
+              ? addDays(anchor, dir * 7)
+              : addDays(anchor, dir);
+    setFilters({ anchor: toISO(next) });
   };
 
-  const monthGrid = useMemo(() => {
-    const cells = [];
-    for (let i = 0; i < days.length; i += 7) cells.push(days.slice(i, i + 7));
-    return cells;
-  }, [days]);
+  /* ---- Month panels: one for Month, three for Quarter, twelve for Year -- */
+  const monthStarts = useMemo(() => {
+    if (mode === 'year') return eachMonthOfInterval({ start: startOfYear(anchor), end: endOfYear(anchor) });
+    if (mode === 'quarter') return eachMonthOfInterval({ start: startOfQuarter(anchor), end: endOfQuarter(anchor) });
+    if (mode === 'month') return [startOfMonth(anchor)];
+    return [];
+  }, [mode, anchor]);
+
+  const monthPanels = useMemo<MonthPanelData[]>(
+    () =>
+      monthStarts.map((month) => {
+        const start = startOfWeek(startOfMonth(month), { weekStartsOn });
+        const end = endOfWeek(endOfMonth(month), { weekStartsOn });
+        const meta = buildDayMeta(start, end, [0, 6], showHolidays ? countryHolidays : [], countryCode);
+        const weeks: DayMeta[][] = [];
+        for (let i = 0; i < meta.length; i += 7) weeks.push(meta.slice(i, i + 7));
+        return { month, weeks };
+      }),
+    [monthStarts, weekStartsOn, countryHolidays, showHolidays, countryCode],
+  );
 
   const workloadByDay = useMemo(() => {
     const map = new Map<string, number>();
-    const entriesByEmpDay = new Map<string, number>();
-    entriesInGrid.forEach((t) => {
-      entriesByEmpDay.set(`${t.employeeId}|${t.date}`, (entriesByEmpDay.get(`${t.employeeId}|${t.date}`) ?? 0) + t.hours);
-    });
-    entriesByEmpDay.forEach((v, k) => {
-      const day = k.split('|')[1];
-      map.set(day, (map.get(day) ?? 0) + v);
-    });
+    entriesInGrid.forEach((t) => map.set(t.date, (map.get(t.date) ?? 0) + t.hours));
     return map;
   }, [entriesInGrid]);
+
+  const plannedHoursOn = (iso: string) =>
+    (activityDays.get(iso) ?? []).reduce((sum, a) => sum + a.plannedHours / Math.max(1, daysBetween(a.startDate, a.endDate)), 0);
 
   const empUtil = (employeeId: string) => {
     const emp = empMap.get(employeeId);
     if (!emp) return { planned: 0, logged: 0, pct: 0 };
     const planned = activitiesInGrid.filter((a) => a.assigneeId === employeeId).reduce((s, a) => s + a.plannedHours, 0);
     const logged = entriesInGrid.filter((t) => t.employeeId === employeeId).reduce((s, t) => s + t.hours, 0);
-    const capacity = emp.weeklyHours * (mode === 'week' ? 1 : mode === 'day' ? 0.2 : 4.3);
+    const weekMultiplier = mode === 'year' ? 52 : mode === 'quarter' ? 13 : mode === 'month' ? 4.3 : mode === 'week' ? 1 : 0.2;
+    const capacity = emp.weeklyHours * weekMultiplier;
     return { planned, logged, pct: Math.round((logged / Math.max(1, capacity)) * 100) };
   };
 
-  const dayTotalHours = (iso: string) => {
-    const acts = activityDays.get(iso) ?? [];
-    return acts.reduce((sum, a) => sum + a.plannedHours / Math.max(1, daysBetween(a.startDate, a.endDate)), 0);
+  const toggleCell = (key: string) =>
+    setExpandedCells((prev) => (prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key]));
+
+  const rangeLabel =
+    mode === 'year'
+      ? format(anchor, 'yyyy')
+      : mode === 'quarter'
+        ? `Q${quarterOf(anchor)} ${format(anchor, 'yyyy')}`
+        : mode === 'month'
+          ? monthName(anchor)
+          : mode === 'week'
+            ? `Week ${isoWeek(gridRange.start)} · ${format(gridRange.start, 'dd MMM')} – ${format(gridRange.end, 'dd MMM yyyy')}`
+            : format(anchor, 'EEE dd MMM yyyy');
+
+  /** New activity inherits the day on screen and whoever the filters point at. */
+  const addOnDay = (iso: string) => {
+    const person = filters.employeeId !== 'all' ? empMap.get(filters.employeeId) : undefined;
+    const department = filters.departmentId !== 'all' ? deptMap.get(filters.departmentId) : undefined;
+    const scopeDefaults = person
+      ? { assigneeId: person.id, departmentId: person.departmentId, entityId: person.entityId }
+      : department
+        ? { departmentId: department.id, entityId: department.entityId }
+        : {};
+    onNewActivity({ startDate: iso, endDate: iso, ...scopeDefaults });
   };
 
   return (
@@ -201,13 +262,13 @@ export function CalendarPage({
       <PageHeader
         eyebrow="Central calendar"
         title="Department & employee calendar"
-        description="One shared calendar per department, per employee and per entity. Managers can open any report's calendar, compare against approved timesheets and spot clashes instantly."
+        description="One shared calendar per department, per person and per entity. Choose the grain — year, quarter, month, week or day — and every day cell holds as many activities as it needs, with an inline “+N more” instead of a hidden pile."
         actions={
           <>
-            <Button size="sm" onClick={() => setFilters({ anchor: toISO(new Date()), employeeId: 'all', departmentId: 'all' })}>
+            <Button size="sm" onClick={() => setFilters({ anchor: today, employeeId: 'all', departmentId: 'all' })}>
               Today
             </Button>
-            <Button size="sm" variant="primary" onClick={onNewActivity}>
+            <Button size="sm" variant="primary" onClick={() => addOnDay(selectedDay)}>
               <Plus className="h-3.5 w-3.5" /> New activity
             </Button>
           </>
@@ -217,22 +278,18 @@ export function CalendarPage({
       <Card className="mb-3 !py-3">
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-1 py-0.5">
-            <button className="rounded p-1 text-slate-400 hover:bg-slate-50" onClick={() => shift(-1)} aria-label="Previous">
+            <button className="rounded p-1 text-slate-400 hover:bg-slate-50" onClick={() => shift(-1)} aria-label="Previous period">
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="min-w-[150px] text-center text-xs font-semibold text-slate-800">
-              {mode === 'day' ? format(anchor, 'EEE dd MMM yyyy') : mode === 'week' ? `Week of ${format(gridRange.start, 'dd MMM yyyy')}` : monthName(anchor)}
+            <span className="min-w-[190px] text-center text-xs font-semibold text-slate-800" aria-live="polite">
+              {rangeLabel}
             </span>
-            <button className="rounded p-1 text-slate-400 hover:bg-slate-50" onClick={() => shift(1)} aria-label="Next">
+            <button className="rounded p-1 text-slate-400 hover:bg-slate-50" onClick={() => shift(1)} aria-label="Next period">
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
           <Tabs<Mode>
-            tabs={[
-              { id: 'month', label: 'Month' },
-              { id: 'week', label: 'Team week' },
-              { id: 'day', label: 'Day' },
-            ]}
+            tabs={MODE_TABS}
             value={mode}
             onChange={(m) => {
               setMode(m);
@@ -281,179 +338,212 @@ export function CalendarPage({
             {showHolidays ? 'Public holidays on' : 'Holidays hidden'}
           </button>
         </div>
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-slate-500">
+          <span>
+            {activitiesInGrid.length} activities · {humanHours(activitiesInGrid.reduce((sum, a) => sum + a.plannedHours, 0))} planned
+          </span>
+          <span>{people.length} people in scope</span>
+          <span>{mode === 'year' || mode === 'quarter' ? 'Click a day to read it in the day panel, or open the Day grain for the full schedule.' : 'Every cell shows every task; “+N more” expands a crowded day in place.'}</span>
+        </div>
       </Card>
 
       <div className="grid gap-3 xl:grid-cols-[1fr_320px]">
-        <Card padded={false} className="overflow-hidden">
-          {mode === 'month' ? (
-            <div>
-              <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50/80">
-                {WEEKDAY_LABELS.map((d, i) => (
-                  <div key={d} className="px-2 py-2 text-center text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                    {d}
-                    {i === 0 || i === 6 ? '' : ''}
-                  </div>
+        <div className="min-w-0 space-y-3">
+          {mode === 'year' ? (
+            <Card padded={false} className="overflow-hidden">
+              <div className="grid gap-2 bg-slate-50/60 p-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+                {monthPanels.map((panel) => (
+                  <MonthGrid
+                    key={toISO(panel.month)}
+                    panel={panel}
+                    variant="compact"
+                    activityDays={activityDays}
+                    selectedDay={selectedDay}
+                    expandedCells={expandedCells}
+                    onSelectDay={setSelectedDay}
+                    onOpenDay={(iso) => {
+                      setSelectedDay(iso);
+                      setFilters({ anchor: iso });
+                      setMode('day');
+                    }}
+                    onToggleCell={toggleCell}
+                    onOpenActivity={onOpenActivity}
+                    deptMap={deptMap}
+                    holidayForDay={holidayForDay}
+                    holidayLabel={holidayLabel}
+                    today={today}
+                    plannedHoursOn={plannedHoursOn}
+                  />
                 ))}
               </div>
-              <div>
-                {monthGrid.map((week, wi) => (
-                  <div key={wi} className="grid grid-cols-7 border-b border-slate-100 last:border-b-0">
-                    {week.map((day) => {
-                      const holiday = holidayForDay(day.iso);
-                      const acts = activityDays.get(day.iso) ?? [];
-                      const inMonth = day.date.getMonth() === anchor.getMonth();
-                      const totalHours = acts.reduce((s, a) => s + a.plannedHours / Math.max(1, daysBetween(a.startDate, a.endDate)), 0);
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50/70 px-3 py-2 text-[10px] text-slate-500">
+                <span>Twelve months at a glance. Dots are activities (3 per day max; the number badge is the day’s total).</span>
+                <span>Double-click a day to open it in the Day grain.</span>
+              </div>
+            </Card>
+          ) : null}
+
+          {mode === 'quarter' ? (
+            <div className="grid gap-3 lg:grid-cols-3">
+              {monthPanels.map((panel) => (
+                <Card key={toISO(panel.month)} padded={false} className="overflow-hidden">
+                  <MonthGrid
+                    panel={panel}
+                    variant="dense"
+                    activityDays={activityDays}
+                    selectedDay={selectedDay}
+                    expandedCells={expandedCells}
+                    onSelectDay={setSelectedDay}
+                    onOpenDay={(iso) => {
+                      setSelectedDay(iso);
+                      setFilters({ anchor: iso });
+                      setMode('day');
+                    }}
+                    onToggleCell={toggleCell}
+                    onOpenActivity={onOpenActivity}
+                    deptMap={deptMap}
+                    holidayForDay={holidayForDay}
+                    holidayLabel={holidayLabel}
+                    today={today}
+                    plannedHoursOn={plannedHoursOn}
+                  />
+                </Card>
+              ))}
+            </div>
+          ) : null}
+
+          {mode === 'month' ? (
+            <Card padded={false} className="overflow-hidden">
+              {monthPanels.map((panel) => (
+                <MonthGrid
+                  key={toISO(panel.month)}
+                  panel={panel}
+                  variant="full"
+                  activityDays={activityDays}
+                  selectedDay={selectedDay}
+                  expandedCells={expandedCells}
+                  onSelectDay={setSelectedDay}
+                  onOpenDay={(iso) => {
+                    setSelectedDay(iso);
+                    setFilters({ anchor: iso });
+                    setMode('day');
+                  }}
+                  onToggleCell={toggleCell}
+                  onOpenActivity={onOpenActivity}
+                  deptMap={deptMap}
+                  holidayForDay={holidayForDay}
+                  holidayLabel={holidayLabel}
+                  today={today}
+                  plannedHoursOn={plannedHoursOn}
+                />
+              ))}
+            </Card>
+          ) : null}
+
+          {mode === 'week' ? (
+            <Card padded={false} className="overflow-hidden">
+              <div className="overflow-x-auto">
+                <div className="min-w-[860px]">
+                  <div className="sticky top-0 z-10 grid border-b border-slate-200 bg-slate-50/95" style={{ gridTemplateColumns: '180px repeat(7, minmax(0,1fr))' }}>
+                    <div className="px-2 py-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Employee</div>
+                    {days.slice(0, 7).map((d) => {
+                      const holiday = holidayForDay(d.iso);
                       return (
-                        <div
-                          key={day.iso}
-                          onClick={() => setSelectedDay(day.iso)}
-                          className={`min-h-[112px] cursor-pointer border-r border-slate-100 p-1.5 transition-colors last:border-r-0 ${
-                            selectedDay === day.iso ? 'bg-brand-50/60 ring-1 ring-inset ring-brand-300' : 'hover:bg-slate-50/70'
-                          } ${!inMonth ? 'bg-slate-50/40' : ''}`}
-                        >
-                          <div className="mb-1 flex items-start justify-between">
-                            <span
-                              className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold ${
-                                day.iso === toISO(new Date())
-                                  ? 'bg-brand-600 text-white'
-                                  : inMonth
-                                    ? 'text-slate-700'
-                                    : 'text-slate-300'
-                              }`}
-                            >
-                              {day.date.getDate()}
-                            </span>
-                            {totalHours > 0 ? (
-                              <span className="text-[9px] font-medium tabular-nums text-slate-400">{Math.round(totalHours)}h</span>
-                            ) : null}
-                          </div>
-                          {holiday ? (
-                            <div className="mb-1 truncate rounded bg-rose-50 px-1 py-0.5 text-[9px] font-medium text-rose-600" title={holidayLabel(holiday)}>
-                              {holidayLabel(holiday)}
-                            </div>
-                          ) : null}
-                          {day.isWeekend && !holiday ? (
-                            <div className="mb-1 truncate rounded bg-slate-100 px-1 py-0.5 text-[9px] text-slate-400">Weekly off</div>
-                          ) : null}
-                          <div className="space-y-0.5">
-                            {acts.slice(0, 3).map((a) => {
-                              const dept = deptMap.get(a.departmentId);
-                              return (
-                                <button
-                                  key={`${day.iso}-${a.id}`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onOpenActivity(a.id);
-                                  }}
-                                  title={`${a.title} · ${empMap.get(a.assigneeId)?.name} · ${a.plannedHours}h`}
-                                  className="flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[9.5px] font-medium hover:brightness-95"
-                                  style={{ background: `${dept?.color ?? '#3b82f6'}14`, color: dept?.color ?? '#3b82f6' }}
-                                >
-                                  <span className="h-1.5 w-1.5 flex-none rounded-full" style={{ background: dept?.color ?? '#3b82f6' }} />
-                                  <span className="truncate">{a.title}</span>
-                                </button>
-                              );
-                            })}
-                            {acts.length > 3 ? (
-                              <div className="pl-1 text-[9px] font-medium text-slate-400">+{acts.length - 3} more</div>
-                            ) : null}
-                          </div>
+                        <div key={d.iso} className={`border-l border-slate-200 px-1.5 py-1.5 text-center ${holiday ? 'bg-rose-50/70' : ''}`}>
+                          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{format(d.date, 'EEE')}</div>
+                          <div className="text-xs font-semibold text-slate-800">{format(d.date, 'dd MMM')}</div>
+                          <div className="truncate text-[9px] text-rose-500" title={holidayLabel(holiday)}>{holiday ? holidayLabel(holiday) : d.isWeekend ? 'weekly off' : ''}</div>
+                          <div className="mt-0.5 text-[9px] text-slate-400">{workloadByDay.get(d.iso) ?? 0}h logged</div>
                         </div>
                       );
                     })}
                   </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {mode === 'week' ? (
-            <div className="overflow-x-auto">
-              <div className="min-w-[860px]">
-                <div className="sticky top-0 z-10 grid border-b border-slate-200 bg-slate-50/95" style={{ gridTemplateColumns: '180px repeat(7, minmax(0,1fr))' }}>
-                  <div className="px-2 py-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Employee</div>
-                  {days.slice(0, 7).map((d) => {
-                    const holiday = holidayForDay(d.iso);
-                    return (
-                      <div key={d.iso} className={`border-l border-slate-200 px-1.5 py-1.5 text-center ${holiday ? 'bg-rose-50/70' : ''}`}>
-                        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{format(d.date, 'EEE')}</div>
-                        <div className="text-xs font-semibold text-slate-800">{format(d.date, 'dd MMM')}</div>
-                        <div className="truncate text-[9px] text-rose-500" title={holidayLabel(holiday)}>{holiday ? holidayLabel(holiday) : d.isWeekend ? 'weekly off' : ''}</div>
-                        <div className="mt-0.5 text-[9px] text-slate-400">{workloadByDay.get(d.iso) ?? 0}h logged</div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="max-h-[560px] overflow-y-auto">
-                  {people.map((emp) => {
-                    const util = empUtil(emp.id);
-                    return (
-                      <div
-                        key={emp.id}
-                        className="grid border-b border-slate-100 hover:bg-slate-50/40"
-                        style={{ gridTemplateColumns: '180px repeat(7, minmax(0,1fr))' }}
-                      >
-                        <div className="sticky left-0 z-[5] flex items-center gap-2 bg-white/95 px-2 py-2 backdrop-blur">
-                          <Avatar name={emp.name} color={emp.avatarColor} size={24} />
-                          <div className="min-w-0 flex-1">
-                            <button onClick={() => onOpenEmployee(emp.id)} className="block w-full truncate text-left text-[11px] font-medium text-slate-800 hover:text-brand-700">
-                              {emp.name}
-                            </button>
-                            <div className="truncate text-[9px] text-slate-400">
-                              {deptMap.get(emp.departmentId)?.code} · {emp.role.replace('_', ' ')}
+                  <div className="max-h-[620px] overflow-y-auto">
+                    {people.map((emp) => {
+                      const util = empUtil(emp.id);
+                      return (
+                        <div
+                          key={emp.id}
+                          className="grid border-b border-slate-100 hover:bg-slate-50/40"
+                          style={{ gridTemplateColumns: '180px repeat(7, minmax(0,1fr))' }}
+                        >
+                          <div className="sticky left-0 z-[5] flex items-center gap-2 bg-white/95 px-2 py-2 backdrop-blur">
+                            <Avatar name={emp.name} color={emp.avatarColor} size={24} />
+                            <div className="min-w-0 flex-1">
+                              <button onClick={() => onOpenEmployee(emp.id)} className="block w-full truncate text-left text-[11px] font-medium text-slate-800 hover:text-brand-700">
+                                {emp.name}
+                              </button>
+                              <div className="truncate text-[9px] text-slate-400">
+                                {deptMap.get(emp.departmentId)?.code} · {emp.role.replace('_', ' ')}
+                              </div>
                             </div>
-                          </div>
-                          <span
-                            className={`rounded px-1 py-0.5 text-[9px] font-semibold ${
-                              util.pct > 110 ? 'bg-rose-50 text-rose-600' : util.pct < 50 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'
-                            }`}
-                          >
-                            {util.pct}%
-                          </span>
-                        </div>
-                        {days.slice(0, 7).map((d) => {
-                          const acts = (activityDays.get(d.iso) ?? []).filter((a) => a.assigneeId === emp.id);
-                          const holiday = holidayForDay(d.iso);
-                          return (
-                            <div
-                              key={`${emp.id}-${d.iso}`}
-                              onClick={() => setSelectedDay(d.iso)}
-                              className={`min-h-[58px] cursor-pointer space-y-0.5 border-l border-slate-100 p-1 ${holiday ? 'bg-rose-50/40' : d.isWeekend ? 'bg-slate-50/60' : ''}`}
+                            <span
+                              className={`rounded px-1 py-0.5 text-[9px] font-semibold ${
+                                util.pct > 110 ? 'bg-rose-50 text-rose-600' : util.pct < 50 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'
+                              }`}
                             >
-                              {acts.slice(0, 3).map((a) => (
-                                <button
-                                  key={a.id}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onOpenActivity(a.id);
-                                  }}
-                                  className="block w-full truncate rounded px-1 py-0.5 text-left text-[9px] font-medium leading-tight hover:brightness-95"
-                                  style={{ background: `${deptMap.get(a.departmentId)?.color}18`, color: deptMap.get(a.departmentId)?.color }}
-                                  title={`${a.title} · ${a.status} · ${a.plannedHours}h`}
-                                >
-                                  <span className="mr-0.5 opacity-70">{a.startTime ?? '·'}</span>
-                                  {a.title}
-                                </button>
-                              ))}
-                              {acts.length > 3 ? <div className="pl-1 text-[8px] text-slate-400">+{acts.length - 3}</div> : null}
-                            </div>
-                          );
-                        })}
+                              {util.pct}%
+                            </span>
+                          </div>
+                          {days.slice(0, 7).map((d) => {
+                            const acts = (activityDays.get(d.iso) ?? []).filter((a) => a.assigneeId === emp.id);
+                            const holiday = holidayForDay(d.iso);
+                            const cellKey = `${emp.id}|${d.iso}`;
+                            const expanded = expandedCells.includes(cellKey);
+                            const visible = expanded ? acts : acts.slice(0, 4);
+                            return (
+                              <div
+                                key={`${emp.id}-${d.iso}`}
+                                onClick={() => setSelectedDay(d.iso)}
+                                className={`min-h-[62px] cursor-pointer space-y-0.5 border-l border-slate-100 p-1 ${holiday ? 'bg-rose-50/40' : d.isWeekend ? 'bg-slate-50/60' : ''} ${
+                                  selectedDay === d.iso ? 'ring-1 ring-inset ring-brand-300' : ''
+                                }`}
+                              >
+                                {visible.map((a) => (
+                                  <button
+                                    key={a.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onOpenActivity(a.id);
+                                    }}
+                                    className="block w-full truncate rounded px-1 py-0.5 text-left text-[9px] font-medium leading-tight hover:brightness-95"
+                                    style={{ background: `${deptMap.get(a.departmentId)?.color}18`, color: deptMap.get(a.departmentId)?.color }}
+                                    title={`${a.title} · ${a.status} · ${a.plannedHours}h`}
+                                  >
+                                    <span className="mr-0.5 opacity-70">{a.startTime ?? '·'}</span>
+                                    {a.title}
+                                  </button>
+                                ))}
+                                {acts.length > 4 ? (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleCell(cellKey);
+                                    }}
+                                    className="w-full rounded px-1 text-left text-[8px] font-semibold text-slate-500 hover:bg-slate-100"
+                                  >
+                                    {expanded ? 'Show less' : `+${acts.length - 4} more this day`}
+                                  </button>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                    {people.length === 0 ? (
+                      <div className="p-6">
+                        <EmptyState title="No people match this filter" description="Widen the department filter or clear the employee selection." />
                       </div>
-                    );
-                  })}
-                  {people.length === 0 ? (
-                    <div className="p-6">
-                      <EmptyState title="No people match this filter" description="Widen the department filter or clear the employee selection." />
-                    </div>
-                  ) : null}
+                    ) : null}
+                  </div>
                 </div>
               </div>
-            </div>
+            </Card>
           ) : null}
 
           {mode === 'day' ? (
-            <div>
+            <Card padded={false} className="overflow-hidden">
               <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 px-3 py-2">
                 <div className="text-xs font-semibold text-slate-700">{format(anchor, 'EEEE dd MMMM yyyy')}</div>
                 <div className="flex items-center gap-2 text-[10px] text-slate-500">
@@ -479,6 +569,7 @@ export function CalendarPage({
                         </button>
                         <span className="text-[10px] text-slate-400">{deptMap.get(emp.departmentId)?.name}</span>
                         <Badge tone={util.pct > 110 ? 'danger' : 'neutral'}>{util.pct}% of weekly capacity</Badge>
+                        <span className="ml-auto text-[10px] text-slate-400">{acts.length} on this day</span>
                       </div>
                       <div className="space-y-1 pl-7">
                         {acts.map((a) => (
@@ -502,26 +593,42 @@ export function CalendarPage({
                     </div>
                   );
                 })}
-                {(activityDays.get(toISO(anchor)) ?? []).length === 0 ? (
+                {selectedActivities.length === 0 ? (
                   <div className="p-6">
                     <EmptyState
                       icon={<CalendarDays className="h-5 w-5" />}
                       title={holidayForDay(toISO(anchor)) ? 'Public holiday — no activities' : 'Nothing scheduled for this day'}
                       description={holidayLabel(holidayForDay(toISO(anchor))) || 'Add an activity or move to another day.'}
-                      action={<Button size="sm" onClick={onNewActivity}>Schedule activity</Button>}
+                      action={<Button size="sm" onClick={() => addOnDay(toISO(anchor))}>Schedule activity</Button>}
                     />
                   </div>
                 ) : null}
               </div>
-            </div>
+            </Card>
           ) : null}
-        </Card>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] text-slate-500">
+            <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span>Grain: <span className="font-semibold text-slate-700">{MODE_TABS.find((m) => m.id === mode)?.label}</span></span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-rose-200" /> public holiday</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-slate-200" /> weekly off</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-brand-500" /> today</span>
+            </span>
+            <span>
+              {mode === 'week'
+                ? 'Each cell stacks every task for that person and day; “+N more” expands it in place.'
+                : mode === 'day'
+                  ? 'Click any task to open its detail, subtasks and calendar sync.'
+                  : 'Days hold as many tasks as they need — click “+N more” to expand a crowded day.'}
+            </span>
+          </div>
+        </div>
 
         {/* Right rail */}
         <div className="space-y-3">
           <Card>
             <SectionHeader
-              title={selectedDay === toISO(new Date()) ? 'Today' : format(fromISO(selectedDay), 'EEE dd MMM')}
+              title={selectedDay === today ? 'Today' : format(fromISO(selectedDay), 'EEE dd MMM')}
               subtitle={`${selectedActivities.length} activities · ${loggedOnSelected}h logged`}
               action={<Badge tone="brand">{holidayForDay(selectedDay) ? 'holiday' : `${humanHours(selectedActivities.reduce((a, b) => a + b.plannedHours, 0))} plan`}</Badge>}
             />
@@ -547,6 +654,21 @@ export function CalendarPage({
                   />
                 ))
               )}
+            </div>
+            <div className="mt-2 flex gap-1.5">
+              <Button size="sm" variant="primary" className="flex-1 !justify-center" onClick={() => addOnDay(selectedDay)}>
+                <Plus className="h-3 w-3" /> Add task
+              </Button>
+              <Button
+                size="sm"
+                className="flex-1 !justify-center"
+                onClick={() => {
+                  setFilters({ anchor: selectedDay });
+                  setMode('day');
+                }}
+              >
+                <CalendarDays className="h-3 w-3" /> Open day
+              </Button>
             </div>
             {selectedEntries.length ? (
               <div className="mt-2 rounded-lg bg-slate-50 px-2.5 py-2">
@@ -617,7 +739,7 @@ export function CalendarPage({
             />
             <div className="mt-2 space-y-1">
               {countryHolidays
-                .filter((h) => h.date >= toISO(new Date()))
+                .filter((h) => h.date >= today)
                 .sort((a, b) => a.date.localeCompare(b.date))
                 .slice(0, 6)
                 .map((h) => (
@@ -635,7 +757,7 @@ export function CalendarPage({
                   </div>
                 ))}
             </div>
-            <Button size="sm" variant="ghost" className="mt-1 w-full !justify-start !text-[10px]" onClick={() => setFilters({ anchor: toISO(new Date()) })}>
+            <Button size="sm" variant="ghost" className="mt-1 w-full !justify-start !text-[10px]" onClick={() => setFilters({ anchor: today })}>
               <Filter className="h-3 w-3" /> Holiday calendars are configurable in Master setup
             </Button>
           </Card>
@@ -643,6 +765,207 @@ export function CalendarPage({
       </div>
     </div>
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* Month grid — one component for Month, Quarter and Year grains       */
+/* ------------------------------------------------------------------ */
+
+function MonthGrid({
+  panel,
+  variant,
+  activityDays,
+  selectedDay,
+  expandedCells,
+  onSelectDay,
+  onOpenDay,
+  onToggleCell,
+  onOpenActivity,
+  deptMap,
+  holidayForDay,
+  holidayLabel,
+  today,
+  plannedHoursOn,
+}: {
+  panel: MonthPanelData;
+  variant: 'full' | 'dense' | 'compact';
+  activityDays: Map<string, Activity[]>;
+  selectedDay: string;
+  expandedCells: string[];
+  onSelectDay: (iso: string) => void;
+  onOpenDay: (iso: string) => void;
+  onToggleCell: (key: string) => void;
+  onOpenActivity: (id: string) => void;
+  deptMap: Map<string, Department>;
+  holidayForDay: (iso: string) => Holiday | undefined;
+  holidayLabel: (holiday?: { name: string; countryCode: string }) => string;
+  today: string;
+  plannedHoursOn: (iso: string) => number;
+}) {
+  const month = panel.month.getMonth();
+  const compact = variant === 'compact';
+  const limit = variant === 'full' ? CELL_LIMIT.full : CELL_LIMIT.dense;
+
+  return (
+    <div className={compact ? 'rounded-lg border border-slate-200 bg-white p-1.5' : ''}>
+      <div className={`flex items-center justify-between gap-2 px-1 pb-1 ${compact ? '' : 'border-b border-slate-200 px-2 py-2'}`}>
+        <span className={`font-semibold text-slate-700 ${compact ? 'text-[10px] uppercase tracking-wider' : 'text-xs'}`}>
+          {format(panel.month, compact ? 'MMM yyyy' : 'MMMM yyyy')}
+        </span>
+        <span className="text-[9px] text-slate-400">
+          {panel.weeks.reduce((sum, week) => sum + week.reduce((s, d) => s + (d.date.getMonth() === month ? (activityDays.get(d.iso)?.length ?? 0) : 0), 0), 0)} tasks
+        </span>
+      </div>
+
+      <div className={`grid grid-cols-7 ${compact ? '' : 'border-b border-slate-200 bg-slate-50/80'}`}>
+        {(weekStartsOnLabels(panel)).map((label) => (
+          <div
+            key={label}
+            className={`text-center font-semibold uppercase tracking-wider text-slate-500 ${compact ? 'py-0.5 text-[8px]' : 'px-1 py-1.5 text-[10px]'}`}
+          >
+            {compact ? label.slice(0, 1) : label}
+          </div>
+        ))}
+      </div>
+
+      <div>
+        {panel.weeks.map((week, wi) => (
+          <div key={wi} className={`grid grid-cols-7 ${compact ? '' : 'border-b border-slate-100 last:border-b-0'}`}>
+            {week.map((day) => {
+              const acts = activityDays.get(day.iso) ?? [];
+              const holiday = holidayForDay(day.iso);
+              const inMonth = day.date.getMonth() === month;
+              const cellKey = `day|${day.iso}`;
+              const expanded = expandedCells.includes(cellKey);
+              const visible = expanded ? acts.slice(0, EXPAND_LIMIT) : acts.slice(0, limit);
+              const totalHours = plannedHoursOn(day.iso);
+              const isToday = day.iso === today;
+
+              if (compact) {
+                const dotActs = acts.slice(0, 3);
+                return (
+                  <button
+                    type="button"
+                    key={day.iso}
+                    onClick={() => onSelectDay(day.iso)}
+                    onDoubleClick={() => onOpenDay(day.iso)}
+                    title={`${format(day.date, 'EEE dd MMM yyyy')} · ${acts.length} activities${holiday ? ` · ${holidayLabel(holiday)}` : ''}`}
+                    className={`relative flex h-9 cursor-pointer flex-col items-center justify-start rounded px-0.5 pt-0.5 transition-colors ${
+                      selectedDay === day.iso ? 'bg-brand-100/80 ring-1 ring-inset ring-brand-400' : inMonth ? 'hover:bg-slate-100' : 'opacity-40 hover:bg-slate-50'
+                    } ${holiday ? 'bg-rose-50/70' : ''}`}
+                  >
+                    <span
+                      className={`flex h-4 min-w-4 items-center justify-center rounded-full px-0.5 text-[9px] font-semibold leading-none ${
+                        isToday ? 'bg-brand-600 text-white' : inMonth ? 'text-slate-700' : 'text-slate-400'
+                      }`}
+                    >
+                      {day.date.getDate()}
+                    </span>
+                    <span className="mt-0.5 flex h-1.5 items-center justify-center gap-0.5">
+                      {dotActs.map((a) => (
+                        <span
+                          key={a.id}
+                          className="h-1 w-1 rounded-full"
+                          style={{ background: deptMap.get(a.departmentId)?.color ?? '#3b82f6' }}
+                        />
+                      ))}
+                    </span>
+                    {acts.length > 3 ? (
+                      <span className="absolute right-0.5 top-0.5 rounded-full bg-slate-800/70 px-1 text-[7px] font-bold leading-[10px] text-white">
+                        {acts.length}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              }
+
+              return (
+                <div
+                  key={day.iso}
+                  onClick={() => onSelectDay(day.iso)}
+                  onDoubleClick={() => onOpenDay(day.iso)}
+                  className={`min-h-[112px] cursor-pointer border-r border-slate-100 p-1.5 transition-colors last:border-r-0 ${
+                    selectedDay === day.iso ? 'bg-brand-50/60 ring-1 ring-inset ring-brand-300' : 'hover:bg-slate-50/70'
+                  } ${!inMonth ? 'bg-slate-50/40' : ''}`}
+                >
+                  <div className="mb-1 flex items-start justify-between gap-1">
+                    <span
+                      className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold ${
+                        isToday ? 'bg-brand-600 text-white' : inMonth ? 'text-slate-700' : 'text-slate-300'
+                      }`}
+                    >
+                      {day.date.getDate()}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      {acts.length ? (
+                        <span className="rounded-full bg-slate-900/5 px-1 text-[9px] font-semibold tabular-nums text-slate-500" title={`${acts.length} activities on this day`}>
+                          {acts.length}
+                        </span>
+                      ) : null}
+                      {totalHours > 0 ? (
+                        <span className="text-[9px] font-medium tabular-nums text-slate-400">{Math.round(totalHours)}h</span>
+                      ) : null}
+                    </span>
+                  </div>
+                  {holiday ? (
+                    <div className="mb-1 truncate rounded bg-rose-50 px-1 py-0.5 text-[9px] font-medium text-rose-600" title={holidayLabel(holiday)}>
+                      {holidayLabel(holiday)}
+                    </div>
+                  ) : day.isWeekend ? (
+                    <div className="mb-1 truncate rounded bg-slate-100 px-1 py-0.5 text-[9px] text-slate-400">Weekly off</div>
+                  ) : null}
+                  <div className="space-y-0.5">
+                    {visible.map((a) => {
+                      const dept = deptMap.get(a.departmentId);
+                      return (
+                        <button
+                          key={`${day.iso}-${a.id}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenActivity(a.id);
+                          }}
+                          title={`${a.title} · ${a.status} · ${a.plannedHours}h`}
+                          className="flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[9.5px] font-medium hover:brightness-95"
+                          style={{ background: `${dept?.color ?? '#3b82f6'}14`, color: dept?.color ?? '#3b82f6' }}
+                        >
+                          <span className="h-1.5 w-1.5 flex-none rounded-full" style={{ background: dept?.color ?? '#3b82f6' }} />
+                          {a.startTime ? <span className="flex-none tabular-nums opacity-70">{a.startTime}</span> : null}
+                          <span className="truncate">{a.title}</span>
+                        </button>
+                      );
+                    })}
+                    {acts.length > limit ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleCell(cellKey);
+                        }}
+                        className="w-full rounded px-1 py-0.5 text-left text-[9px] font-semibold text-slate-500 hover:bg-slate-100"
+                      >
+                        {expanded ? 'Show less' : `+${acts.length - limit} more`}
+                      </button>
+                    ) : null}
+                    {expanded && acts.length > EXPAND_LIMIT ? (
+                      <p className="px-1 text-[8.5px] leading-tight text-slate-400">
+                        Showing {EXPAND_LIMIT} of {acts.length} — the day panel lists them all.
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Weekday headers for a panel, respecting the workspace week start. */
+function weekStartsOnLabels(panel: MonthPanelData): string[] {
+  const first = panel.weeks[0]?.[0]?.date;
+  const start = first ? first.getDay() : 1;
+  return Array.from({ length: 7 }, (_, i) => WEEKDAY_LABELS[(start + i) % 7]);
 }
 
 function daysBetween(a: string, b: string) {

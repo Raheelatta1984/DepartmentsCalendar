@@ -1,10 +1,25 @@
 import React from 'react';
-import { ArrowUpRight, CalendarDays, CheckCircle2, Clock3, Palette, Sparkles, WandSparkles } from 'lucide-react';
+import { ArrowUpRight, CalendarDays, CheckCircle2, Clock3, LayoutGrid, Palette, Sparkles, WandSparkles } from 'lucide-react';
 import { Badge, Button, Card, PageHeader } from '../components/ui';
 
 const updates = [
   {
     label: 'Just added',
+    date: 'October 2026',
+    title: 'Guide at the top of every tab, and a calendar that reads at any grain',
+    description:
+      'The AI guide now sits at the top of each tab and section instead of floating in the bottom-right corner, and follows the section or sub-tab in focus — fold it to a single line, or hide it with ×. The department calendar gained Year and Quarter grains beside Month, Week and Day, and every day cell holds as many activities as it needs: busy days show their first few tasks plus “+N more”, which expands the day in place and hands the full list to the day panel.',
+    icon: <LayoutGrid className="h-4 w-4" />,
+    tone: 'brand' as const,
+    bullets: [
+      'AI guide pinned to the top of every tab and section',
+      'Year, Quarter, Month, Week and Day calendar grains',
+      'Multi-task day cells with inline “+N more” expansion',
+      'Add a task straight onto the selected day',
+    ],
+  },
+  {
+    label: 'Earlier',
     date: 'October 2026',
     title: 'A guide that reads like a note, and a dashboard that stays on one entity',
     description:

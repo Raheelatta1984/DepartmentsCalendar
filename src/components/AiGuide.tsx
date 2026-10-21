@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronRight, Sparkles, X } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, Sparkles, X } from 'lucide-react';
 import type { AppFilters, ViewKey } from '../types';
 import { AI_GUIDE, matchGuideRule, type GuideEntry } from '../lib/ai-guide';
 import { buildLiveFacts } from '../lib/ai-guide-live';
@@ -7,31 +7,43 @@ import { useStore } from '../store';
 import { IconButton } from './ui';
 
 /* ------------------------------------------------------------------ */
-/* AI guide sticky note                                                */
+/* AI guide panel — top of every tab and section                       */
 /*                                                                     */
-/* A taped paper note that follows the user across every tab, section  */
-/* and sub-section: GUIDE badge, a one-line promise, the prose that    */
-/* explains the screen, a short “Do this” list, one “Watch” caution    */
-/* and a collapsible “Live context” block computed from the same       */
-/* snapshot the screen above it is reading. Everything runs locally.   */
+/* A paper note pinned to the top of the content area, not a floating  */
+/* bubble in the corner: GUIDE badge, a one-line promise, the prose    */
+/* that explains the screen, a short “Do this” list, one “Watch”       */
+/* caution and a collapsible “Live context” block computed from the    */
+/* same snapshot the screen above it is reading. It follows the        */
+/* section / sub-tab in focus, sits at the top of the tab, and folds   */
+/* down to a single line when the reader wants the screen back.        */
+/* Everything runs locally.                                            */
 /* ------------------------------------------------------------------ */
 
 const ENABLED_KEY = 'orbit.ai-guide.enabled.v1';
+const OPEN_KEY = 'orbit.ai-guide.open.v1';
 
 const enabledListeners = new Set<(v: boolean) => void>();
 
-function readEnabled(): boolean {
+function readStoredBoolean(key: string, fallback: boolean): boolean {
   try {
-    const raw = window.localStorage.getItem(ENABLED_KEY);
-    return raw ? JSON.parse(raw) !== false : true;
+    const raw = window.localStorage.getItem(key);
+    return raw ? JSON.parse(raw) !== false : fallback;
   } catch {
-    return true;
+    return fallback;
+  }
+}
+
+function writeStoredBoolean(key: string, value: boolean) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage unavailable — the session toggle still works in memory */
   }
 }
 
 /** Shared enable/disable state, persisted and synced across consumers. */
 export function useAiGuideEnabled(): [boolean, (v: boolean) => void] {
-  const [enabled, setEnabledState] = useState<boolean>(() => readEnabled());
+  const [enabled, setEnabledState] = useState<boolean>(() => readStoredBoolean(ENABLED_KEY, true));
 
   useEffect(() => {
     const sync = (v: boolean) => setEnabledState(v);
@@ -42,11 +54,7 @@ export function useAiGuideEnabled(): [boolean, (v: boolean) => void] {
   }, []);
 
   const setEnabled = useCallback((v: boolean) => {
-    try {
-      window.localStorage.setItem(ENABLED_KEY, JSON.stringify(v));
-    } catch {
-      /* storage unavailable — the session toggle still works in memory */
-    }
+    writeStoredBoolean(ENABLED_KEY, v);
     enabledListeners.forEach((fn) => fn(v));
   }, []);
 
@@ -87,14 +95,16 @@ const WATCH = '#9d3a17';
 export function AiGuide({ view, filters }: { view: ViewKey; filters: AppFilters }) {
   const { state, scope } = useStore();
   const [enabled, setEnabled] = useAiGuideEnabled();
+  const [open, setOpen] = useState<boolean>(() => readStoredBoolean(OPEN_KEY, true));
   const [context, setContext] = useState<GuideContext>(EMPTY_CONTEXT);
-  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
-  const [maxWidth, setMaxWidth] = useState(() => (typeof window !== 'undefined' ? Math.min(372, window.innerWidth - 24) : 372));
   const [liveOpen, setLiveOpen] = useState(false);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const headerRef = useRef<HTMLDivElement>(null);
 
   const viewGuide = AI_GUIDE[view] ?? AI_GUIDE.dashboard;
+
+  const setOpenState = useCallback((v: boolean) => {
+    setOpen(v);
+    writeStoredBoolean(OPEN_KEY, v);
+  }, []);
 
   /* ---- Track the active section / sub-section on this tab ---------- */
   useEffect(() => {
@@ -105,12 +115,13 @@ export function AiGuide({ view, filters }: { view: ViewKey; filters: AppFilters 
       const scopeEl = document.querySelector('main') ?? document.body;
 
       // Section + sub-section headings (h2 = SectionHeader titles and card headings).
-      // At the top of a screen the note stays on the page overview; the
-      // scroll-spy only takes over once the reader has actually moved.
+      // The guide's own heading opts out with data-guide-ignore. At the top of
+      // a screen the note stays on the page overview; the scroll-spy only
+      // takes over once the reader has actually moved.
       let section = '';
       const threshold = window.innerHeight * 0.35;
       const scrolled = (window.scrollY || document.documentElement?.scrollTop || 0) > 96;
-      for (const el of scrolled ? Array.from(scopeEl.querySelectorAll<HTMLElement>('h2')) : []) {
+      for (const el of scrolled ? Array.from(scopeEl.querySelectorAll<HTMLElement>('h2:not([data-guide-ignore])')) : []) {
         const rect = el.getBoundingClientRect();
         // Skip detached/hidden headings (zero boxes) so jsdom and collapsed
         // panels never win the scroll-spy.
@@ -131,23 +142,45 @@ export function AiGuide({ view, filters }: { view: ViewKey; filters: AppFilters 
       setContext((prev) => (prev.section === section && prev.subTabs.join('|') === subTabs.join('|') ? prev : { section, subTabs }));
     };
 
+    let timer = 0;
     const schedule = () => {
       if (!raf) raf = window.requestAnimationFrame(refresh);
+      // Follow-up pass after React has committed the interaction: a tab click
+      // can land after the animation frame has already read the old DOM.
+      window.clearTimeout(timer);
+      timer = window.setTimeout(refresh, 90);
     };
 
     const scopeEl = document.querySelector('main') ?? document.body;
     const observer = typeof MutationObserver !== 'undefined' ? new MutationObserver(schedule) : null;
-    observer?.observe(scopeEl, { childList: true, subtree: true });
+    // Watch the active-tab flag as well as node changes: switching a sub-tab
+    // often only patches attributes, and the note must follow immediately.
+    observer?.observe(scopeEl, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-guide-active'],
+    });
     window.addEventListener('scroll', schedule, { passive: true });
     window.addEventListener('resize', schedule);
+    // A tab or filter click changes the active section without necessarily
+    // inserting nodes, so listen for it directly as well as watching the DOM.
+    document.addEventListener('click', schedule, true);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Tab' || event.key === 'Enter' || event.key.startsWith('Arrow')) schedule();
+    };
+    document.addEventListener('keydown', onKey, true);
     schedule();
     const late = window.setTimeout(refresh, 700); // catch async page renders
 
     return () => {
       if (raf) window.cancelAnimationFrame(raf);
+      window.clearTimeout(timer);
       observer?.disconnect();
       window.removeEventListener('scroll', schedule);
       window.removeEventListener('resize', schedule);
+      document.removeEventListener('click', schedule, true);
+      document.removeEventListener('keydown', onKey, true);
       window.clearTimeout(late);
     };
   }, [view]);
@@ -222,119 +255,112 @@ export function AiGuide({ view, filters }: { view: ViewKey; filters: AppFilters 
   const notes = guide.entry.context ?? [];
   const liveCount = liveFacts.length + notes.length;
 
-  /* ---- Auto width & height: measure the content, clamp to viewport -- */
-  useLayoutEffect(() => {
-    if (!enabled) {
-      setSize(null);
-      return;
-    }
-    const measure = () => {
-      const content = contentRef.current;
-      const header = headerRef.current;
-      if (!content || !header) return;
-      const maxW = Math.min(372, window.innerWidth - 24);
-      const minW = Math.min(252, maxW);
-      const maxH = Math.min(560, window.innerHeight - 96);
-      const minH = Math.min(196, maxH);
-      setMaxWidth((prev) => (prev === maxW ? prev : maxW));
-      const width = Math.round(Math.min(maxW, Math.max(minW, content.scrollWidth + 34)));
-      const desired = content.scrollHeight + header.offsetHeight + 26;
-      const height = Math.round(Math.min(maxH, Math.max(minH, desired)));
-      setSize((prev) => (prev && prev.width === width && prev.height === height ? prev : { width, height }));
-    };
-
-    measure();
-    const ro =
-      typeof ResizeObserver !== 'undefined' && contentRef.current && headerRef.current
-        ? new ResizeObserver(measure)
-        : null;
-    if (ro && contentRef.current && headerRef.current) {
-      ro.observe(contentRef.current);
-      ro.observe(headerRef.current);
-    }
-    window.addEventListener('resize', measure);
-    return () => {
-      ro?.disconnect();
-      window.removeEventListener('resize', measure);
-    };
-  }, [enabled, guide, liveOpen, liveFacts]);
-
   if (!enabled) {
     return (
-      <button
-        type="button"
-        onClick={() => setEnabled(true)}
-        title="Enable AI guide"
-        className="fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-full border border-[#d9c377] bg-[#f6e6a2] px-3.5 py-2.5 text-xs font-semibold text-[#2f2c18] shadow-[0_14px_30px_-12px_rgba(15,23,42,0.5)] transition-colors hover:bg-[#f2dc86]"
-      >
-        <Sparkles className="h-4 w-4" />
-        AI guide
-      </button>
+      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-[#d9c377] bg-[#f6e6a2]/70 px-3 py-2">
+        <Sparkles className="h-4 w-4" style={{ color: INK }} />
+        <span className="text-[11px] font-semibold" style={{ color: INK }}>
+          AI guide is off.
+        </span>
+        <span className="text-[11px]" style={{ color: INK_MUTED }}>
+          The guidance panel sits at the top of every tab when it is on.
+        </span>
+        <button
+          type="button"
+          onClick={() => setEnabled(true)}
+          className="ml-auto rounded-full border border-[#4a442a]/45 px-2.5 py-1 text-[11px] font-semibold transition-colors hover:bg-[#e6d189]/60"
+          style={{ color: INK }}
+        >
+          Show AI guide
+        </button>
+      </div>
     );
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-40 max-w-[calc(100vw-2rem)]">
-      <div className="relative">
-        {/* A strip of tape holding the note to the screen. */}
+    <section className="mb-3">
+      <div
+        role="complementary"
+        aria-label="AI guide"
+        className="relative overflow-hidden rounded-2xl shadow-[0_14px_34px_-26px_rgba(15,23,42,0.55)]"
+        style={{
+          fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
+          backgroundColor: PAPER,
+          backgroundImage: `linear-gradient(168deg, #fbf0c4 0%, ${PAPER} 42%, #f1dd93 100%)`,
+          border: `1px solid ${PAPER_EDGE}`,
+        }}
+      >
+        {/* A strip of tape pinning the note to the top of the section. */}
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute -top-3 left-7 z-10 h-6 w-28 -rotate-2 rounded-[2px] border border-white/55 bg-white/60 shadow-[0_3px_8px_rgba(15,23,42,0.2)] backdrop-blur-[1px]"
+          className="pointer-events-none absolute -top-2 left-6 h-5 w-24 -rotate-2 rounded-[2px] border border-white/55 bg-white/60 shadow-[0_3px_8px_rgba(15,23,42,0.14)]"
         />
-        <div
-          role="complementary"
-          aria-label="AI guide"
-          className="flex flex-col overflow-hidden rounded-[18px] shadow-[0_24px_54px_-20px_rgba(15,23,42,0.55)]"
-          style={{
-            fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
-            width: size?.width ?? 308,
-            height: size?.height ?? 232,
-            visibility: size ? 'visible' : 'hidden',
-            backgroundColor: PAPER,
-            backgroundImage: `linear-gradient(168deg, #fbf0c4 0%, ${PAPER} 42%, #f1dd93 100%)`,
-            border: `1px solid ${PAPER_EDGE}`,
-            transition: 'width 220ms ease, height 220ms ease',
-          }}
-        >
-          <div ref={headerRef} className="flex-none px-4 pb-1.5 pt-3.5">
-            <div className="flex items-start justify-between gap-2">
-              <span className="rounded-md bg-[#22200f] px-2 py-1 text-[9px] font-bold uppercase leading-none tracking-[0.2em] text-[#f7ecc6]">
-                Guide
-              </span>
-              <button
-                type="button"
-                aria-label="Hide AI guide"
-                title="Hide AI guide"
-                onClick={() => setEnabled(false)}
-                className="-mt-0.5 flex h-8 w-7 flex-none items-center justify-center rounded-[999px] border border-[#4a442a]/45 text-[#3b3721] transition-colors hover:bg-[#e6d189]/60 hover:text-[#221f10]"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-3.5 pt-1">
-            <div ref={contentRef} style={{ width: 'max-content', maxWidth: Math.max(120, maxWidth - 34) }}>
-              <h2 className="text-[16px] font-bold leading-tight tracking-tight" style={{ color: INK }}>
+        <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5 px-3 pb-2 pt-2.5 sm:px-4">
+          <span className="mt-0.5 rounded-md bg-[#22200f] px-2 py-1 text-[9px] font-bold uppercase leading-none tracking-[0.2em] text-[#f7ecc6]">
+            Guide
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <h2 data-guide-ignore className="text-[15px] font-bold leading-tight tracking-tight" style={{ color: INK }}>
                 {guide.entry.title}
               </h2>
-              <p className="mt-0.5 text-[12px] italic leading-snug" style={{ color: INK_MUTED }}>
+              <span className="text-[11px] italic leading-tight" style={{ color: INK_MUTED }}>
                 {guide.subtitle}
-              </p>
-
-              <p className="mt-2 text-[12.5px] leading-relaxed" style={{ color: INK_SOFT }}>
+              </span>
+            </div>
+            {open ? (
+              <p className="mt-1 max-w-4xl text-[12.5px] leading-relaxed" style={{ color: INK_SOFT }}>
                 {guide.entry.blurb}
               </p>
+            ) : null}
+          </div>
+          <div className="flex flex-none items-center gap-1">
+            {liveCount ? (
+              <button
+                type="button"
+                onClick={() => setLiveOpen((v) => !v)}
+                aria-expanded={liveOpen}
+                className="flex items-center gap-1 rounded-full border border-[#4a442a]/35 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.05em] transition-colors hover:bg-[#e6d189]/60"
+                style={{ color: '#4e4a2b' }}
+              >
+                <ChevronRight className="h-3 w-3 transition-transform" style={{ transform: liveOpen ? 'rotate(90deg)' : 'none' }} />
+                Live context ({liveCount})
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setOpenState(!open)}
+              aria-expanded={open}
+              aria-label={open ? 'Collapse AI guide' : 'Expand AI guide'}
+              title={open ? 'Collapse the guide' : 'Expand the guide'}
+              className="flex h-7 w-7 flex-none items-center justify-center rounded-full border border-[#4a442a]/45 transition-colors hover:bg-[#e6d189]/60"
+              style={{ color: '#3b3721' }}
+            >
+              <ChevronDown className="h-3.5 w-3.5 transition-transform" style={{ transform: open ? 'rotate(180deg)' : 'none' }} />
+            </button>
+            <button
+              type="button"
+              aria-label="Hide AI guide"
+              title="Hide AI guide"
+              onClick={() => setEnabled(false)}
+              className="flex h-7 w-7 flex-none items-center justify-center rounded-full border border-[#4a442a]/45 transition-colors hover:bg-[#e6d189]/60"
+              style={{ color: '#3b3721' }}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
 
+        {open ? (
+          <div className="grid gap-x-6 gap-y-2 border-t px-3 pb-2.5 pt-2 sm:px-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]" style={{ borderColor: 'rgba(133,118,58,0.28)' }}>
+            <div>
               {guide.entry.tips.length ? (
                 <>
-                  <p className="mt-2.5 text-[12.5px] font-bold leading-none" style={{ color: INK }}>
+                  <p className="text-[12px] font-bold leading-none" style={{ color: INK }}>
                     Do this:
                   </p>
-                  <ol
-                    className="mt-1.5 list-decimal space-y-1 pl-[19px] text-[12.5px] leading-snug marker:font-semibold"
-                    style={{ color: INK_SOFT }}
-                  >
+                  <ol className="mt-1.5 list-decimal space-y-1 pl-[19px] text-[12.5px] leading-snug marker:font-semibold" style={{ color: INK_SOFT }}>
                     {guide.entry.tips.map((tip) => (
                       <li key={tip} className="pl-0.5">
                         {tip}
@@ -343,80 +369,55 @@ export function AiGuide({ view, filters }: { view: ViewKey; filters: AppFilters 
                   </ol>
                 </>
               ) : null}
+            </div>
 
+            <div className="space-y-1.5">
               {guide.entry.watch ? (
-                <p className="mt-2.5 text-[12.5px] leading-snug" style={{ color: WATCH }}>
+                <p className="text-[12.5px] leading-snug" style={{ color: WATCH }}>
                   <span className="font-bold">Watch: </span>
                   {guide.entry.watch}
                 </p>
               ) : null}
 
-              {liveCount ? (
-                <div className="mt-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setLiveOpen((open) => !open)}
-                    aria-expanded={liveOpen}
-                    className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.06em] transition-opacity hover:opacity-70"
-                    style={{ color: '#4e4a2b' }}
-                  >
-                    <ChevronRight
-                      className="h-3 w-3 transition-transform"
-                      style={{ transform: liveOpen ? 'rotate(90deg)' : 'none' }}
-                    />
-                    Live context ({liveCount})
-                  </button>
-                  {liveOpen ? (
-                    <div className="mt-1.5 space-y-1.5">
-                      {liveFacts.length ? (
-                        <dl className="space-y-1">
-                          {liveFacts.map((fact) => (
-                            <div key={fact.label} className="flex items-baseline gap-2 text-[11px] leading-snug">
-                              <dt className="w-[104px] flex-none" style={{ color: INK_MUTED }}>
-                                {fact.label}
-                              </dt>
-                              <dd className="font-semibold" style={{ color: INK }}>
-                                {fact.value}
-                              </dd>
-                            </div>
-                          ))}
-                        </dl>
-                      ) : null}
-                      {notes.length ? (
-                        <ul className="space-y-1 border-t pt-1.5 text-[11px] leading-snug" style={{ borderColor: 'rgba(133,118,58,0.28)', color: INK_SOFT }}>
-                          {notes.map((note) => (
-                            <li key={note} className="flex gap-1.5">
-                              <span aria-hidden="true" style={{ color: INK_MUTED }}>
-                                ·
-                              </span>
-                              <span>{note}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </div>
+              {liveOpen && liveCount ? (
+                <div className="rounded-lg border px-2 py-1.5" style={{ borderColor: 'rgba(133,118,58,0.28)' }}>
+                  {liveFacts.length ? (
+                    <dl className="grid gap-x-3 gap-y-1 sm:grid-cols-2">
+                      {liveFacts.map((fact) => (
+                        <div key={fact.label} className="flex items-baseline gap-1.5 text-[11px] leading-snug">
+                          <dt className="flex-none" style={{ color: INK_MUTED }}>
+                            {fact.label}
+                          </dt>
+                          <dd className="min-w-0 truncate font-semibold" style={{ color: INK }} title={fact.value}>
+                            {fact.value}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  ) : null}
+                  {notes.length ? (
+                    <ul className="mt-1 space-y-0.5 border-t pt-1 text-[11px] leading-snug" style={{ borderColor: 'rgba(133,118,58,0.28)', color: INK_SOFT }}>
+                      {notes.map((note) => (
+                        <li key={note} className="flex gap-1.5">
+                          <span aria-hidden="true" style={{ color: INK_MUTED }}>
+                            ·
+                          </span>
+                          <span>{note}</span>
+                        </li>
+                      ))}
+                    </ul>
                   ) : null}
                 </div>
               ) : null}
 
-              <p
-                className="mt-2.5 border-t pt-2 text-[10px] leading-relaxed"
-                style={{ borderColor: 'rgba(133,118,58,0.3)', color: INK_MUTED }}
-              >
+              <p className="border-t pt-1.5 text-[10px] leading-relaxed" style={{ borderColor: 'rgba(133,118,58,0.3)', color: INK_MUTED }}>
                 The notes are written by the people who built the screens and refreshed with the engine’s own figures; they
                 are guidance, not advice, and they never override a rule the engine enforces.
               </p>
             </div>
           </div>
-        </div>
-
-        {/* Hand-drawn tick, like a note someone signed off on. */}
-        <Check
-          aria-hidden="true"
-          className="pointer-events-none absolute -bottom-3 -left-2.5 h-7 w-7 -rotate-6 opacity-60"
-          style={{ color: '#b9932f' }}
-        />
+        ) : null}
       </div>
-    </div>
+    </section>
   );
 }
