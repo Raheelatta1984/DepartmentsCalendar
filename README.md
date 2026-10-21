@@ -27,24 +27,41 @@ Built with React + TypeScript, with a deterministic product demo and an optional
 | Daily timesheet by activity, review where time was spent vs the planned task | **Timesheets** — team week grid, entry history, approvals, plan-vs-actual |
 | Roadmap with department/employee/task/subtask rows, columns for year, quarter, month, week number, day and date | **Roadmap timeline** with all six header rows, collapsible hierarchy, holiday shading and today marker |
 | Country-specific weekly off + public holidays for the next 5 years, with reason shown | **Master setup → Holidays & weekends** (12 countries, multi-year generation, per-country weekend toggles) and shading in calendar/roadmap |
+| Track IT effort by project/task and capitalise it for the board | **IT projects & capex** portfolio (110 projects) + **Capitalisation pack** (AASB 138, AUD) with monthly board approval of resource hours |
 
 ### Demo personas (switch from the avatar menu, top-right)
 
 | Persona | Role | Sees |
 | --- | --- | --- |
-| Arjun Mehta | CEO | All 6 entities, 14 departments, 68 people |
+| Arjun Mehta | CEO | All 9 entities, 22 departments, 117 people (Meridian group + Harbourline Retail Australia) |
 | Layla Al Mansoori | Head of Operations | All operational departments, portfolio scoring, escalation log |
 | Fatima Noor / Ravi Krishnan / … | Department heads | Own department + reporting line |
 | Unit heads / managers / supervisors | Management | Their own reporting tree only |
 | Employees | Self-service | Own calendar, own timesheet, own activity register |
 
-The data deliberately contains a realistic mix: 660+ activities, 4 000+ timesheet entries, 890+ holiday records, calendar connections in connected/pending/disconnected states, and a few departments under the 70-point threshold so the escalation flow has something to act on.
+The data deliberately contains a realistic mix: 1 100+ activities, 6 000+ timesheet entries, 890+ holiday records, calendar connections in connected/pending/disconnected states, and a few departments under the 70-point threshold so the escalation flow has something to act on.
+
+### Harbourline Retail Australia — independent retail entity and IT capex programme
+
+The demo now also contains **Harbourline Retail Australia**, a retail group that is completely separate from Meridian: its own group → company → sub-company tree, Australian country/timezone rules (AUD reporting currency), retail departments (Store Operations, Merchandising, Finance, Supply Chain, Digital, People & Culture) and a 33-person **Information Technology (PMO)** department.
+
+- **110 IT projects** across delivery, operations, security, data & analytics, infrastructure, integration, digital experience, enterprise apps, network and compliance.
+- **30 capital projects** (board-funded capex, AASB 138 development effort) and **80 operational run projects** that are expensed.
+- Project tasks are real activities on the calendar/timesheet, so resources log daily effort against the exact task.
+- The **Capitalisation pack** screen reports only capital-project development effort, converts hours to fully-loaded AUD cost, reconciles every expensed hour, and drives a submit → board decision workflow with an audit trail.
+- Non-capital effort (operational projects, BAU support, training, discovery) never appears in the capitalisation pack but remains in the standard **Timesheets** and **Performance & escalation** utilisation reports.
+
+Capitalisation policy (editable in the workspace data): eligible phases `design`, `build`, `test`, `deploy`, `hypercare`; excluded phases `discovery`, `support`, `training`; each capital project carries its own capitalisation rate and window. Approver: Board Audit & Risk Committee on recommendation of the CIO and CFO.
 
 ---
 
 ## 2. How the numbers are calculated
 
 ```
+capitalised hours = Σ (logged hours on capital-project development tasks × project capitalisation rate)
+capitalised cost  = capitalised hours × fully-loaded hourly cost (AUD)
+capitalisation rate % = capitalisable capital-project hours ÷ all logged IT hours
+
 capacity        = contracted weekly hours ÷ 5 × working days in the period
                   (working days exclude the country's weekly-off days and public holidays)
                   for a running period only elapsed days count, so Monday is not "20% utilized"
@@ -128,7 +145,9 @@ See [`docs/architecture.svg`](docs/architecture.svg) and [`docs/ARCHITECTURE.md`
 | **Department calendar** | Month grid, team-week swimlanes per employee, day timeline; public holidays with reason; right rail for the selected day, employee review and upcoming non-working days |
 | **Activity register** | Filterable register of every activity with inline status changes, progress, sync state, CSV and .ics export |
 | **Roadmap timeline** | Hierarchical rows (department → employee → activity → subtask) against year/quarter/month/ISO-week/day/date columns, 13/26/52-week horizon |
-| **Timesheets** | Team week grid (click a cell to log), entry history with approvals, approval queue, plan-vs-actual |
+| **Timesheets** | Team week grid (click a cell to log), entry history with approvals, approval queue, plan-vs-actual; optional project/task link for capitalisation |
+| **IT projects & capex** | 110-project register with portfolio, category, stage, capex, capitalisation rate, delivery progress and task-level effort |
+| **Capitalisation pack** | Board pack in AUD: capitalised hours and cost by resource/project, excluded effort reconciliation, AASB 138 evidence, board submission and decision log |
 | **Performance & escalation** | Department matrix across all metrics, employee scorecards, escalation log, rule engine, generated email |
 | **Calendar sync** | Provider cards, per-employee connections, sync queue log, production checklist, troubleshooting |
 | **Master setup** | Entities, departments, employees, holidays/weekends, group settings, audit trail, full JSON backup |
@@ -142,8 +161,8 @@ api/                  Vercel function entry points (config, session, workspace)
 server/               shared Node API, authentication, validation, Neon repository
 src/
   components/         layout, modals, charts, workspace login and save status
-  data/               12-country holiday engine + deterministic demo dataset
-  lib/                analytics, permissions preview, exports, dates, shared-state sync
+  data/               12-country holiday engine + deterministic demo and retail capex datasets
+  lib/                analytics, capitalisation engine, permissions preview, exports, dates, shared-state sync
   pages/              one file per screen
   store.tsx           state/actions + local-demo or shared-Neon persistence
   types.ts            domain model

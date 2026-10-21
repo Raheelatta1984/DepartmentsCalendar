@@ -5,22 +5,36 @@ import type {
   CalendarConnection,
   CalendarProvider,
   Department,
+  CapitalisationApproval,
   Employee,
   Entity,
   Escalation,
   Holiday,
+  Project,
   Settings,
   StoreState,
   SyncJob,
   TimeEntry,
 } from './types';
 import { createSeedState } from './data/seed';
+import { RETAIL_CAPITALISATION_POLICY, withRetailSample } from './data/retail-seed';
+import { buildApproval, monthScope, capitalisationReport } from './lib/capitalisation';
 import { buildHolidayDataset } from './data/countries';
 import { getScope, type Scope } from './lib/permissions';
 import { fromSharedState, rememberPersona } from './lib/workspace-api';
 import { useWorkspacePersistence, type SharedConnection, type WorkspacePersistence } from './lib/useWorkspacePersistence';
 
 const STORAGE_KEY = 'orbit.portal.state.v1';
+
+/** Adds capitalisation/project defaults without touching any existing record. */
+export function normaliseState(state: StoreState): StoreState {
+  return {
+    ...state,
+    projects: Array.isArray(state.projects) ? state.projects : [],
+    capitalisation: state.capitalisation ?? RETAIL_CAPITALISATION_POLICY,
+    capitalisationApprovals: Array.isArray(state.capitalisationApprovals) ? state.capitalisationApprovals : [],
+  };
+}
 
 function loadState(): StoreState {
   try {
@@ -30,7 +44,8 @@ function loadState(): StoreState {
     if (!parsed.employees?.length || !parsed.activities || !parsed.settings) return createSeedState();
     // heals older caches when the demo schema evolves
     if (!parsed.syncJobs || !parsed.connections || !parsed.escalations) return createSeedState();
-    return parsed;
+    if (!parsed.projects || !parsed.capitalisation) return createSeedState();
+    return normaliseState(parsed);
   } catch {
     return createSeedState();
   }
@@ -67,13 +82,19 @@ interface StoreContextValue {
   disconnectCalendar: (employeeId: string, provider: CalendarProvider) => void;
   pushToCalendars: (activityId: string, providers?: CalendarProvider[]) => void;
   setActivitySync: (activityId: string, provider: CalendarProvider, enabled: boolean) => void;
+  upsertProject: (project: Project) => void;
+  submitCapitalisation: (entityId: string, departmentId: string, month: string) => CapitalisationApproval;
+  decideCapitalisation: (id: string, status: 'approved' | 'rejected', note: string) => void;
+  loadRetailSample: () => void;
   resetDemo: () => void;
 }
 
 const StoreContext = createContext<StoreContextValue | null>(null);
 
 export function StoreProvider({ children, shared }: { children: React.ReactNode; shared?: SharedConnection }) {
-  const [state, setState] = useState<StoreState>(() => shared ? fromSharedState(shared.snapshot.state) : loadState());
+  const [state, setState] = useState<StoreState>(() =>
+    normaliseState(shared ? fromSharedState(shared.snapshot.state) : loadState()),
+  );
   const workspace = useWorkspacePersistence(state, setState, shared);
   const writeTimer = useRef<number | null>(null);
 
@@ -98,6 +119,8 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
   }, [state, shared]);
 
   const scope = useMemo(() => getScope(state, state.settings.activeUserId), [state]);
+  const latestStateRef = useRef(state);
+  latestStateRef.current = state;
 
   const save = useCallback<StoreContextValue['save']>((next, audit) => {
     setState((prev) => {
@@ -390,6 +413,67 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
             a.id === activityId ? { ...a, sync: { ...a.sync, [provider]: enabled } } : a,
           ),
         })),
+      upsertProject: (project) =>
+        save(
+          (prev) => ({
+            ...prev,
+            projects: prev.projects.some((row) => row.id === project.id)
+              ? prev.projects.map((row) => (row.id === project.id ? project : row))
+              : [project, ...prev.projects],
+          }),
+          { action: 'Project saved', detail: `${project.code} · ${project.name}` },
+        ),
+      submitCapitalisation: (entityId, departmentId, month) => {
+        // Snapshot the live timesheet numbers into an immutable board request.
+        const current = normaliseState(latestStateRef.current);
+        const approval = buildApproval(current, entityId, departmentId, month, 'submitted');
+        const report = capitalisationReport(current, { entityId, departmentId, ...monthScope(month) });
+        approval.capitalisedHours = report.capitalisedHours;
+        approval.capitalisedCostAUD = report.capitalisedCost;
+        approval.excludedHours = report.excludedProjectHours + report.nonProjectHours;
+        approval.utilisation = report.utilisation;
+        approval.submittedById = current.settings.activeUserId;
+        approval.submittedAt = new Date().toISOString();
+        save(
+          (prev) => ({
+            ...prev,
+            capitalisationApprovals: [
+              approval,
+              ...prev.capitalisationApprovals.filter((row) => row.id !== approval.id),
+            ],
+          }),
+          {
+            action: 'Capitalisation pack submitted',
+            detail: `${month} · ${approval.capitalisedHours}h · ${approval.capitalisedCostAUD} ${current.capitalisation.currency}`,
+          },
+        );
+        return approval;
+      },
+      decideCapitalisation: (id, status, note) =>
+        save(
+          (prev) => ({
+            ...prev,
+            capitalisationApprovals: prev.capitalisationApprovals.map((row) =>
+              row.id === id
+                ? {
+                    ...row,
+                    status,
+                    note: note || row.note,
+                    decidedById: prev.settings.activeUserId,
+                    decidedAt: new Date().toISOString(),
+                  }
+                : row,
+            ),
+          }),
+          { action: `Capitalisation pack ${status}`, detail: id },
+        ),
+      loadRetailSample: () => {
+        const merged = withRetailSample(normaliseState(latestStateRef.current));
+        save(merged, {
+          action: 'Retail capital programme loaded',
+          detail: 'Harbourline Retail Australia added without changing existing Meridian records',
+        });
+      },
       resetDemo: () => {
         if (shared) return; // never replace the shared database with demo data
         localStorage.removeItem(STORAGE_KEY);

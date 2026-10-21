@@ -13,12 +13,14 @@ import { ActivitiesPage } from './pages/ActivitiesPage';
 import { RoadmapPage } from './pages/RoadmapPage';
 import { TimesheetPage } from './pages/TimesheetPage';
 import { PerformancePage } from './pages/PerformancePage';
+import { ProjectsPage } from './pages/ProjectsPage';
+import { CapitalisationPage } from './pages/CapitalisationPage';
 import { IntegrationsPage } from './pages/IntegrationsPage';
 import { AdminPage } from './pages/AdminPage';
 import { TypeIcon } from './components/activity-ui';
 import { WorkspaceStatus } from './components/WorkspaceStatus';
 
-const VIEWS: ViewKey[] = ['dashboard', 'calendar', 'activities', 'roadmap', 'timesheet', 'performance', 'integrations', 'admin'];
+const VIEWS: ViewKey[] = ['dashboard', 'calendar', 'activities', 'roadmap', 'timesheet', 'projects', 'capitalisation', 'performance', 'integrations', 'admin'];
 
 function viewFromHash(): ViewKey {
   const hash = window.location.hash.replace(/^#\/?/, '').split('?')[0];
@@ -139,6 +141,8 @@ export function App() {
             ) : null}
             {view === 'roadmap' ? <RoadmapPage filters={filters} setFilters={setFilters} onOpenActivity={openActivity} /> : null}
             {view === 'timesheet' ? <TimesheetPage filters={filters} setFilters={setFilters} onNewActivity={() => newActivity()} /> : null}
+            {view === 'projects' ? <ProjectsPage /> : null}
+            {view === 'capitalisation' ? <CapitalisationPage /> : null}
             {view === 'performance' ? <PerformancePage filters={filters} setFilters={setFilters} onOpenEmployee={setEmployeeId} /> : null}
             {view === 'integrations' ? <IntegrationsPage /> : null}
             {view === 'admin' ? <AdminPage /> : null}

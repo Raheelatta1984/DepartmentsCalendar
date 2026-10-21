@@ -132,3 +132,36 @@ Never describe simulated sync jobs or generated email text as evidence that a ma
 | Individual login + server-enforced permissions + normalized records | Planned |
 | Real OAuth calendar sync, durable worker and email delivery | Planned |
 | Backups/PITR, compliance controls, tamper-evident audit and production SLA | Planned / provider setup |
+
+
+## IT project portfolio and time capitalisation
+
+The workspace model now carries three additive collections alongside the original
+domain model (nothing was removed or renamed):
+
+- `projects` — 110 IT projects (30 capital, 80 operational) with capex, WBS code,
+  capitalisation rate/window, sponsor, PM and task breakdown. Each project task
+  points at a real activity (`activityId`), so it appears in the calendar,
+  timesheets and roadmap like any other work.
+- `capitalisation` — the AASB 138 / IAS 38 policy: eligible and excluded
+  development phases, hourly role cost bands, evidence checklist and approver.
+- `capitalisationApprovals` — immutable snapshots of the board submission for an
+  entity and calendar month (hours, cost, utilisation, status, submitter, decision
+  and note).
+
+`src/lib/capitalisation.ts` classifies every timesheet entry in scope:
+
+1. Only activities linked to a **capital** project, in an eligible phase and
+   inside the project's capitalisation window are capitalised.
+2. Capitalised hours are the logged hours multiplied by the project's
+   capitalisation rate; value uses the resource's fully-loaded AUD rate.
+3. Operational projects, non-capitalisable phases (support, training, discovery)
+   and non-project BAU remain in the utilisation denominator and are reported as
+   excluded effort with an auditable reason.
+4. Every in-scope entry ends up in exactly one bucket, so the board pack
+   reconciles logged hours to capitalised + excluded effort.
+
+The board workflow (submit → refresh → approve/reject) is stored through the same
+shared-workspace persistence and audit log as the rest of the portal. As with the
+performance scores, calculations run client-side for the pilot; move the same
+queries server-side before using the numbers for statutory reporting.

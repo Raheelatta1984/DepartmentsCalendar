@@ -25,6 +25,114 @@ export type Priority = 'critical' | 'high' | 'medium' | 'low';
 export type HolidayType = 'public_holiday' | 'company_holiday' | 'weekly_off';
 export type CalendarProvider = 'outlook' | 'google';
 
+/* ------------------------------------------------------------------ */
+/* IT project portfolio, time capitalisation and board approval        */
+/* ------------------------------------------------------------------ */
+export type ProjectPortfolio = 'capital' | 'operational';
+
+export type ProjectCategory =
+  | 'delivery'
+  | 'operations'
+  | 'security'
+  | 'data_analytics'
+  | 'infrastructure'
+  | 'integration'
+  | 'digital_experience'
+  | 'enterprise_apps'
+  | 'network'
+  | 'compliance';
+
+export type ProjectStage =
+  | 'idea'
+  | 'business_case'
+  | 'approved'
+  | 'design'
+  | 'build'
+  | 'test'
+  | 'deploy'
+  | 'hypercare'
+  | 'closed'
+  | 'on_hold';
+
+export type ProjectStatus = 'pipeline' | 'active' | 'on_hold' | 'completed' | 'cancelled';
+
+/** Delivery phase of a single project task — drives AASB 138 capitalisation. */
+export type TaskPhase = 'discovery' | 'design' | 'build' | 'test' | 'deploy' | 'hypercare' | 'support' | 'training';
+
+export interface ProjectTask {
+  id: string;
+  projectId: string;
+  /** The activity the resource logs their daily time against. */
+  activityId: string;
+  title: string;
+  phase: TaskPhase;
+  capitalisable: boolean;
+  plannedHours: number;
+  startDate: string;
+  endDate: string;
+}
+
+export interface Project {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  entityId: string;
+  departmentId: string;
+  portfolio: ProjectPortfolio;
+  category: ProjectCategory;
+  stage: ProjectStage;
+  status: ProjectStatus;
+  priority: Priority;
+  sponsorId: string;
+  managerId: string;
+  startDate: string;
+  endDate: string;
+  /** Board-approved total budget in the entity's local currency. */
+  budgetAUD: number;
+  capexAUD: number;
+  opexAUD: number;
+  /** Share of a capitalisable hour that is capitalised (e.g. 0.9 = 90%). */
+  capitalisationRate: number;
+  assetClass: string;
+  usefulLifeYears: number;
+  capitalisationStart: string;
+  capitalisationEnd: string;
+  boardApproved: boolean;
+  wbsCode: string;
+  tasks: ProjectTask[];
+}
+
+export interface CapitalisationPolicy {
+  currency: 'AUD';
+  standard: string;
+  eligiblePhases: TaskPhase[];
+  excludedPhases: TaskPhase[];
+  minimumHours: number;
+  /** Fully-loaded cost per hour by role, in the local currency. */
+  roleCostRates: Record<string, number>;
+  evidence: string[];
+  approverRole: string;
+}
+
+export interface CapitalisationApproval {
+  id: string;
+  entityId: string;
+  /** yyyy-MM */
+  period: string;
+  title: string;
+  capitalisedHours: number;
+  capitalisedCostAUD: number;
+  excludedHours: number;
+  utilisation: number;
+  status: 'draft' | 'submitted' | 'approved' | 'rejected';
+  submittedById: string | null;
+  submittedAt: string | null;
+  decidedById: string | null;
+  decidedAt: string | null;
+  note: string;
+}
+
 export interface Entity {
   id: string;
   name: string;
@@ -34,6 +142,8 @@ export interface Entity {
   countryCode: string;
   timezone: string;
   industry?: string;
+  /** Local reporting currency for entity-level financial reports. */
+  currency?: string;
 }
 
 export interface Department {
@@ -61,6 +171,8 @@ export interface Employee {
   joinDate: string;
   status: 'active' | 'on_leave' | 'inactive';
   avatarColor: string;
+  /** Fully-loaded hourly cost used by the capitalisation report. */
+  costRateAUD?: number;
 }
 
 export interface Subtask {
@@ -92,6 +204,12 @@ export interface Activity {
   subtasks: Subtask[];
   sync: Record<CalendarProvider, boolean>;
   createdAt: string;
+  /** Project task linkage — set when the activity is a deliverable of an IT project. */
+  projectId?: string;
+  projectTaskId?: string;
+  /** AASB 138 eligible development effort; operational/BAU tasks are never capitalised. */
+  capitalisable?: boolean;
+  projectPhase?: TaskPhase;
 }
 
 export interface TimeEntry {
@@ -182,6 +300,9 @@ export interface StoreState {
   syncJobs: SyncJob[];
   settings: Settings;
   auditLog: AuditEntry[];
+  projects: Project[];
+  capitalisation: CapitalisationPolicy;
+  capitalisationApprovals: CapitalisationApproval[];
 }
 
 export interface AuditEntry {
@@ -239,6 +360,8 @@ export type ViewKey =
   | 'activities'
   | 'roadmap'
   | 'timesheet'
+  | 'projects'
+  | 'capitalisation'
   | 'performance'
   | 'admin'
   | 'integrations';

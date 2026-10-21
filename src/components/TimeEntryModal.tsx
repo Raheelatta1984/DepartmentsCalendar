@@ -29,10 +29,15 @@ export function TimeEntryModal({
     approved: false,
   });
   const [error, setError] = useState('');
+  const [projectFilter, setProjectFilter] = useState('');
 
   useEffect(() => {
     if (!open) return;
     setError('');
+    const openingActivity =
+      entry?.activityId ?? defaults?.activityId ?? '';
+    const openingProject = state.activities.find((a) => a.id === openingActivity)?.projectId ?? '';
+    setProjectFilter(openingProject);
     setDraft(
       entry ?? {
         id: newId('te'),
@@ -60,12 +65,25 @@ export function TimeEntryModal({
     [state.activities, draft.employeeId],
   );
 
+  const projects = useMemo(
+    () =>
+      state.projects
+        .filter((project) => project.departmentId === employee?.departmentId || project.entityId === employee?.entityId)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [state.projects, employee?.departmentId, employee?.entityId],
+  );
+
+  const visibleActivities = useMemo(
+    () => (projectFilter ? activities.filter((a) => a.projectId === projectFilter) : activities),
+    [activities, projectFilter],
+  );
+
   useEffect(() => {
-    if (!activities.some((a) => a.id === draft.activityId)) {
-      setDraft((d) => ({ ...d, activityId: activities[0]?.id ?? '' }));
+    if (!visibleActivities.some((a) => a.id === draft.activityId)) {
+      setDraft((d) => ({ ...d, activityId: visibleActivities[0]?.id ?? '' }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft.employeeId, activities.length]);
+  }, [draft.employeeId, visibleActivities.length, projectFilter]);
 
   const activity = state.activities.find((a) => a.id === draft.activityId);
   const existingSameDay = state.timeEntries
@@ -138,16 +156,52 @@ export function TimeEntryModal({
           </Field>
         </div>
 
-        <Field label="Activity" hint={activity ? `${TYPE_LABELS[activity.type]} · ${activity.plannedHours}h planned` : undefined}>
-          <Select value={draft.activityId} onChange={(e) => setDraft((d) => ({ ...d, activityId: e.target.value }))}>
-            <option value="">Select activity…</option>
-            {activities.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.title} · {a.startDate}
+        <Field label="Project" hint="Optional — link the effort to an IT project for capitalisation">
+          <Select
+            value={projectFilter}
+            onChange={(e) => {
+              const next = e.target.value;
+              setProjectFilter(next);
+              const first = next ? activities.find((a) => a.projectId === next) : undefined;
+              if (first) setDraft((d) => ({ ...d, activityId: first.id }));
+            }}
+          >
+            <option value="">No project / department activity</option>
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.code} · {project.name} {project.portfolio === 'capital' ? '(capital)' : '(operational)'}
               </option>
             ))}
           </Select>
         </Field>
+
+        <Field label="Project task / activity" hint={activity ? `${TYPE_LABELS[activity.type]} · ${activity.plannedHours}h planned` : undefined}>
+          <Select value={draft.activityId} onChange={(e) => setDraft((d) => ({ ...d, activityId: e.target.value }))}>
+            <option value="">Select activity…</option>
+            {visibleActivities.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.projectPhase ? `[${a.projectPhase}] ` : ''}{a.title} · {a.startDate}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        {activity?.projectId ? (
+          <div
+            className={`rounded-lg px-3 py-2 text-[11px] ${
+              activity.capitalisable
+                ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+                : 'border border-slate-200 bg-slate-50 text-slate-600'
+            }`}
+          >
+            <strong>{activity.capitalisable ? 'Capitalisable effort' : 'Expensed effort'}</strong> ·{' '}
+            {state.projects.find((project) => project.id === activity.projectId)?.code} · phase{' '}
+            <span className="capitalize">{activity.projectPhase ?? 'support'}</span>.{' '}
+            {activity.capitalisable
+              ? 'This entry will appear in the board capitalisation pack at the project capitalisation rate.'
+              : 'This entry counts toward team utilisation but is excluded from the capitalisation pack.'}
+          </div>
+        ) : null}
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Hours" hint="0.5 steps">

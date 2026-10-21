@@ -1,4 +1,6 @@
 import type { Activity, Employee, StoreState, TimeEntry } from '../types';
+import type { CapitalisationReport } from './capitalisation';
+import { EXCLUSION_LABELS, PROJECT_CATEGORY_LABELS, PROJECT_STAGE_LABELS } from './capitalisation';
 
 function download(content: string, filename: string, mime: string) {
   const blob = new Blob([content], { type: mime });
@@ -183,4 +185,76 @@ Orbit activity portal`;
     to: opts.headEmail ?? '',
     cc: opts.cooEmail ?? '',
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Capitalisation board pack exports                                   */
+/* ------------------------------------------------------------------ */
+export function capitalisationBoardPackCSV(report: CapitalisationReport) {
+  const rows: (string | number)[][] = [
+    ['IT capitalisation pack', report.entityName],
+    ['Department', report.departmentName],
+    ['Period', report.periodLabel],
+    ['Currency', report.currency],
+    ['Accounting standard', report.policy.standard],
+    [],
+    ['Summary', 'Value'],
+    ['Resources in scope', report.headcount],
+    ['Total IT hours logged', report.totalHours],
+    ['Capitalisable hours (effort on eligible phases)', report.capitalHours],
+    ['Capitalised hours after project rate', report.capitalisedHours],
+    ['Capitalised cost', report.capitalisedCost],
+    ['Expensed project hours', report.excludedProjectHours],
+    ['Non-project hours', report.nonProjectHours],
+    ['Non-capitalised cost', report.nonCapitalisedCost],
+    ['Capitalisation rate %', report.capitalisationRate],
+    ['Utilisation %', report.utilisation],
+    ['Capital projects in scope', report.capitalProjectsInScope],
+    ['Active capital projects', report.activeCapitalProjects],
+    ['Capex pipeline (AUD)', report.pipelineCapexAUD],
+    ['Projects requiring attention', report.projectsAtRisk],
+    [],
+    ['Resource', 'Role', 'Cost centre', 'Cost rate', 'Capital hours', 'Capitalised hours', 'Capitalised cost', 'Excluded hours', 'Non-project hours', 'Total hours', 'Capacity', 'Utilisation %'],
+    ...report.byResource.map((row) => [
+      row.name, row.role, row.costCentre, row.costRate, row.capitalHours, row.capitalisedHours,
+      row.capitalisedCost, row.excludedHours, row.nonProjectHours, row.totalHours, row.capacityHours, row.utilisation,
+    ]),
+    [],
+    ['Project', 'Code', 'Category', 'Stage', 'Status', 'WBS', 'Capex budget', 'Capitalisation rate', 'Logged hours', 'Capitalised hours', 'Capitalised cost', 'Excluded hours', 'Resources', 'Delivery progress %'],
+    ...report.byProject.map((row) => [
+      row.name, row.code, PROJECT_CATEGORY_LABELS[row.category] ?? row.category, PROJECT_STAGE_LABELS[row.stage] ?? row.stage,
+      row.status, row.wbsCode, row.capexAUD, row.rate, row.hours, row.capitalisedHours, row.capitalisedCost,
+      row.excludedHours, row.resources, row.deliveryProgress,
+    ]),
+    [],
+    ['Phase', 'Hours', 'Capitalised hours', 'Cost'],
+    ...report.byPhase.map((row) => [row.phase, row.hours, row.capitalisedHours, row.cost]),
+    [],
+    ['Excluded effort reason', 'Hours'],
+    ...Object.entries(
+      report.exclusions.reduce<Record<string, number>>((acc, line) => {
+        const key = EXCLUSION_LABELS[line.reason];
+        acc[key] = (acc[key] ?? 0) + line.hours;
+        return acc;
+      }, {}),
+    ).map(([label, hours]) => [label, hours]),
+  ];
+  return rows;
+}
+
+export function capitalisationDetailCSV(report: CapitalisationReport) {
+  return [
+    ['Date', 'Resource', 'Role', 'Cost centre', 'Project code', 'Project', 'Category', 'Task', 'Phase', 'Logged hours', 'Applied rate', 'Capitalised hours', 'Hourly cost', 'Capitalised cost'],
+    ...report.lines.map((line) => [
+      line.date, line.employeeName, line.role, line.costCentre, line.projectCode, line.projectName,
+      PROJECT_CATEGORY_LABELS[line.projectCategory] ?? line.projectCategory, line.taskTitle, line.phase,
+      line.hours, line.rate, line.capitalisedHours, line.costRate, line.capitalisedCost,
+    ]),
+    [],
+    ['Excluded entries — audit trail'],
+    ['Date', 'Resource', 'Project', 'Reason', 'Detail', 'Hours', 'Hourly cost'],
+    ...report.exclusions.map((line) => [
+      line.date, line.employeeName, line.projectCode ?? '—', EXCLUSION_LABELS[line.reason], line.detail, line.hours, line.costRate,
+    ]),
+  ];
 }
