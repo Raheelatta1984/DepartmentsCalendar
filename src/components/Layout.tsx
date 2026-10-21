@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  Sparkles,
+  Newspaper,
   Bell,
   Building2,
   CalendarDays,
@@ -36,6 +38,8 @@ export const NAV_ITEMS: { id: ViewKey; label: string; icon: React.ReactNode; gro
   { id: 'capitalisation', label: 'Capitalisation pack', icon: <Landmark className="h-4 w-4" />, group: 'Governance', hint: 'Board approval of IT effort' },
   { id: 'performance', label: 'Performance & escalation', icon: <TrendingUp className="h-4 w-4" />, group: 'Governance', hint: 'Scores, alerts, escalation log' },
   { id: 'integrations', label: 'Calendar sync', icon: <Plug className="h-4 w-4" />, group: 'Governance', hint: 'Outlook & Google connectors' },
+  { id: 'whats-new', label: "What's new", icon: <Newspaper className="h-4 w-4" />, group: 'Workspace', hint: 'Latest portal updates' },
+  { id: 'theme', label: 'Portal appearance', icon: <Sparkles className="h-4 w-4" />, group: 'Configuration', hint: 'Brand and generate a theme' },
   { id: 'admin', label: 'Master setup', icon: <Settings2 className="h-4 w-4" />, group: 'Configuration', hint: 'Entities, departments, people, holidays' },
 ];
 

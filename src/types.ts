@@ -364,4 +364,6 @@ export type ViewKey =
   | 'capitalisation'
   | 'performance'
   | 'admin'
-  | 'integrations';
+  | 'integrations'
+  | 'whats-new'
+  | 'theme';
