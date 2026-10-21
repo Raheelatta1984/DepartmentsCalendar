@@ -148,6 +148,9 @@ export function App() {
         />
         <main className="mx-auto max-w-[1560px] px-3 py-4 sm:px-5 sm:py-5">
           <WorkspaceStatus />
+          {/* The guide is pinned to the top of the tab it explains, above the
+              section it is describing — never a bubble in the bottom corner. */}
+          <AiGuide view={view} filters={filters} />
           <div key={view} className="animate-fade-up">
             {view === 'dashboard' ? (
               <Dashboard
@@ -164,7 +167,7 @@ export function App() {
                 filters={filters}
                 setFilters={setFilters}
                 onOpenActivity={openActivity}
-                onNewActivity={() => newActivity()}
+                onNewActivity={(defaults) => newActivity(defaults)}
                 onOpenEmployee={setEmployeeId}
               />
             ) : null}
@@ -316,8 +319,6 @@ export function App() {
           </div>
         </div>
       </Modal>
-
-      <AiGuide view={view} filters={filters} />
     </div>
   );
 }

@@ -230,11 +230,11 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
     title: 'Department calendar',
     subtitle: 'Every entity, department, person and holiday on one timeline',
     blurb:
-      'Month, team-week swimlanes and day views for every department and person, with country-aware shading for weekends and public holidays.',
+      'Year, quarter, month, team-week and day grains of the same calendar, with country-aware shading for weekends and public holidays. Every day cell holds every activity booked on it — nothing is hidden behind a corner widget or a fixed three-item limit.',
     tips: [
-      'Switch between Month, Team week and Day to move from planning to execution.',
-      'The employee picker reviews one person’s calendar the way their manager would.',
-      'Every activity can push to Outlook and Google, or export as .ics.',
+      'Pick the grain first: Year and Quarter show where the load sits, Month plans it, Week and Day execute it.',
+      'Open the department and person pickers to read a team’s or one person’s calendar.',
+      'A busy day shows its first few tasks plus “+N more” — press it to expand the day in place, or double-click the day for the full schedule.',
       'Holiday shading means deadlines on non-working days are visible immediately.',
     ],
     watch:
@@ -242,6 +242,7 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
     context: [
       'Weekends come from each country’s own rules, not a global setting.',
       'Holiday shading and capacity use the same holiday calendar.',
+      'The grain you pick here is the period filter the guide’s live context reads.',
     ],
     sections: [
       {
@@ -283,23 +284,49 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
     ],
     subTabs: [
       {
+        match: ['year'],
+        guide: {
+          title: 'Calendar · year',
+          blurb: 'Twelve months of the selected scope on one board — the planning horizon before quarter and month detail.',
+          tips: [
+            'Read the dots and day totals to find the months already carrying heavy load.',
+            'Click a day to read it in the day panel; double-click to open it in the Day grain.',
+            'Use it before committing next year’s portfolio, not for day-to-day dispatch.',
+          ],
+        },
+      },
+      {
+        match: ['quarter'],
+        guide: {
+          title: 'Calendar · quarter',
+          blurb: 'Three months side by side for the quarter containing the anchor date.',
+          tips: [
+            'Compare the three months before promising a quarter’s delivery.',
+            'Crowded cells expand with “+N more”, so a clash is never hidden behind a cap.',
+            'Shift a quarter at a time to look one quarter ahead of the plan.',
+          ],
+        },
+      },
+      {
         match: ['month'],
         guide: {
           title: 'Calendar · month',
           blurb: 'The whole month at a glance for the selected department or person.',
           tips: [
-            'Activity dots show type density; click a day to drill into its schedule.',
+            'Each day shows its tasks in time order; “+N more” expands a crowded day in place.',
             'Holiday shading is country-aware for the person in focus.',
+            'Click a day to review it in the day panel, double-click to open the Day grain.',
           ],
         },
       },
       {
-        match: ['team week', 'swimlane'],
+        match: ['team week', 'swimlane', 'week'],
         guide: {
-          title: 'Calendar · team week',
+          title: 'Calendar · week',
           blurb: 'One swimlane per person across the working week.',
           tips: [
             'Spot collisions and idle days across the team in a single view.',
+            'Every cell stacks each person’s tasks for that day; “+N more” expands it in place.',
             'Utilization per lane is logged ÷ capacity for the week to date.',
           ],
         },
@@ -308,9 +335,10 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
         match: ['day'],
         guide: {
           title: 'Calendar · day',
-          blurb: 'A single working day in schedule order.',
+          blurb: 'A single working day in schedule order, grouped by person.',
           tips: [
             'Best view for daily stand-ups and handover conversations.',
+            'Every task booked that day is listed — no caps, no hidden items.',
             'Log time against each item as the day progresses.',
           ],
         },

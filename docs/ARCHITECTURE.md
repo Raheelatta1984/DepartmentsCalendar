@@ -62,7 +62,7 @@ All screens continue to use the existing analytics and store operations. The dep
 
 The current metrics run in the browser. Capacity excludes weekly off/public holidays; utilization uses logged effort, not planned time or attendance. `src/lib/analytics.ts` is the current source of truth, and README documents the formula.
 
-Two rules keep the screen and its guidance honest. **Entity focus**: `src/lib/entities.ts` resolves a legal-entity selection to the entity plus its sub-companies, and the command centre intersects that tree with the departments already in role scope — narrowing only, never widening. **Live guide context**: `src/lib/ai-guide-live.ts` derives the sticky note's figures from the same store snapshot and filters the page uses, so the note cannot drift from the numbers above it.
+Two rules keep the screen and its guidance honest. **Entity focus**: `src/lib/entities.ts` resolves a legal-entity selection to the entity plus its sub-companies, and the command centre intersects that tree with the departments already in role scope — narrowing only, never widening. **Live guide context**: `src/lib/ai-guide-live.ts` derives the top-of-tab guide panel's figures from the same store snapshot and filters the page uses, so the note cannot drift from the numbers above it.
 
 ## 3. Before production: individual authentication and authorization
 

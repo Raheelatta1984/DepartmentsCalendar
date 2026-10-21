@@ -17,7 +17,7 @@ Built with React + TypeScript, with a deterministic product demo and an optional
 | CEO checks the accounts department collectively and its workload | **Command centre** → department scorecard (logged vs capacity, utilization, on-time, score) and `Accounts & Finance` drill-down |
 | Workload calculated from hours spent on activities | Every score uses **logged timesheet hours ÷ country-aware capacity** (not planned hours, not attendance) |
 | Portal linked to Outlook, Google Calendar optional; an inserted task appears in the calendar | **Calendar sync** tab + sync toggles on every activity + a real **.ics** export that can be imported into Outlook/Google today |
-| Central calendar by department, by employee; managers review a responsible employee's calendar | **Department calendar** (month, team-week swimlanes, day) with employee picker and per-person utilization |
+| Central calendar by department, by employee; managers review a responsible employee's calendar | **Department calendar** (year, quarter, month, team-week swimlanes, day) with employee picker, per-person utilization and multi-task day cells |
 | Staff / worker management at master level | **Master setup → Employees** (role, reporting line, entity, department, country, contracted hours) |
 | Entities / companies and sub-companies so a group of companies fits | **Master setup → Entities** (group → company → sub-company tree, each with country & timezone) |
 | Department master with head / responsible assignee | **Master setup → Departments** (head, operations owner, cost centre, calendar colour) |
@@ -28,7 +28,7 @@ Built with React + TypeScript, with a deterministic product demo and an optional
 | Roadmap with department/employee/task/subtask rows, columns for year, quarter, month, week number, day and date | **Roadmap timeline** with all six header rows, collapsible hierarchy, holiday shading and today marker |
 | Country-specific weekly off + public holidays for the next 5 years, with reason shown | **Master setup → Holidays & weekends** (12 countries, multi-year generation, per-country weekend toggles) and shading in calendar/roadmap |
 | Track IT effort by project/task and capitalise it for the board | **IT projects & capex** portfolio (110 projects) + **Capitalisation pack** (AASB 138, AUD) with monthly board approval of resource hours |
-| AI guide that helps on every screen, toggleable on/off | **AI guide sticky note** on every screen — GUIDE badge, italic promise, prose explanation, numbered **Do this** steps, one **Watch** caution and a collapsible **Live context** block computed from the same live snapshot the screen reads. Auto width/height; close it with × or the top-bar toggle |
+| AI guide that helps on every screen, toggleable on/off | **AI guide panel at the top of every tab and section** — GUIDE badge, italic promise, prose explanation, numbered **Do this** steps, one **Watch** caution and a collapsible **Live context** block computed from the same live snapshot the screen reads. It follows the section / sub-tab in focus, folds to a single line, and hides with × or the top-bar toggle |
 | Dashboard focused on one legal entity | **Command centre → entity picker** — all entities in scope, a group of companies, a company or one of its subsidiaries; every card, score, queue and the day board recompute for that entity tree only |
 | Select a profile only after group of company and entity, scoped to that company’s people | **Avatar menu → Select profile** — group of company → entity → profile list showing only that entity’s employees |
 
@@ -147,7 +147,7 @@ See [`docs/architecture.svg`](docs/architecture.svg) and [`docs/ARCHITECTURE.md`
 | Screen | Purpose |
 | --- | --- |
 | **Command centre** | Portfolio KPIs, 8-period trend, department scorecard, attention queue with one-click escalation, today across the group, sync health |
-| **Department calendar** | Month grid, team-week swimlanes per employee, day timeline; public holidays with reason; right rail for the selected day, employee review and upcoming non-working days |
+| **Department calendar** | Year board (12 mini months), quarter (3 month grids), month grid, team-week swimlanes per employee, day timeline; every day cell holds every task with an inline “+N more”; public holidays with reason; right rail for the selected day, employee review and upcoming non-working days |
 | **Activity register** | Filterable register of every activity with inline status changes, progress, sync state, CSV and .ics export |
 | **Roadmap timeline** | Hierarchical rows (department → employee → activity → subtask) against year/quarter/month/ISO-week/day/date columns, 13/26/52-week horizon |
 | **Timesheets** | Team week grid (click a cell to log), entry history with approvals, approval queue, plan-vs-actual; optional project/task link for capitalisation |
