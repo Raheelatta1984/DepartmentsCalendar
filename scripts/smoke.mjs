@@ -33,7 +33,7 @@ console.log('--- rendered length:', text.length);
 console.log('--- has dashboard:', text.includes('Meridian Group Holdings'));
 assert.ok(text.includes('Meridian Group Holdings'), 'dashboard must render');
 console.log('--- body sample:', text.slice(0, 400).replace(/\s+/g, ' '));
-for (const v of ['calendar','activities','roadmap','timesheet','performance','integrations','admin']) {
+for (const v of ['calendar','activities','roadmap','timesheet','projects','capitalisation','performance','integrations','admin']) {
   window.location.hash = '#/' + v;
   window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'));
   await new Promise((r) => setTimeout(r, 900));

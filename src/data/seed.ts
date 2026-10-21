@@ -17,6 +17,8 @@ import type {
   TimeEntry,
 } from '../types';
 import { COUNTRIES, buildHolidayDataset } from './countries';
+import { RETAIL_CAPITALISATION_POLICY, RETAIL_CIO_ID, RETAIL_COMPANY_ID, RETAIL_IT_DEPT_ID, retailSample } from './retail-seed';
+import { buildApproval, capitalisationReport, monthKey, monthScope } from '../lib/capitalisation';
 import { toISO } from '../lib/dates';
 
 /* ------------------------------------------------------------------ */
@@ -587,12 +589,18 @@ export const AUDIT_LOG: AuditEntry[] = [
 export function createSeedState(): StoreState {
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 6 }, (_, i) => currentYear - 1 + i);
-  return {
-    entities: ENTITIES,
-    departments: DEPARTMENTS,
-    employees: EMPLOYEES,
-    activities: ACTIVITIES,
-    timeEntries: TIME_ENTRIES,
+  // Harbourline Retail Australia is seeded as an independent entity tree with
+  // its own IT project portfolio. Existing Meridian data is merged, never replaced.
+  const retail = retailSample();
+  const base: StoreState = {
+    entities: [...ENTITIES, ...retail.entities],
+    departments: [...DEPARTMENTS, ...retail.departments],
+    employees: [...EMPLOYEES, ...retail.employees],
+    activities: [...ACTIVITIES, ...retail.activities],
+    timeEntries: [...TIME_ENTRIES, ...retail.timeEntries],
+    projects: retail.projects,
+    capitalisation: RETAIL_CAPITALISATION_POLICY,
+    capitalisationApprovals: [],
     holidays: buildHolidayDataset(years, COUNTRIES.map((c) => c.code)),
     countries: COUNTRIES,
     escalations: ESCALATIONS.map((esc) => {
@@ -618,6 +626,34 @@ export function createSeedState(): StoreState {
       weekStartsOn: 1,
     },
   };
+
+  // Seed the retail IT capitalisation approval workflow: last month is board
+  // approved, the running month is submitted for the next board pack.
+  const now = new Date();
+  const currentMonth = monthKey(now);
+  const priorMonth = monthKey(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+  const priorScope = monthScope(priorMonth);
+  const priorReport = capitalisationReport(base, {
+    entityId: RETAIL_COMPANY_ID,
+    departmentId: RETAIL_IT_DEPT_ID,
+    ...priorScope,
+  });
+  const approved = buildApproval(base, RETAIL_COMPANY_ID, RETAIL_IT_DEPT_ID, priorMonth, 'approved');
+  approved.capitalisedHours = priorReport.capitalisedHours;
+  approved.capitalisedCostAUD = priorReport.capitalisedCost;
+  approved.excludedHours = priorReport.excludedProjectHours + priorReport.nonProjectHours;
+  approved.utilisation = priorReport.utilisation;
+  approved.submittedById = RETAIL_CIO_ID;
+  approved.submittedAt = new Date(now.getFullYear(), now.getMonth(), 2, 9, 30).toISOString();
+  approved.decidedById = ceo.id;
+  approved.decidedAt = new Date(now.getFullYear(), now.getMonth(), 8, 16, 0).toISOString();
+  approved.note = `Board Audit & Risk Committee approved ${priorReport.capitalisedHours.toFixed(1)} capitalisable hours (${priorReport.capitalisationRate}% of IT effort) at the ${priorMonth} meeting. Non-capitalisable effort remains expensed.`;
+
+  const submitted = buildApproval(base, RETAIL_COMPANY_ID, RETAIL_IT_DEPT_ID, currentMonth, 'submitted');
+  submitted.submittedById = RETAIL_CIO_ID;
+  submitted.submittedAt = new Date(now.getFullYear(), now.getMonth(), Math.min(now.getDate(), 5), 10, 15).toISOString();
+
+  return { ...base, capitalisationApprovals: [submitted, approved] };
 }
 
 export const CEO_ID = ceo.id;

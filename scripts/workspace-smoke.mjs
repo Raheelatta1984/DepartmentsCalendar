@@ -12,6 +12,35 @@ assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues));
 assert.equal('activeUserId' in initial.settings, false);
 console.log('PASS: full seeded dataset validates against the Neon API schema');
 
+/* Capitalisation guardrails: only capital-project development tasks may be
+   capitalised, and every logged hour is either capitalised or reconciled. */
+const { capitalisationReport, monthScope, monthKey } = await import('../src/lib/capitalisation.ts');
+const seededState = createSeedState();
+const retailIt = seededState.departments.find((dept) => dept.code === 'RIT');
+assert.ok(retailIt, 'the retail IT department must exist');
+const capitalReport = capitalisationReport(createSeedState(), {
+  entityId: 'ent-hra-retail',
+  departmentId: retailIt.id,
+  ...monthScope(monthKey(new Date())),
+});
+const seededProjects = seededState.projects;
+assert.ok(seededProjects.length >= 100, `expected 100+ IT projects, found ${seededProjects.length}`);
+assert.equal(seededProjects.filter((project) => project.portfolio === 'capital').length, 30);
+assert.ok(capitalReport.lines.length > 0, 'capitalisable timesheet lines must reach the board pack');
+assert.ok(capitalReport.capitalisedHours > 0 && capitalReport.capitalisedCost > 0);
+for (const projectId of new Set(capitalReport.lines.map((line) => line.projectId))) {
+  const project = seededProjects.find((row) => row.id === projectId);
+  assert.equal(project?.portfolio, 'capital', 'only capital projects may be capitalised');
+}
+assert.equal(capitalReport.byProject.length, 30, 'the pack lists capital projects only');
+assert.ok(capitalReport.byProject.every((row) => seededProjects.find((p) => p.id === row.projectId)?.portfolio === 'capital'));
+assert.ok(capitalReport.exclusions.some((line) => line.reason === 'operational_project'), 'operational projects must be excluded');
+assert.ok(capitalReport.exclusions.some((line) => line.reason === 'non_capitalisable_task'), 'non-capitalisable phases must be excluded');
+assert.equal(capitalReport.lines.length + capitalReport.exclusions.length, capitalReport.entriesCount, 'every entry is classified');
+assert.ok(capitalReport.byResource.every((row) => Math.abs(row.capitalHours + row.excludedHours - row.totalHours) < 0.11));
+assert.ok(capitalReport.capitalisedHours <= capitalReport.capitalHours, 'project rates cannot inflate effort');
+console.log('PASS: capitalisation pack excludes operational effort and reconciles every logged hour');
+
 const change = (name) => ({ ...initial, settings: { ...initial.settings, groupName: name } });
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
