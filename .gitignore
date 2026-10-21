@@ -34,3 +34,8 @@ coverage
 .vite
 .turbo
 *.tsbuildinfo
+
+# deployment metadata and private workspace exports
+.vercel
+backups/
+orbit-backup-*.json

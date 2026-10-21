@@ -376,6 +376,9 @@ export function Modal({
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/45 p-4 backdrop-blur-sm sm:p-8">
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         className={`animate-fade-up w-full ${width} overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl`}
       >
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">

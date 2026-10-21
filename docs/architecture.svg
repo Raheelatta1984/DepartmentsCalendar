@@ -1,162 +1,65 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 640" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" role="img" aria-label="Orbit production architecture">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 550" font-family="Segoe UI, Helvetica, Arial, sans-serif" role="img" aria-labelledby="title desc">
+  <title id="title">Orbit: Vercel and Neon pilot architecture</title>
+  <desc id="desc">Browsers use one HTTPS Vercel origin. Server-side Node functions authenticate a shared workspace password, validate state and write versioned snapshots to Neon PostgreSQL. Individual SSO, record-level permissions, real calendar sync and scheduled email are planned, not implemented.</desc>
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#f8fafc"/><stop offset="1" stop-color="#eef2ff"/>
-    </linearGradient>
-    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#5c87fb"/><stop offset="1" stop-color="#2339ab"/>
-    </linearGradient>
-    <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
-      <path d="M0,0 L0,6 L7,3 z" fill="#64748b"/>
-    </marker>
-    <marker id="arrowBrand" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
-      <path d="M0,0 L0,6 L7,3 z" fill="#3a63f0"/>
-    </marker>
-    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
-      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#0f172a" flood-opacity="0.10"/>
-    </filter>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#2563eb"/></marker>
     <style>
-      .t { font-size: 13px; fill: #0f172a; font-weight: 600; }
-      .s { font-size: 11px; fill: #64748b; }
-      .xs { font-size: 9.5px; fill: #94a3b8; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; }
-      .card { fill: #fff; stroke: #e2e8f0; stroke-width: 1.2; }
-      .pill { font-size: 10px; fill: #334155; }
-      .link { stroke: #94a3b8; stroke-width: 1.4; fill: none; }
-      .linkBrand { stroke: #3a63f0; stroke-width: 1.6; fill: none; }
+      .heading { font-size: 20px; font-weight: 600; fill: #0f172a; }
+      .title { font-size: 14px; font-weight: 600; fill: #0f172a; }
+      .body { font-size: 12px; fill: #475569; }
+      .label { font-size: 11px; font-weight: 600; fill: #2563eb; }
+      .card { fill: white; stroke: #cbd5e1; }
+      .future { fill: #f8fafc; stroke: #cbd5e1; stroke-dasharray: 5 4; }
     </style>
   </defs>
+  <rect width="1080" height="550" fill="#f1f5f9"/>
+  <text x="36" y="42" class="heading">Orbit — existing Vercel project + Neon Free</text>
+  <text x="36" y="65" class="body">Implemented shared pilot · account setup required · all password holders have full workspace access</text>
 
-  <rect width="1080" height="640" fill="url(#bg)"/>
-  <text x="40" y="46" class="t" style="font-size:20px">Orbit — production architecture (free-tier first)</text>
-  <text x="40" y="68" class="s">Static React portal · managed Postgres with row-level security · scheduled workers for calendar sync and escalation</text>
+  <rect x="36" y="108" width="245" height="206" rx="12" class="card"/>
+  <text x="56" y="138" class="label">ANY DEVICE / LOCATION</text>
+  <text x="56" y="166" class="title">Browser + React portal</text>
+  <text x="56" y="192" class="body">Calendar · activities · timesheets</text>
+  <text x="56" y="214" class="body">Roadmap · scores · master setup</text>
+  <text x="56" y="246" class="body">HttpOnly session cookie</text>
+  <text x="56" y="268" class="body">Persona preference stays local</text>
+  <text x="56" y="290" class="body">Unsaved changes: export + retry</text>
 
-  <!-- users -->
-  <g filter="url(#shadow)">
-    <rect x="40" y="96" width="250" height="86" rx="12" class="card"/>
-  </g>
-  <text x="58" y="120" class="xs">Users</text>
-  <text x="58" y="140" class="t">Employee → Supervisor → Head → COO → CEO</text>
-  <text x="58" y="158" class="s">Microsoft 365 / Google identity (SSO)</text>
-  <text x="58" y="173" class="s">Same URL, different scope per role</text>
+  <rect x="376" y="108" width="325" height="206" rx="12" class="card"/>
+  <text x="396" y="138" class="label">EXISTING VERCEL PROJECT</text>
+  <text x="396" y="166" class="title">GitHub main → SPA + Node API</text>
+  <text x="396" y="192" class="body">/api/config · /api/session · /api/workspace</text>
+  <text x="396" y="214" class="body">Password gate · schema validation</text>
+  <text x="396" y="246" class="body">Database credentials stay server-side</text>
+  <text x="396" y="268" class="body">Same-origin requests · no public SQL access</text>
+  <text x="396" y="290" class="body">No continuous polling or keep-alive cron</text>
 
-  <!-- SPA -->
-  <g filter="url(#shadow)">
-    <rect x="40" y="212" width="250" height="128" rx="12" class="card"/>
-    <rect x="40" y="212" width="6" height="128" rx="3" fill="url(#brand)"/>
-  </g>
-  <text x="60" y="236" class="xs">Front end</text>
-  <text x="60" y="256" class="t">React + Vite (this repo)</text>
-  <text x="60" y="275" class="s">Command centre · calendars · roadmap</text>
-  <text x="60" y="291" class="s">Timesheets · performance · master data</text>
-  <rect x="58" y="302" width="92" height="22" rx="11" fill="#eef4ff"/>
-  <text x="68" y="317" class="pill">Vercel / CF Pages</text>
-  <rect x="158" y="302" width="112" height="22" rx="11" fill="#eef4ff"/>
-  <text x="168" y="317" class="pill">$0 hosting</text>
+  <rect x="791" y="108" width="253" height="206" rx="12" class="card"/>
+  <text x="811" y="138" class="label">NEON FREE POSTGRESQL</text>
+  <text x="811" y="166" class="title">Single pilot workspace</text>
+  <text x="811" y="192" class="body">Versioned JSONB snapshot</text>
+  <text x="811" y="214" class="body">Persistent sign-in attempt limits</text>
+  <text x="811" y="246" class="body">Atomic revision checks</text>
+  <text x="811" y="268" class="body">Stale saves return HTTP 409</text>
+  <text x="811" y="290" class="body">3 MB API snapshot limit</text>
 
-  <!-- Supabase -->
-  <g filter="url(#shadow)">
-    <rect x="378" y="96" width="320" height="330" rx="14" class="card"/>
-  </g>
-  <rect x="386" y="104" width="304" height="40" rx="10" fill="#ecfdf5"/>
-  <text x="402" y="121" class="xs" style="fill:#047857">Data &amp; access · Supabase free tier</text>
-  <text x="402" y="136" class="s" style="fill:#065f46">Postgres · Auth · Row Level Security · Realtime</text>
+  <path d="M281 198 H370" stroke="#2563eb" stroke-width="1.7" marker-end="url(#arrow)"/>
+  <text x="298" y="185" class="label">HTTPS</text>
+  <path d="M701 198 H785" stroke="#2563eb" stroke-width="1.7" marker-end="url(#arrow)"/>
+  <text x="713" y="185" class="label">HTTPS SQL</text>
 
-  <rect x="398" y="158" width="280" height="52" rx="9" fill="#f8fafc" stroke="#e2e8f0"/>
-  <text x="412" y="177" class="t" style="font-size:12px">Master data</text>
-  <text x="412" y="195" class="s">entities · departments · employees · countries</text>
-
-  <rect x="398" y="218" width="280" height="52" rx="9" fill="#f8fafc" stroke="#e2e8f0"/>
-  <text x="412" y="237" class="t" style="font-size:12px">Work data</text>
-  <text x="412" y="255" class="s">activities · subtasks · time entries · holidays</text>
-
-  <rect x="398" y="278" width="280" height="52" rx="9" fill="#f8fafc" stroke="#e2e8f0"/>
-  <text x="412" y="297" class="t" style="font-size:12px">Governance</text>
-  <text x="412" y="315" class="s">escalations · audit log · score views</text>
-
-  <rect x="398" y="338" width="280" height="70" rx="9" fill="#eef4ff" stroke="#c7d7fe"/>
-  <text x="412" y="357" class="t" style="font-size:12px">Row Level Security</text>
-  <text x="412" y="373" class="s">reporting-tree + role scope enforced in SQL</text>
-  <text x="412" y="388" class="s">aggregates for executives, detail for managers</text>
-  <text x="412" y="402" class="s">append-only audit trail</text>
-
-  <!-- workers -->
-  <g filter="url(#shadow)">
-    <rect x="750" y="96" width="290" height="150" rx="12" class="card"/>
-    <rect x="750" y="96" width="6" height="150" rx="3" fill="#8b5cf6"/>
-  </g>
-  <text x="770" y="120" class="xs">Scheduled worker</text>
-  <text x="770" y="140" class="t">Supabase Edge Function / CF Worker</text>
-  <text x="770" y="159" class="s">1 · drain sync queue (every 2 min)</text>
-  <text x="770" y="175" class="s">2 · score departments (period close)</text>
-  <text x="770" y="191" class="s">3 · escalate + email (17:30 local)</text>
-  <text x="770" y="207" class="s">4 · refresh holiday horizon (annual)</text>
-  <rect x="770" y="218" width="120" height="20" rx="10" fill="#f5f3ff"/>
-  <text x="780" y="232" class="pill" style="fill:#6d28d9">retry + backoff</text>
-  <rect x="898" y="218" width="124" height="20" rx="10" fill="#f5f3ff"/>
-  <text x="908" y="232" class="pill" style="fill:#6d28d9">idempotent UID</text>
-
-  <!-- calendar providers -->
-  <g filter="url(#shadow)">
-    <rect x="750" y="290" width="290" height="86" rx="12" class="card"/>
-  </g>
-  <text x="770" y="314" class="xs">Calendar providers</text>
-  <rect x="770" y="324" width="120" height="30" rx="8" fill="#e8f1fb"/>
-  <text x="780" y="343" class="pill" style="fill:#0f6cbd">Outlook · Graph</text>
-  <rect x="900" y="324" width="124" height="30" rx="8" fill="#e8f0fe"/>
-  <text x="910" y="343" class="pill" style="fill:#1a73e8">Google Calendar</text>
-  <text x="770" y="370" class="s">delegated OAuth · refresh tokens in Vault</text>
-
-  <!-- email -->
-  <g filter="url(#shadow)">
-    <rect x="750" y="400" width="290" height="76" rx="12" class="card"/>
-  </g>
-  <text x="770" y="424" class="xs">Notifications</text>
-  <text x="770" y="444" class="t" style="font-size:12px">Department head (To) · COO (CC)</text>
-  <text x="770" y="462" class="s">Graph sendMail or Resend · digest + dedupe</text>
-
-  <!-- holiday source -->
-  <g filter="url(#shadow)">
-    <rect x="40" y="380" width="250" height="86" rx="12" class="card"/>
-    <rect x="40" y="380" width="6" height="86" rx="3" fill="#f59e0b"/>
-  </g>
-  <text x="60" y="404" class="xs">Reference feeds</text>
-  <text x="60" y="424" class="t" style="font-size:12px">Nager.Date / python-holidays</text>
-  <text x="60" y="442" class="s">12 countries seeded, 5-year horizon</text>
-  <text x="60" y="457" class="s">stored locally · manual overrides win</text>
-
-  <!-- exports -->
-  <g filter="url(#shadow)">
-    <rect x="40" y="496" width="250" height="86" rx="12" class="card"/>
-  </g>
-  <text x="60" y="520" class="xs">Day-one fallback</text>
-  <text x="60" y="540" class="t" style="font-size:12px">CSV · .ics subscription</text>
-  <text x="60" y="558" class="s">import into Outlook / Google / Excel</text>
-  <text x="60" y="573" class="s">works before OAuth approval</text>
-
-  <!-- links -->
-  <path class="link" d="M165 182 L165 212" marker-end="url(#arrow)"/>
-  <text x="174" y="201" class="xs" style="text-transform:none;letter-spacing:0;font-weight:500">HTTPS</text>
-
-  <path class="linkBrand" d="M290 250 L378 250" marker-end="url(#arrowBrand)"/>
-  <text x="300" y="242" class="s">REST / Realtime</text>
-  <text x="300" y="266" class="s">JWT + RLS</text>
-
-  <path class="linkBrand" d="M290 300 L378 330" marker-end="url(#arrowBrand)"/>
-
-  <path class="link" d="M698 260 L750 200" marker-end="url(#arrow)"/>
-  <text x="694" y="248" class="s" text-anchor="end">queue</text>
-
-  <path class="link" d="M895 246 L895 290" marker-end="url(#arrow)"/>
-  <path class="link" d="M895 376 L895 400" marker-end="url(#arrow)"/>
-
-  <path class="link" d="M698 340 L750 335" marker-end="url(#arrow)"/>
-  <text x="700" y="332" class="s">scores</text>
-
-  <path class="link" d="M290 420 L398 380" marker-end="url(#arrow)"/>
-  <path class="link" d="M290 540 L330 540 L330 470" stroke-dasharray="4 4"/>
-
-  <!-- footer -->
-  <text x="40" y="612" class="xs" style="text-transform:none;letter-spacing:0;font-weight:500;fill:#64748b">
-    Data flows one way from the portal into corporate calendars first; two-way pull is a phase-5 option using Graph/Google change notifications.
-  </text>
+  <text x="36" y="358" class="title">Planned — not live production features</text>
+  <rect x="36" y="378" width="318" height="91" rx="10" class="future"/>
+  <text x="54" y="405" class="title">Individual identity + permissions</text>
+  <text x="54" y="429" class="body">SSO · tenant isolation · server-side role checks</text>
+  <text x="54" y="449" class="body">Normalized records · immutable audit trail</text>
+  <rect x="381" y="378" width="318" height="91" rx="10" class="future"/>
+  <text x="399" y="405" class="title">Real calendar connectors</text>
+  <text x="399" y="429" class="body">Microsoft Graph / Google OAuth + durable queue</text>
+  <text x="399" y="449" class="body">Today: simulated connectors; real .ics export</text>
+  <rect x="726" y="378" width="318" height="91" rx="10" class="future"/>
+  <text x="744" y="405" class="title">Scheduled operations</text>
+  <text x="744" y="429" class="body">Escalation delivery · recovery · monitoring</text>
+  <text x="744" y="449" class="body">Today: scores + generated email text only</text>
+  <text x="36" y="514" class="body">See docs/DEPLOYMENT.md · free-tier quotas and Vercel Hobby eligibility apply · not suitable for sensitive staff data yet</text>
 </svg>

@@ -1,6 +1,7 @@
 -- ============================================================================
 -- Orbit — production schema for Supabase / PostgreSQL 15+
--- Run in the Supabase SQL editor, or: psql "$DATABASE_URL" -f docs/schema.sql
+-- LEGACY DESIGN REFERENCE ONLY: depends on Supabase auth.uid() / identity.
+-- Do not run this for the Neon deployment. Use docs/neon.sql (auto-initialized).
 -- The demo app in this repository uses the same shapes in src/types.ts.
 -- ============================================================================
 

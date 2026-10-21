@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'http://localhost:5173/#/dashboard', pretendToBeVisual: true });
 global.window = dom.window;
@@ -30,6 +31,7 @@ await new Promise((r) => setTimeout(r, 2500));
 const text = document.body.textContent || '';
 console.log('--- rendered length:', text.length);
 console.log('--- has dashboard:', text.includes('Meridian Group Holdings'));
+assert.ok(text.includes('Meridian Group Holdings'), 'dashboard must render');
 console.log('--- body sample:', text.slice(0, 400).replace(/\s+/g, ' '));
 for (const v of ['calendar','activities','roadmap','timesheet','performance','integrations','admin']) {
   window.location.hash = '#/' + v;
@@ -37,6 +39,7 @@ for (const v of ['calendar','activities','roadmap','timesheet','performance','in
   await new Promise((r) => setTimeout(r, 900));
   const t = document.body.textContent || '';
   const h1 = document.querySelector('h1')?.textContent;
+  assert.ok(h1 && t.length > 500, `view ${v} must render its heading and content`);
   const rows = document.querySelectorAll('tbody tr').length;
   const tables = document.querySelectorAll('table').length;
   console.log(`--- view ${v}: length ${t.length} h1=${h1} tables=${tables} rows=${rows}`);
@@ -45,3 +48,8 @@ const stored = localStorage.getItem('orbit.portal.state.v1');
 console.log('--- stored bytes:', stored ? stored.length : 0);
 console.log('--- errors:', errors.length);
 errors.slice(0, 12).forEach((e) => console.log('  ERR:', e.slice(0, 500)));
+
+assert.equal(errors.length, 0, 'all screens must render without console/window errors');
+assert.ok(stored && JSON.parse(stored).employees.length > 0, 'local demo must persist');
+root.unmount();
+dom.window.close();

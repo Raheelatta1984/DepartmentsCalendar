@@ -16,6 +16,7 @@ import { PerformancePage } from './pages/PerformancePage';
 import { IntegrationsPage } from './pages/IntegrationsPage';
 import { AdminPage } from './pages/AdminPage';
 import { TypeIcon } from './components/activity-ui';
+import { WorkspaceStatus } from './components/WorkspaceStatus';
 
 const VIEWS: ViewKey[] = ['dashboard', 'calendar', 'activities', 'roadmap', 'timesheet', 'performance', 'integrations', 'admin'];
 
@@ -25,7 +26,7 @@ function viewFromHash(): ViewKey {
 }
 
 export function App() {
-  const { state, scope, upsertActivity } = useStore();
+  const { state, scope, upsertActivity, workspace } = useStore();
   const [view, setView] = useState<ViewKey>(viewFromHash);
   const [filters, setFiltersState] = useState<AppFilters>({
     departmentId: 'all',
@@ -101,7 +102,7 @@ export function App() {
   }, [paletteQuery, state.employees, state.activities, scope.visibleEmployeeIds, scope.visibleDepartmentIds]);
 
   return (
-    <div className="min-h-screen bg-slate-100/70">
+    <div className="min-h-screen bg-slate-100/70" inert={workspace.status === 'refreshing'}>
       <Sidebar view={view} onNavigate={navigate} mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} />
       <div className="lg:pl-[248px]">
         <Topbar
@@ -112,6 +113,7 @@ export function App() {
           onGlobalSearch={() => setPaletteOpen(true)}
         />
         <main className="mx-auto max-w-[1560px] px-3 py-4 sm:px-5 sm:py-5">
+          <WorkspaceStatus />
           <div key={view} className="animate-fade-up">
             {view === 'dashboard' ? (
               <Dashboard
@@ -147,7 +149,7 @@ export function App() {
               {state.departments.length} departments · {state.employees.length} people
             </span>
             <span className="flex items-center gap-1">
-              <Command className="h-3 w-3" /> K to search · demo data stored locally in your browser
+              <Command className="h-3 w-3" /> K to search · {workspace.mode === 'shared' ? 'shared data stored in Neon' : 'demo data stored locally in your browser'}
             </span>
           </footer>
         </main>
