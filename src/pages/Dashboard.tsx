@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowDownRight,
@@ -16,6 +16,7 @@ import {
   Mail,
   Plus,
   RefreshCw,
+  Building2,
   Timer,
   TrendingUp,
   Users,
@@ -41,6 +42,11 @@ import { Avatar, Badge, Button, Card, EmptyState, PageHeader, Progress, SectionH
 import { BarList, Donut, LineChart, ScoreRing, Sparkline } from '../components/charts';
 import { ActivityLine, TYPE_COLORS, TypeIcon } from '../components/activity-ui';
 import { useToast } from '../components/toast';
+import {
+  departmentsInEntityScope,
+  entityScopeLabel,
+  scopeEntityOptions,
+} from '../lib/entities';
 
 export function Dashboard({
   filters,
@@ -66,10 +72,37 @@ export function Dashboard({
   const range = useMemo(() => periodRange(anchor, filters.period, state.settings.weekStartsOn), [anchor, filters.period, state.settings.weekStartsOn]);
   const rangeISO = { start: toISO(range.start), end: toISO(range.end) };
 
-  const scopedDepartments = useMemo(
-    () => scope.visibleDepartments.filter((d) => filters.departmentId === 'all' || d.id === filters.departmentId),
-    [scope.visibleDepartments, filters.departmentId],
+  /* ---- Entity focus -------------------------------------------------
+     The command centre reads one legal entity at a time. The selection
+     covers the entity plus every company beneath it, and it never widens
+     the permission scope: role visibility is applied first. */
+  const entityOptions = useMemo(
+    () => scopeEntityOptions(state.entities, scope.visibleDepartments),
+    [state.entities, scope.visibleDepartments],
   );
+  const selectedEntityId = filters.entityId ?? 'all';
+  const selectedEntity = useMemo(
+    () => state.entities.find((entity) => entity.id === selectedEntityId) ?? null,
+    [state.entities, selectedEntityId],
+  );
+  const entityScopeName = entityScopeLabel(state.entities, selectedEntityId);
+
+  const entityDepartments = useMemo(
+    () => departmentsInEntityScope(state.entities, scope.visibleDepartments, selectedEntityId),
+    [state.entities, scope.visibleDepartments, selectedEntityId],
+  );
+  const scopedDepartments = useMemo(
+    () => entityDepartments.filter((d) => filters.departmentId === 'all' || d.id === filters.departmentId),
+    [entityDepartments, filters.departmentId],
+  );
+
+  /* A department carried over from another entity must not silently empty
+     the board — reset that one filter, never the entity the user chose. */
+  useEffect(() => {
+    if (filters.departmentId === 'all') return;
+    if (entityDepartments.some((d) => d.id === filters.departmentId)) return;
+    setFilters({ departmentId: 'all' });
+  }, [entityDepartments, filters.departmentId, setFilters]);
   const deptIds = scopedDepartments.map((d) => d.id);
   const scopedEmployees = useMemo(
     () => state.employees.filter((e) => deptIds.includes(e.departmentId) && e.status !== 'inactive'),
@@ -112,9 +145,17 @@ export function Dashboard({
   const empMap = useMemo(() => new Map(state.employees.map((e) => [e.id, e])), [state.employees]);
   const entityMap = useMemo(() => new Map(state.entities.map((e) => [e.id, e])), [state.entities]);
 
-  const outlook = state.connections.filter((c) => c.provider === 'outlook' && c.status === 'connected').length;
-  const google = state.connections.filter((c) => c.provider === 'google' && c.status === 'connected').length;
-  const failedSyncs = state.syncJobs.filter((j) => j.status === 'failed').length;
+  /* Connector health follows the same entity focus as every other card. */
+  const scopedEmployeeIds = useMemo(() => new Set(scopedEmployees.map((e) => e.id)), [scopedEmployees]);
+  const outlook = state.connections.filter(
+    (c) => c.provider === 'outlook' && c.status === 'connected' && scopedEmployeeIds.has(c.employeeId),
+  ).length;
+  const google = state.connections.filter(
+    (c) => c.provider === 'google' && c.status === 'connected' && scopedEmployeeIds.has(c.employeeId),
+  ).length;
+  const failedSyncs = state.syncJobs.filter(
+    (j) => j.status === 'failed' && deptIds.includes(state.activities.find((a) => a.id === j.activityId)?.departmentId ?? ''),
+  ).length;
 
   const raiseEscalation = (department: Department) => {
     const score = departmentScore(state, department, filters.period, anchor);
@@ -154,8 +195,12 @@ export function Dashboard({
     <div>
       <PageHeader
         eyebrow="Command centre"
-        title={`${state.settings.groupName} activity overview`}
-        description="Collective workload, delivery performance and schedule flow for every department you are responsible for — from the shop floor to the CEO."
+        title={selectedEntity ? `${selectedEntity.name} overview` : `${state.settings.groupName} activity overview`}
+        description={
+          selectedEntity
+            ? `Workload, delivery performance and schedule flow for ${selectedEntity.name} and its companies only — ${scope.visibleDepartments.length} departments are visible to your role, ${entityDepartments.length} sit in this entity.`
+            : 'Collective workload, delivery performance and schedule flow for every department you are responsible for — from the shop floor to the CEO.'
+        }
         actions={
           <>
             <Button size="sm" onClick={() => setFilters({ anchor: today, period: 'week' })}>
@@ -172,6 +217,7 @@ export function Dashboard({
       <Card className="mb-4 !py-3">
         <div className="flex flex-wrap items-center gap-2">
           <Tabs<PeriodKey>
+            guideSkip
             tabs={[
               { id: 'day', label: 'Daily' },
               { id: 'week', label: 'Weekly' },
@@ -199,15 +245,40 @@ export function Dashboard({
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
+          <div className="min-w-[230px]">
+            <Select
+              aria-label="Entity"
+              title="Focus the command centre on one legal entity"
+              value={selectedEntityId}
+              onChange={(e) => setFilters({ entityId: e.target.value, departmentId: 'all', employeeId: 'all' })}
+            >
+              <option value="all">All entities in my scope</option>
+              {entityOptions.map(({ entity, depth }) => (
+                <option key={entity.id} value={entity.id}>
+                  {`${'\u00a0\u00a0'.repeat(depth)}${depth ? '↳ ' : ''}${entity.name} · ${entity.code}`}
+                </option>
+              ))}
+            </Select>
+          </div>
           <div className="min-w-[190px]">
-            <Select value={filters.departmentId} onChange={(e) => setFilters({ departmentId: e.target.value, employeeId: 'all' })}>
-              <option value="all">All departments in my scope</option>
-              {scope.visibleDepartments.map((d) => (
+            <Select
+              aria-label="Department"
+              value={filters.departmentId}
+              onChange={(e) => setFilters({ departmentId: e.target.value, employeeId: 'all' })}
+            >
+              <option value="all">{selectedEntity ? `All departments in ${selectedEntity.code}` : 'All departments in my scope'}</option>
+              {entityDepartments.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name}
                 </option>
               ))}
             </Select>
+          </div>
+          <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-500">
+            <Building2 className="h-3 w-3 text-slate-400" />
+            <span className="font-medium text-slate-700">{selectedEntity ? selectedEntity.code : 'Group'}</span>
+            <span className="text-slate-300">·</span>
+            <span>{entityDepartments.length} departments</span>
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
             <span className="flex items-center gap-1">
@@ -217,6 +288,8 @@ export function Dashboard({
             <span className="flex items-center gap-1">
               <Layers className="h-3 w-3" /> {scopedDepartments.length} departments
             </span>
+            <span className="text-slate-300">·</span>
+            <span className="max-w-[160px] truncate">{entityScopeName}</span>
             <span className="text-slate-300">·</span>
             <span>
               {rangeISO.start} → {rangeISO.end}
@@ -261,7 +334,7 @@ export function Dashboard({
         />
         <StatCard
           label="Escalations open"
-          value={state.escalations.filter((e) => e.status === 'open' && scope.visibleDepartmentIds.includes(e.departmentId)).length}
+          value={state.escalations.filter((e) => e.status === 'open' && deptIds.includes(e.departmentId)).length}
           hint={`${summary.overdueActivities} overdue activities · ${overloaded.length} people over capacity`}
           icon={<BellRing className="h-4 w-4" />}
           tone="danger"
@@ -448,7 +521,10 @@ export function Dashboard({
           </div>
           {deptScores.length === 0 ? (
             <div className="p-4">
-              <EmptyState title="No departments in scope" description="Switch persona or pick a different department filter." />
+              <EmptyState
+                title="No departments in this entity"
+                description="This entity holds no department your role can see. Pick another entity, or switch persona to widen the scope."
+              />
             </div>
           ) : null}
         </Card>
@@ -561,7 +637,7 @@ export function Dashboard({
         <Card className="xl:col-span-2" padded={false}>
           <div className="px-4 pt-4">
             <SectionHeader
-              title="Today across the group"
+              title={`Today across ${entityScopeName}`}
               subtitle={`${todaysActivities.length} activities · ${humanHours(todaysActivities.reduce((a, b) => a + b.plannedHours, 0))} planned on ${prettyDate(today)}`}
               action={
                 <div className="flex gap-1.5">

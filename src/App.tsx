@@ -34,7 +34,16 @@ function viewFromHash(): ViewKey {
 export function App() {
   const { state, scope, upsertActivity, workspace } = useStore();
   const [view, setView] = useState<ViewKey>(viewFromHash);
+
+  /* The dashboard opens on the person's own legal entity — the one their
+     own department sits in, so the first screen is never empty. */
+  const homeEntityId = useMemo(() => {
+    const ownDepartment = state.departments.find((department) => department.id === scope.user.departmentId);
+    return ownDepartment?.entityId ?? scope.user.entityId ?? 'all';
+  }, [state.departments, scope.user.departmentId, scope.user.entityId]);
+
   const [filters, setFiltersState] = useState<AppFilters>({
+    entityId: homeEntityId,
     departmentId: 'all',
     employeeId: 'all',
     period: 'week',
@@ -75,6 +84,16 @@ export function App() {
   const setFilters = useCallback((patch: Partial<AppFilters>) => {
     setFiltersState((prev) => ({ ...prev, ...patch }));
   }, []);
+
+  /* Persona switching re-anchors the dashboard on that person's entity:
+     another company's figures must never leak into their command centre. */
+  useEffect(() => {
+    setFiltersState((prev) =>
+      prev.entityId === homeEntityId && prev.departmentId === 'all'
+        ? prev
+        : { ...prev, entityId: homeEntityId, departmentId: 'all' },
+    );
+  }, [scope.user.id, homeEntityId]);
 
   const openActivity = useCallback((id: string) => {
     setEditingActivityId(id);
@@ -298,7 +317,7 @@ export function App() {
         </div>
       </Modal>
 
-      <AiGuide view={view} />
+      <AiGuide view={view} filters={filters} />
     </div>
   );
 }

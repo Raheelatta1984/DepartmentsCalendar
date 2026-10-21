@@ -356,6 +356,8 @@ export interface EmployeeScore {
 }
 
 export interface AppFilters {
+  /** 'all' or an entity id — the dashboard focuses on that entity and its companies. */
+  entityId: string;
   departmentId: string;
   employeeId: string;
   period: PeriodKey;

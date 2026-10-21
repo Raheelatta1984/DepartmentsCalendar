@@ -6,6 +6,21 @@ const updates = [
   {
     label: 'Just added',
     date: 'October 2026',
+    title: 'A guide that reads like a note, and a dashboard that stays on one entity',
+    description:
+      'The AI guide is now a taped sticky note: a GUIDE badge, a one-line promise, the prose that explains the screen, a short numbered “Do this” list, one “Watch” caution and a collapsible Live context block built from the figures on screen. The command centre also gained an entity picker, so every card, score, queue and the day board read one legal entity and its companies at a time — all entities in scope is still one click away.',
+    icon: <Sparkles className="h-4 w-4" />,
+    tone: 'brand' as const,
+    bullets: [
+      'Sticky-note guide with Do this, Watch and Live context',
+      'Live context computed from the same snapshot as the screen',
+      'Entity picker scopes the whole command centre',
+      'Entity focus narrows role scope — it never widens it',
+    ],
+  },
+  {
+    label: 'Earlier',
+    date: 'October 2026',
     title: 'AI guide and entity-scoped profile selection',
     description:
       'A contextual AI guide sticky note now follows you across every tab, section and sub-section, auto-adjusting its width and height to the content, with an enable/disable toggle in the note and the top bar. Profile switching now flows through group of company → entity, so only the selected company’s employees are listed.',

@@ -11,8 +11,16 @@ import type { ViewKey } from '../types';
 
 export interface GuideEntry {
   title: string;
+  /** Italic promise line printed under the title, like a sticky-note subtitle. */
+  subtitle?: string;
+  /** The prose explanation — what this screen is and why it exists. */
   blurb: string;
+  /** “Do this” steps, printed as a numbered list. */
   tips: string[];
+  /** “Watch” caution, printed in the sticky note’s warning tone. */
+  watch?: string;
+  /** Notes shown under the collapsible “Live context” disclosure. */
+  context?: string[];
 }
 
 export interface GuideRule {
@@ -94,13 +102,20 @@ const grainSubTabs = (label: string): GuideRule[] => [
 export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
   dashboard: {
     title: 'Command centre',
+    subtitle: 'The whole book on one screen, computed live',
     blurb:
-      'Live group workload and performance. Every score uses hours actually logged in timesheets against country-aware capacity — never planned hours.',
+      'One tenant, several legal entities: pick an entity in the filter bar and every card below — score, workload, trend, queues and the day board — re-reads the same period for that entity alone. Nothing here is a seeded string.',
     tips: [
-      'Switch the period grain (daily → annual) to compare the same formula at different horizons.',
-      'Score = 40% utilization score + 35% on-time rate + 25% completion rate.',
-      'Attention queue lists departments under the 70-point threshold (editable in Master setup).',
-      'All cards respect your role scope — a department head sees only their own units.',
+      'Read the entity picker first: all entities in your scope, a group of companies, a company, or one of its subsidiaries.',
+      'Check the score card: logged effort must reconcile with country-aware capacity before you judge a delivery score.',
+      'Press a department row, an escalation or an activity to walk into its calendar, register and performance page.',
+    ],
+    watch:
+      'A figure that looks wrong here is wrong everywhere: it is the same snapshot every other screen reads.',
+    context: [
+      'Entity focus follows your role: a department head only ever sees their own units.',
+      'Scores use logged timesheet hours, never planned hours.',
+      'The attention queue uses the performance threshold set in Master setup.',
     ],
     sections: [
       {
@@ -213,6 +228,7 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
 
   calendar: {
     title: 'Department calendar',
+    subtitle: 'Every entity, department, person and holiday on one timeline',
     blurb:
       'Month, team-week swimlanes and day views for every department and person, with country-aware shading for weekends and public holidays.',
     tips: [
@@ -220,6 +236,12 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
       'The employee picker reviews one person’s calendar the way their manager would.',
       'Every activity can push to Outlook and Google, or export as .ics.',
       'Holiday shading means deadlines on non-working days are visible immediately.',
+    ],
+    watch:
+      'A deadline sitting on a shaded day is already slipping — the shading is country-aware, not cosmetic.',
+    context: [
+      'Weekends come from each country’s own rules, not a global setting.',
+      'Holiday shading and capacity use the same holiday calendar.',
     ],
     sections: [
       {
@@ -298,6 +320,7 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
 
   activities: {
     title: 'Activity register',
+    subtitle: 'The register every other screen reads from',
     blurb:
       'Every task, follow-up, appointment, meeting, seminar, session, training, audit and site visit — with subtasks, priority, status, progress and calendar sync.',
     tips: [
@@ -305,6 +328,12 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
       'Planned vs logged hours per row is the early-warning signal for slippage.',
       'Sync toggles push create/update/delete to connected Outlook or Google calendars.',
       'Export CSV for audit trails or .ics to mirror the register outside the portal.',
+    ],
+    watch:
+      'Only logged time counts: a task marked complete with no timesheet still scores zero.',
+    context: [
+      'Subtasks carry their own planned hours for finer tracking.',
+      'Export CSV for audit trails, .ics to mirror the register outside the portal.',
     ],
     sections: [
       {
@@ -353,6 +382,7 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
 
   roadmap: {
     title: 'Roadmap timeline',
+    subtitle: 'Hierarchy on the left, time across the top',
     blurb:
       'Departments, employees, activities and subtasks on the left; year, quarter, month, ISO week, day and date across the top — with holiday shading.',
     tips: [
@@ -360,6 +390,12 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
       'Holiday and weekend shading prevents false slippage signals.',
       'Change the horizon (13 / 26 / 52 weeks) to match the planning cycle.',
       'Export CSV or .ics to share the roadmap outside the portal.',
+    ],
+    watch:
+      'Collapsed rows hide real dates — expand before promising a delivery date.',
+    context: [
+      'The horizon is 13, 26 or 52 weeks — the same activity dates throughout.',
+      'Today is marked so replanning conversations share one anchor.',
     ],
     sections: [
       {
@@ -405,6 +441,7 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
 
   timesheet: {
     title: 'Timesheets',
+    subtitle: 'Logged effort — never planned effort — moves every score',
     blurb:
       'Daily effort by activity. Workload, utilization, performance scores and the capitalisation pack all read from these entries — planned hours never count.',
     tips: [
@@ -412,6 +449,12 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
       'Entries taking a person above daily capacity are highlighted in rose.',
       'Approvals are role-gated: supervisors and above approve their scope.',
       'Plan vs actual compares planned hours with what was really logged.',
+    ],
+    watch:
+      'An unapproved entry still counts toward utilization; approval is governance, not measurement.',
+    context: [
+      'Capacity per day = contracted weekly hours ÷ 5, minus that person’s public holidays.',
+      'Billable flags feed client and capitalisation reporting downstream.',
     ],
     sections: [
       {
@@ -490,6 +533,7 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
 
   projects: {
     title: 'IT projects & capex',
+    subtitle: 'Board-funded capital work and operational run work, side by side',
     blurb:
       'Board-funded capital projects and operational run work in one portfolio, with tasks that resources log daily effort against.',
     tips: [
@@ -497,6 +541,12 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
       'Each capital project carries its own capitalisation rate and window.',
       'Project tasks are real activities on the calendar and timesheet.',
       'Filter by entity, portfolio, category, stage or status.',
+    ],
+    watch:
+      'Operational projects never capitalise, whatever stage they reach.',
+    context: [
+      'Capitalisation rates and windows are set per project, not per department.',
+      'Budgets are held in the entity’s local currency.',
     ],
     sections: [
       {
@@ -529,6 +579,7 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
 
   capitalisation: {
     title: 'Capitalisation pack',
+    subtitle: 'Eligible development effort, reconciled to the last logged hour',
     blurb:
       'AASB 138 eligible development effort converted to fully-loaded cost, reconciled to every logged hour, with monthly board approval and an evidence trail.',
     tips: [
@@ -536,6 +587,12 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
       'Capitalisation rate % = capitalisable capital-project hours ÷ all logged IT hours.',
       'Non-capital effort stays in Timesheets and Performance — it never appears here.',
       'Approver: Board Audit & Risk Committee on recommendation of the CIO and CFO.',
+    ],
+    watch:
+      'Discovery, support and training are never capitalised — there is no override.',
+    context: [
+      'Approver: Board Audit & Risk Committee, on recommendation of the CIO and CFO.',
+      'Capitalised, excluded and BAU effort must reconcile to every logged IT hour.',
     ],
     sections: [
       {
@@ -611,6 +668,7 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
 
   performance: {
     title: 'Performance & escalation',
+    subtitle: 'One formula, at every grain, for every person',
     blurb:
       'The identical score formula at every grain, 8-period trends, capacity pressure, per-person scorecards and the escalation log with To/CC recipients.',
     tips: [
@@ -618,6 +676,12 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
       'Utilization score = 100 − |utilization − 85| × 1.3, clamped 0–100 — idle and overload both hurt.',
       'Drill into a department to score each person with the same math.',
       'Escalations: department head (To), Head of Operations (CC).',
+    ],
+    watch:
+      'High hours with a falling score is rework, not effort.',
+    context: [
+      'Escalations go to the department head, with the Head of Operations copied.',
+      'Utilization score = 100 − |utilization − 85| × 1.3, clamped 0–100: idle and overload both hurt.',
     ],
     sections: [
       {
@@ -681,6 +745,7 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
 
   integrations: {
     title: 'Calendar sync',
+    subtitle: 'Outlook and Google, without ever blocking the calendar',
     blurb:
       'Outlook (Microsoft Graph) and Google Calendar connectors: connections per mailbox, idempotent writes, sync policy and troubleshooting.',
     tips: [
@@ -688,6 +753,12 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
       '.ics export works with zero API setup and imports anywhere.',
       'Real OAuth delivery is a separate phase — see the production checklist.',
       'Per-activity sync toggles control what is pushed where.',
+    ],
+    watch:
+      'A failed sync never blocks calendar work — .ics export is the universal fallback.',
+    context: [
+      'Two-way sync is per mailbox; the portal stays the source of truth.',
+      'Connector health is shown for the entities your role can see.',
     ],
     sections: [
       {
@@ -775,6 +846,7 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
 
   admin: {
     title: 'Master setup',
+    subtitle: 'The master data behind every number you see',
     blurb:
       'Entities, departments, people, holiday calendars, group settings and the audit trail — the masters every calculation in the portal reads.',
     tips: [
@@ -782,6 +854,12 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
       'Departments need an accountable head and an ops owner for escalation routing.',
       'Holiday generation covers a multi-year horizon across 12 countries.',
       'Every master change writes an audit entry.',
+    ],
+    watch:
+      'An entity cannot be deleted while departments still point at it.',
+    context: [
+      'Holiday generation is idempotent — re-running it only fills missing years.',
+      'Profiles are scoped per entity, so people are listed company by company.',
     ],
     sections: [
       {
@@ -956,10 +1034,16 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
 
   'whats-new': {
     title: 'What’s new',
+    subtitle: 'What changed, and what it means for you',
     blurb: 'Release highlights and recent improvements, kept separate from day-to-day calendar work.',
     tips: [
       'Scan here after each update to find capabilities you have not used yet.',
       'Theme Studio and the capitalisation workflow started life as entries on this page.',
+    ],
+    watch:
+      'Release notes describe intent; the engine’s own figures remain the source of truth.',
+    context: [
+      'Entries stay here after release so nothing gets lost between updates.',
     ],
     sections: [
       {
@@ -976,12 +1060,19 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
 
   'theme-studio': {
     title: 'Theme Studio',
+    subtitle: 'One entity’s identity, previewed before it is applied',
     blurb:
       'Per-entity brand identity: logo, header and footer, accent and background colours, body and heading fonts — with a live preview before you apply.',
     tips: [
       'Every entity can carry its own look — switch entities to compare.',
       'Generate a concept first, then fine-tune any value by hand.',
       'Apply writes the theme to the selected entity only.',
+    ],
+    watch:
+      'Apply writes to the selected entity only — the preview is not a saved draft.',
+    context: [
+      'No entity data leaves the browser: generation runs locally.',
+      'Colour and typography changes are reversible from the same screen.',
     ],
     sections: [
       {

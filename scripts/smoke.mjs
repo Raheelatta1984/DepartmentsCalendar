@@ -44,6 +44,26 @@ for (const v of ['calendar','activities','roadmap','timesheet','projects','capit
   const tables = document.querySelectorAll('table').length;
   console.log(`--- view ${v}: length ${t.length} h1=${h1} tables=${tables} rows=${rows}`);
 }
+/* The command centre opens on the signed-in person's own entity, and the
+   sticky note keeps the guide shape: Do this, Watch, Live context. */
+const note = document.querySelector('[aria-label="AI guide"]');
+assert.ok(note, 'the AI guide sticky note must render');
+const noteText = (note.textContent || '').replace(/\s+/g, ' ');
+assert.ok(noteText.includes('Guide'), 'the note carries the GUIDE badge');
+assert.ok(noteText.includes('Do this:'), 'the note lists numbered Do this steps');
+assert.ok(noteText.includes('Watch:'), 'the note keeps its Watch caution');
+assert.ok(/Live context \(\d+\)/.test(noteText), 'the note exposes a Live context disclosure');
+assert.ok(noteText.includes('guidance, not advice'), 'the note keeps its provenance line');
+
+window.location.hash = '#/dashboard';
+window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'));
+await new Promise((r) => setTimeout(r, 600));
+const entityPicker = document.querySelector('select[aria-label="Entity"]');
+assert.ok(entityPicker, 'the command centre exposes an entity picker');
+assert.ok(entityPicker.value && entityPicker.value !== 'all', 'the command centre opens on the person’s own entity');
+assert.ok(document.querySelector('select[aria-label="Department"]'), 'the department filter stays available inside the entity');
+console.log('--- entity picker default:', entityPicker.value, 'options:', entityPicker.options.length);
+
 const stored = localStorage.getItem('orbit.portal.state.v1');
 console.log('--- stored bytes:', stored ? stored.length : 0);
 console.log('--- errors:', errors.length);
