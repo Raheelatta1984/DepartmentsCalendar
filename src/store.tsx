@@ -17,6 +17,8 @@ import type {
 import { createSeedState } from './data/seed';
 import { buildHolidayDataset } from './data/countries';
 import { getScope, type Scope } from './lib/permissions';
+import { fromSharedState, rememberPersona } from './lib/workspace-api';
+import { useWorkspacePersistence, type SharedConnection, type WorkspacePersistence } from './lib/useWorkspacePersistence';
 
 const STORAGE_KEY = 'orbit.portal.state.v1';
 
@@ -38,6 +40,7 @@ const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2,
 
 interface StoreContextValue {
   state: StoreState;
+  workspace: WorkspacePersistence;
   scope: Scope;
   save: (next: StoreState | ((prev: StoreState) => StoreState), audit?: Omit<AuditEntry, 'id' | 'at' | 'actorId'>) => void;
   setActiveUser: (id: string) => void;
@@ -69,11 +72,18 @@ interface StoreContextValue {
 
 const StoreContext = createContext<StoreContextValue | null>(null);
 
-export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<StoreState>(loadState);
+export function StoreProvider({ children, shared }: { children: React.ReactNode; shared?: SharedConnection }) {
+  const [state, setState] = useState<StoreState>(() => shared ? fromSharedState(shared.snapshot.state) : loadState());
+  const workspace = useWorkspacePersistence(state, setState, shared);
   const writeTimer = useRef<number | null>(null);
 
   useEffect(() => {
+    if (shared) {
+      // Shared company data is never cached in localStorage. Only this device's
+      // persona preference is local; it cannot change anyone else's view.
+      rememberPersona(state.settings.activeUserId);
+      return;
+    }
     if (writeTimer.current) window.clearTimeout(writeTimer.current);
     writeTimer.current = window.setTimeout(() => {
       try {
@@ -85,7 +95,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return () => {
       if (writeTimer.current) window.clearTimeout(writeTimer.current);
     };
-  }, [state]);
+  }, [state, shared]);
 
   const scope = useMemo(() => getScope(state, state.settings.activeUserId), [state]);
 
@@ -135,6 +145,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<StoreContextValue>(() => {
     return {
       state,
+      workspace,
       scope,
       save,
       setActiveUser: (id) => save((prev) => ({ ...prev, settings: { ...prev.settings, activeUserId: id } })),
@@ -380,11 +391,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           ),
         })),
       resetDemo: () => {
+        if (shared) return; // never replace the shared database with demo data
         localStorage.removeItem(STORAGE_KEY);
         setState(createSeedState());
       },
     };
-  }, [state, scope, save, queueSync]);
+  }, [state, scope, save, queueSync, workspace, shared]);
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

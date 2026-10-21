@@ -31,7 +31,7 @@ const ROLE_OPTIONS = Object.keys(ROLE_LABELS) as Role[];
 const COLORS = ['#3b82f6', '#f59e0b', '#8b5cf6', '#10b981', '#ef4444', '#06b6d4', '#ec4899', '#eab308', '#6366f1', '#14b8a6', '#f97316', '#84cc16'];
 
 export function AdminPage() {
-  const { state, scope, save, upsertEntity, deleteEntity, upsertDepartment, deleteDepartment, upsertEmployee, deleteEmployee, addHoliday, deleteHoliday, generateHolidays, updateSettings, resetDemo } = useStore();
+  const { state, scope, save, upsertEntity, deleteEntity, upsertDepartment, deleteDepartment, upsertEmployee, deleteEmployee, addHoliday, deleteHoliday, generateHolidays, updateSettings, resetDemo, workspace } = useStore();
   const toast = useToast();
   const [tab, setTab] = useState<Tab>('entities');
   const [entityDraft, setEntityDraft] = useState<Entity | null>(null);
@@ -89,7 +89,7 @@ export function AdminPage() {
                 a.download = `orbit-backup-${toISO(new Date())}.json`;
                 a.click();
                 URL.revokeObjectURL(url);
-                toast.push({ tone: 'success', title: 'Backup exported', description: 'Full workspace JSON — restore by replacing the Supabase seed.' });
+                toast.push({ tone: 'success', title: 'Backup exported', description: 'Full workspace JSON. Keep this backup private; see docs/DEPLOYMENT.md for restore instructions.' });
               }}
             >
               <Download className="h-3.5 w-3.5" /> Export backup
@@ -662,7 +662,7 @@ score            = 40% utilizationScore + 35% onTimeRate + 25% completionRate`}<
 
           <div className="space-y-3">
             <Card>
-              <SectionHeader title="Workspace" subtitle="Local demo storage" />
+              <SectionHeader title="Workspace" subtitle={workspace.mode === 'shared' ? 'Shared Neon database' : 'Local demo storage'} />
               <div className="mt-2 space-y-1.5 text-[11px] text-slate-600">
                 <Row label="Entities" value={state.entities.length} />
                 <Row label="Departments" value={state.departments.length} />
@@ -674,7 +674,7 @@ score            = 40% utilizationScore + 35% onTimeRate + 25% completionRate`}<
                 <Row label="Audit records" value={state.auditLog.length} />
               </div>
             </Card>
-            <Card className="border-rose-200">
+            {workspace.mode === 'demo' ? <Card className="border-rose-200">
               <SectionHeader title="Danger zone" subtitle="Demo data lives in this browser only" />
               <p className="mt-2 text-[10px] leading-relaxed text-slate-500">
                 Reset restores the seeded Meridian Group portfolio. In production this action maps to a schema reset and is restricted to the
@@ -693,7 +693,7 @@ score            = 40% utilizationScore + 35% onTimeRate + 25% completionRate`}<
               >
                 <RefreshCw className="h-3.5 w-3.5" /> Reset demo data
               </Button>
-            </Card>
+            </Card> : null}
           </div>
         </div>
       ) : null}

@@ -154,7 +154,7 @@ export function Topbar({
   onToggleMobile: () => void;
   onGlobalSearch: () => void;
 }) {
-  const { state, scope, setActiveUser, resetDemo } = useStore();
+  const { state, scope, setActiveUser, resetDemo, workspace } = useStore();
   const [userMenu, setUserMenu] = useState(false);
   const [notifMenu, setNotifMenu] = useState(false);
   const active = NAV_ITEMS.find((i) => i.id === view);
@@ -295,7 +295,7 @@ export function Topbar({
                     );
                   })}
                 </div>
-                <div className="border-t border-slate-100 p-2">
+                {workspace.mode === 'demo' ? <div className="border-t border-slate-100 p-2">
                   <button
                     onClick={() => {
                       if (confirm('Reset all demo data to the seeded state? Local edits will be lost.')) {
@@ -307,7 +307,7 @@ export function Topbar({
                   >
                     <RefreshCw className="h-3.5 w-3.5" /> Reset demo data
                   </button>
-                </div>
+                </div> : null}
               </div>
             </>
           ) : null}
@@ -325,7 +325,7 @@ export function Topbar({
         </span>
         <span className="ml-auto flex items-center gap-1 text-slate-400">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-          Demo workspace · local browser storage
+          {workspace.mode === 'shared' ? 'Shared workspace · Neon database' : 'Demo workspace · local browser storage'}
         </span>
       </div>
     </header>

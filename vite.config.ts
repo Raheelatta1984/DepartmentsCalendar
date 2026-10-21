@@ -1,9 +1,9 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// The portal is a static SPA. It is designed to be hosted free on Vercel,
-// Netlify, Cloudflare Pages or GitHub Pages, with an optional free Supabase
-// project for the shared database (see docs/ARCHITECTURE.md).
+// Vercel serves this SPA and the server-only api/ functions on one origin.
+// Static-only hosts remain an explicitly labelled browser demo.
+// See docs/DEPLOYMENT.md for the Neon Free setup.
 export default defineConfig({
   plugins: [react()],
   base: './',

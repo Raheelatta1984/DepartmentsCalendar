@@ -5,20 +5,27 @@
   "type": "module",
   "description": "Enterprise-wide department activity, workload and roadmap portal",
   "scripts": {
-    "dev": "vite --host 0.0.0.0 --port 5173",
+    "dev": "node --env-file-if-exists=.env server/dev.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0 --port 4173",
     "typecheck": "tsc --noEmit",
     "smoke": "vite-node scripts/smoke.mjs",
-    "smoke:store": "vite-node scripts/store-smoke.mjs"
+    "smoke:store": "vite-node scripts/store-smoke.mjs",
+    "test": "node --test tests/*.test.mjs && vite-node scripts/workspace-smoke.mjs",
+    "check": "npm run typecheck && npm test && npm run build && npm run smoke && npm run smoke:store",
+    "db:restore": "node --env-file-if-exists=.env scripts/restore-workspace.mjs"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.2.0",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.469.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.10",
+    "@types/node": "^22.20.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
@@ -29,5 +36,8 @@
     "typescript": "^5.7.2",
     "vite": "^6.0.7",
     "vite-node": "^6.0.0"
+  },
+  "engines": {
+    "node": "22.x"
   }
 }

@@ -364,14 +364,14 @@ export function IntegrationsPage() {
 
         <div className="space-y-3">
           <Card>
-            <SectionHeader title="Production checklist" subtitle="What it takes to go live (all free tiers)" />
+            <SectionHeader title="Production checklist" subtitle="Shared hosting is available; real calendar OAuth is still a separate phase" />
             <ol className="mt-2 space-y-2">
               {[
-                { title: 'Supabase project (free)', detail: 'Postgres + Auth + Row Level Security. One project covers a group of companies.' },
+                { title: 'Neon Free project', detail: 'Shared PostgreSQL storage through server-only Vercel functions. See docs/DEPLOYMENT.md.' },
                 { title: 'Entra ID app registration', detail: 'Delegated Calendars.ReadWrite. Free with any Microsoft 365 tenant.' },
                 { title: 'Google Cloud OAuth client', detail: 'Calendar API enabled; test users can be added without verification for internal apps.' },
-                { title: 'Sync worker', detail: 'Supabase Edge Function or Cloudflare Worker on a 5-minute cron.' },
-                { title: 'Hosting', detail: 'Vercel / Cloudflare Pages free tier for this SPA, custom domain included.' },
+                { title: 'Individual authentication & sync worker', detail: 'Not implemented: add SSO, server-side role checks and a durable queue before using real employee data.' },
+                { title: 'Existing Vercel deployment', detail: 'GitHub main deploys the SPA and API together. Hobby eligibility and quotas depend on your usage.' },
               ].map((s, i) => (
                 <li key={s.title} className="flex gap-2">
                   <span className="flex h-4 w-4 flex-none items-center justify-center rounded-full bg-brand-100 text-[9px] font-bold text-brand-700">{i + 1}</span>

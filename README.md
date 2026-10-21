@@ -2,7 +2,9 @@
 
 A working, deployable prototype of the portal you described: **every department's daily activity, follow-ups, appointments, meetings, seminars, sessions and tasks exposed up the chain from the newest employee to the CEO**, with workload measured from hours actually spent, a central calendar per department and per person, country-aware public holidays, timesheets, performance scoring and automatic escalation to the department head with the Head of Operations in copy.
 
-Built as a static React + TypeScript app with a deterministic demo dataset so you can **open it and click through the whole product** before committing to a backend. The production architecture (Postgres/Supabase + Microsoft Graph + Google Calendar) is documented end-to-end in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and the ready-to-run SQL in [`docs/schema.sql`](docs/schema.sql).
+Built with React + TypeScript, with a deterministic product demo and an optional **shared Neon Free PostgreSQL workspace on the existing GitHub-linked Vercel deployment**. The frontend and server-only API deploy together. Follow [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) to connect Neon and configure secrets; merging code alone does not create a database.
+
+**Pilot access model:** anyone with the workspace password can view and edit the entire shared workspace. Persona switching previews employee scopes but is **not individual authentication or server-enforced authorization**. Do not store sensitive real employee/payroll data yet. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for what is implemented versus planned.
 
 ---
 
@@ -11,7 +13,7 @@ Built as a static React + TypeScript app with a deterministic demo dataset so yo
 | Your requirement | Where it lives in the portal |
 | --- | --- |
 | All departments' daily activities, follow-ups, appointments, meetings, seminars, sessions, tasks | **Activity register** (9 activity types, subtasks, priority, status, progress) and **Department calendar** |
-| Each employee's schedule visible to supervisor → manager → unit head → department head → COO → CEO | **Role-based scope ribbon** + **Employee 360** modal; the reporting tree decides who can open whose calendar |
+| Each employee's schedule visible to supervisor → manager → unit head → department head → COO → CEO | **Role-based scope ribbon** + **Employee 360** modal; reporting-tree filters preview intended scopes (not server authorization yet) |
 | CEO checks the accounts department collectively and its workload | **Command centre** → department scorecard (logged vs capacity, utilization, on-time, score) and `Accounts & Finance` drill-down |
 | Workload calculated from hours spent on activities | Every score uses **logged timesheet hours ÷ country-aware capacity** (not planned hours, not attendance) |
 | Portal linked to Outlook, Google Calendar optional; an inserted task appears in the calendar | **Calendar sync** tab + sync toggles on every activity + a real **.ics** export that can be imported into Outlook/Google today |
@@ -21,7 +23,7 @@ Built as a static React + TypeScript app with a deterministic demo dataset so yo
 | Department master with head / responsible assignee | **Master setup → Departments** (head, operations owner, cost centre, calendar colour) |
 | Performance matrix daily / weekly / monthly / quarterly / annual | **Performance & escalation** — identical formula at every grain, 8-period trend |
 | Low-performing department reported to department head, CC Head of Operations | **Attention queue → Escalate** and the **rule engine**; generates a ready-to-send email with To/CC and full audit record |
-| Head of Operations sees only the departments he is responsible for | Role scope: COO sees every operational department (owner field), not the rest of the group |
+| Head of Operations sees only the departments he is responsible for | Preview role scope: COO sees every operational department (owner field), not the rest of the group |
 | Daily timesheet by activity, review where time was spent vs the planned task | **Timesheets** — team week grid, entry history, approvals, plan-vs-actual |
 | Roadmap with department/employee/task/subtask rows, columns for year, quarter, month, week number, day and date | **Roadmap timeline** with all six header rows, collapsible hierarchy, holiday shading and today marker |
 | Country-specific weekly off + public holidays for the next 5 years, with reason shown | **Master setup → Holidays & weekends** (12 countries, multi-year generation, per-country weekend toggles) and shading in calendar/roadmap |
@@ -54,76 +56,67 @@ completionRate  = average delivery progress of in-period activities (completed =
 score           = 40% utilizationScore + 35% onTimeRate + 25% completionRate
 ```
 
-Escalation rule: at the end of every day/week/month/quarter, any department whose score is below the configured threshold (default **70**) produces one escalation record per period. Recipients: **department head (To)**, **Head of Operations (CC)**. Duplicate suppression is by `(department_id, period, period_start)`. Every escalation is kept in an immutable audit log with acknowledgement and closure statuses.
+Escalation rule: at the end of every day/week/month/quarter, any department whose score is below the configured threshold (default **70**) produces one escalation record per period. Recipients: **department head (To)**, **Head of Operations (CC)**. Duplicate suppression is by `(department_id, period, period_start)`. The pilot keeps recent editable audit entries and escalation acknowledgement/closure statuses. Immutable, server-attributed audit logging and automatic delivery are future work.
 
 ---
 
 ## 3. Run it locally
 
-```bash
-npm install
-npm run dev      # http://localhost:5173
-npm run build    # type-check + production build into dist/
-npm run preview  # serve the production build
-```
-
-Requires Node 20+. There is no backend: the demo state is stored in `localStorage` (about 1 MB). Use **avatar menu → Reset demo data** at any time.
-
-Optional smoke tests (they render the real app inside jsdom and exercise every store action):
+Requires **Node 22.x** (see `.nvmrc`):
 
 ```bash
-npm run smoke         # renders all 8 screens, fails on console errors
-npm run smoke:store   # creates/updates/deletes activities, logs time, generates holidays, escalates
+npm ci
+cp .env.example .env
+npm run dev      # website + same-origin API at http://localhost:5173
+npm run check    # type-check, PostgreSQL/API tests, sync tests, build, all-screen/store smoke tests
+npm run build    # type-check + production frontend build into dist/
+npm run preview  # static browser-only demo, not the shared API
 ```
 
----
+Without database variables, the app explicitly uses browser-only `localStorage`. **Avatar menu → Reset demo data** resets only this local demo. To test shared storage, edit the ignored `.env` with a separate development Neon connection and authentication secrets; never put them in `VITE_*` variables or source control.
 
-## 4. Deploy for free
+Individual checks:
 
-The build is a static bundle — no server needed for the demo:
-
-| Platform | Free tier | Steps |
-| --- | --- | --- |
-| **Vercel** (recommended) | 100 GB bandwidth/mo, automatic HTTPS + custom domain | Import the repo → framework *Vite* → build `npm run build` → output `dist` |
-| **Cloudflare Pages** | unlimited requests, 500 builds/mo | Connect repo → build command/output as above |
-| **Netlify** | 100 GB/mo | Same settings |
-| **GitHub Pages** | free for public repos | A workflow is included at `.github/workflows/deploy.yml`; enable Pages → *GitHub Actions* |
-
-`vite.config.ts` uses a relative `base`, so the same build works at a domain root or a sub-path.
-
-For the **production** version with a shared multi-user database and real calendar sync, follow [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). The short version:
-
-- **Supabase free tier** — Postgres + Auth + Row Level Security + Edge Functions (500 MB DB, 5 GB bandwidth, 50k monthly active users).
-- **Microsoft Graph** — free with any Microsoft 365 tenant; one Entra ID app registration with delegated `Calendars.ReadWrite`.
-- **Google Calendar API** — free for internal use; per-user OAuth tokens.
-- **Vercel / Cloudflare Pages** — free static hosting.
-- **Resend / Graph `sendMail`** — free escalation email delivery.
-
-Cost at pilot scale (up to ~50 staff, 1 group): **$0/month**. The break points and the paid alternatives are listed in the architecture doc (free Supabase pauses after 7 days of inactivity unless a daily cron keeps it warm; 500 MB holds roughly 3–5 million timesheet rows).
-
----
-
-## 5. Production architecture at a glance
-
-```
-┌──────────────────┐    HTTPS     ┌───────────────────────────┐
-│ React SPA        │ ───────────► │ Supabase (Postgres+Auth)  │
-│ Vercel/CF Pages  │ ◄─────────── │ RLS by role & reporting   │
-└────────┬─────────┘   Realtime   └───────────┬───────────────┘
-         │                                    │ triggers / cron
-         │ OAuth (delegated)                  ▼
-┌────────▼─────────┐              ┌───────────────────────────┐
-│ Microsoft Graph  │ ◄─────────── │ Sync worker (Edge Function │
-│ Google Calendar  │ ───────────► │ or Cloudflare Worker)      │
-└──────────────────┘   webhooks   └───────────┬───────────────┘
-                                             │
-                                  ┌──────────▼───────────────┐
-                                  │ Escalation engine + email │
-                                  │ (Graph sendMail / Resend) │
-                                  └──────────────────────────┘
+```bash
+npm test              # embedded PostgreSQL + real API tests + shared React store/sync tests
+npm run smoke         # all 8 screens inside jsdom
+npm run smoke:store   # store CRUD, time entries, holiday generation, escalation and personas
 ```
 
-See [`docs/architecture.svg`](docs/architecture.svg) for the diagram and the detailed doc for scopes, token handling, idempotency, rate limits and RLS policies.
+## 4. Existing Vercel deployment + Neon Free
+
+**Keep the project already deployed on Vercel and connected to this GitHub repository.** `main` remains the production branch. `vercel.json` configures the Vite build and three Node serverless API functions; no separate backend service is needed.
+
+One-time setup in your own dashboards:
+
+1. Create/connect a **Neon Free** project. Copy its pooled PostgreSQL URL with `sslmode=require`.
+2. In the **existing Vercel project → Settings → Environment Variables**, set server-only `DATABASE_URL`, `WORKSPACE_PASSWORD` (≥16 characters) and independent `SESSION_SECRET` (≥32 characters) for **Production**.
+3. Redeploy. Environment-variable changes do not alter an already built deployment.
+4. Open the same Vercel HTTPS URL on any computer/phone, sign in, and wait for **Saved to Neon** after changes. A second device can load the same data. Already-open tabs have **Refresh** and a safe conflict warning.
+
+Until configured, the public site stays an explicitly labelled **browser-only demo**, not a working shared database. Never publish credentials, disable the password gate, or give production database access to arbitrary preview builds.
+
+**Free is conditional:** choose Neon Free and stay within quotas. Vercel Hobby has personal/non-commercial eligibility restrictions; business use may require another plan/provider. No unlimited free usage or production SLA is promised. The snapshot API has a **3 MB pilot limit**, and everyone with the shared password has full workspace access. Account provisioning, sensitive variables and live verification still require access to your provider accounts.
+
+Full instructions, two-device verification, free-tier caveats, backups/restore, and troubleshooting: **[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)**. GitHub Actions runs verification on PRs and `main`; GitHub Pages deployment is manual and serves only the local demo.
+
+## 5. Architecture at a glance
+
+```text
+Browser on any device
+        │ same-origin HTTPS + HttpOnly session
+        ▼
+Existing Vercel project (GitHub main → production)
+  React SPA + /api/config + /api/session + /api/workspace
+        │ parameterized SQL over HTTPS; credentials never in the browser
+        ▼
+Neon Free PostgreSQL
+  Versioned workspace snapshot + persistent sign-in attempt limits
+```
+
+Writes are debounced and serialized, with atomic revision checks in Postgres. Conflicting/offline edits stay in the current tab for export or retry instead of silently overwriting newer remote changes. Persona selection is device-local; shared company data is not cached in localStorage. This is one trusted pilot workspace, not a normalized enterprise backend.
+
+See [`docs/architecture.svg`](docs/architecture.svg) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Real OAuth calendar sync, SSO, server-enforced employee scopes, durable scheduled delivery and immutable audit logging are **planned, not implemented**. The actual Neon schema is [`docs/neon.sql`](docs/neon.sql); the older [`docs/schema.sql`](docs/schema.sql) is a Supabase-specific future reference and must not be run for this deployment.
 
 ---
 
@@ -144,27 +137,36 @@ See [`docs/architecture.svg`](docs/architecture.svg) for the diagram and the det
 
 ## 7. Repository layout
 
-```
+```text
+api/                  Vercel function entry points (config, session, workspace)
+server/               shared Node API, authentication, validation, Neon repository
 src/
-  components/       design system, layout, modals, charts, activity UI
-  data/             12-country holiday engine + deterministic demo dataset
-  lib/              analytics (scores, capacity, trends), permissions, exports, date helpers
-  pages/            one file per screen
-  store.tsx         state, persistence, actions, simulated sync queue
-  types.ts          domain model
+  components/         layout, modals, charts, workspace login and save status
+  data/               12-country holiday engine + deterministic demo dataset
+  lib/                analytics, permissions preview, exports, dates, shared-state sync
+  pages/              one file per screen
+  store.tsx           state/actions + local-demo or shared-Neon persistence
+  types.ts            domain model
+tests/                real HTTP/API and embedded PostgreSQL tests
+scripts/              UI/store/shared-sync smoke checks + owner backup restore
 docs/
-  ARCHITECTURE.md   long-term scalable design, free-tier plan, phase plan
-  schema.sql        production Postgres DDL + RLS + metric views
+  DEPLOYMENT.md       existing Vercel + Neon Free setup, verification and recovery
+  ARCHITECTURE.md     implemented pilot and production roadmap
+  neon.sql            actual runtime pilot schema (auto-created by the API)
+  schema.sql          legacy Supabase relational-design reference only
   architecture.svg
-.github/workflows/  GitHub Pages deploy
+.github/workflows/    CI verification + optional manual static Pages demo
+vercel.json           existing Vercel project build/API configuration
+.env.example          secret names only; actual .env is ignored
 ```
 
-## 8. Honest limitations of this demo
+## 8. Honest limitations
 
-- Data is local to the browser; there is no shared backend, so two people do not see each other's edits.
-- The Outlook/Google handshake is **simulated** — the connect flow, sync queue and event payloads are modelled, but no OAuth tokens are stored and no mailbox is touched. The **.ics export is real** and imports into Outlook, Google Calendar or Apple Calendar.
-- Escalation emails are generated but not sent; use *Copy* or *Open in mail app*.
-- Holiday data for future years is a planning projection. Islamic (Eid/Ramadan/Hijri) dates are tentative by nature and are labelled accordingly; UK/AU/US/IN/PK/SG dates use published rules.
-- Scores are computed client-side from the seeded dataset; in production the same formulas run in SQL/edge functions so results are consistent and auditable.
-
-Everything above is deliberate: the goal is to let you validate the **shape of the product** now, then wire it to free production services with the documented schema and sync design.
+- **Shared storage needs setup.** With no Neon variables, data remains local to the browser. A successful static deployment does not automatically create/connect Neon.
+- **Trusted pilot only.** Shared-password holders can access all records. Employee/persona scope is a UI preview, not authenticated authorization; audit entries are not tamper-proof.
+- **Snapshot scale.** One versioned JSONB workspace, 3 MB request limit, full-state saves and explicit conflict handling. Record-level APIs, individual identities and migrations are needed before broad or sensitive production use.
+- **Calendar sync is simulated.** No OAuth tokens are stored and no external mailbox is touched. `.ics` exports are real downloads, not subscriptions.
+- **Emails are composed, not sent.** Use Copy/Open in mail app. There is no automatic background delivery.
+- **Future holidays are projections.** Lunar-calendar dates remain tentative; verify official announcements.
+- **Scores run client-side.** Move the same formulas and authorization to server-side queries before relying on them operationally.
+- **Free tiers have constraints.** Monitor Neon quotas and verify that your Vercel plan permits your use case. Arrange/test backups; the free pilot is not a payroll-grade service or SLA.

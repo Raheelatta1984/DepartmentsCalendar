@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', { url: 'http://localhost:5173/', pretendToBeVisual: true });
 global.window = dom.window;
@@ -74,7 +75,20 @@ function Probe() {
                 results.push(['errors', errs.length]);
                 results.forEach((r) => console.log('CHECK', ...r));
                 errs.slice(0, 5).forEach((e) => console.log('ERR', e.slice(0, 300)));
-                process.exit(0);
+                try {
+                  assert.equal(errs.length, 0, 'store actions must not log errors');
+                  for (const name of ['activity created', 'audit logged', 'active user switched', 'activity deleted', 'time entries cascaded']) {
+                    assert.equal(results.find((r) => r[0] === name)?.[1], true, name);
+                  }
+                  assert.equal(results.find((r) => r[0] === 'sync jobs added')?.[1], 2);
+                  assert.equal(results.find((r) => r[0] === 'time entry added')?.[1], 1);
+                  assert.equal(results.find((r) => r[0] === 'escalation added')?.[1], 1);
+                  assert.ok(results.find((r) => r[0] === 'generated holidays')?.[1] > 0);
+                  process.exit(0);
+                } catch (error) {
+                  console.log('FAIL', error.message);
+                  process.exit(1);
+                }
               }, 150);
             }, 150);
           }, 150);

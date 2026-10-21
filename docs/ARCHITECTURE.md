@@ -1,236 +1,134 @@
-# Orbit — long-term, reliable and scalable design (free to start)
+# Orbit — current architecture and production roadmap
 
-This document answers the question behind the prototype: *what should this portal actually run on if it must stay reliable for a group of companies, scale to thousands of employees, and cost roughly nothing while it proves itself?*
+The selected deployment is **the existing GitHub-linked Vercel project + Neon Free PostgreSQL**. Keep that project and production URL. Setup instructions, environment variables, verification, costs, and recovery are in [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
----
+## 1. What is implemented
 
-## 1. The recommendation in one table
-
-| Layer | Choice | Free tier | Why this one |
-| --- | --- | --- | --- |
-| Front end | **React + Vite + TypeScript** (this repo) | Vercel / Cloudflare Pages / Netlify — free | Static, fast, no server to patch; deploys in minutes; works on a phone |
-| Database + Auth + API | **Supabase** (managed Postgres) | 500 MB DB, 5 GB egress, 50k MAU, unlimited API requests | Real SQL (needed for the workload maths), Row Level Security for the bottom-to-top visibility rules, built-in auth (Microsoft/Google SSO), realtime updates |
-| Background jobs | **Supabase Edge Functions** (Deno) or **Cloudflare Workers** on cron | 500k invocations (Supabase) / 100k requests/day (CF) | Calendar sync, escalation scan and holiday refresh are scheduled jobs — no server to babysit |
-| Corporate calendar | **Microsoft Graph** (`/me/events`) | Free with any Microsoft 365 tenant | Native Outlook sync; delegated permissions mean nobody's password is stored |
-| Optional calendar | **Google Calendar API v3** | Free for internal use | Per-user OAuth; same event model |
-| Email | **Graph `sendMail`** (from the signed-in PMO mailbox) or **Resend** | 3 000 emails/mo (Resend) | Escalation to department head + CC Head of Operations |
-| Holiday source | **Nager.Date** / **`python-holidays`** + manual overrides | Free, no key for Nager.Date | 100+ countries; stored in your DB so the portal never depends on a live third party |
-| Monitoring | **Sentry** free (5k errors/mo), Supabase logs, UptimeRobot | Free | You need to know when sync fails before the CEO does |
-| Files/exports | generated in the browser (CSV/ICS) | — | No storage cost for exports |
-
-**Why not Google Sheets / SharePoint lists / Notion?** They are excellent for a 10-person tracker and bad at this problem: no per-row permissions that follow a reporting tree, no reliable relational integrity between entity → department → employee → activity → time entry, no transaction-safe background sync, and no auditable scoring. A group with sub-companies, hourly workload and escalation obligations needs a real relational store.
-
-**Why Postgres over Firestore/Mongo?** The product is inherently relational and heavy on aggregation (`SUM(hours) GROUP BY department, week`). SQL makes the workload maths a single indexed query and keeps the score reproducible and auditable. Supabase gives you Postgres without operating it.
-
-**Why a monolith-with-jobs rather than microservices?** At 50–5 000 employees, one database plus three scheduled functions is simpler, cheaper and more reliable than a service mesh. The seams (auth, sync, escalation) are already separable if scale demands it.
-
----
-
-## 2. Domain model
-
-```
-entities (group / company / sub_company, self-referencing parent)
-   └── departments (head_id, ops_owner_id, cost_centre, colour)
-         └── employees (role, manager_id self-FK, country_code, weekly_hours)
-               ├── activities (assignee_id, department_id, entity_id, start/end, planned_hours)
-               │     └── activity_subtasks
-               └── time_entries (activity_id, date, hours, billable, approved_by)
-calendar_connections (employee_id, provider, tokens, two_way)
-sync_jobs (activity_id, provider, action, status, attempts, last_error)
-holidays (country_code, date, name, type)   country_config (weekly_off[])
-escalations (department_id, period, period_start, score, recipients[], cc[], status)
-audit_log (actor_id, action, entity, entity_id, before, after)
+```text
+Any modern browser / phone / computer
+             │ same-origin HTTPS
+             ▼
+Existing Vercel project (GitHub main → production)
+  ├─ React + Vite SPA (dist/)
+  ├─ GET    /api/config       storage mode + session status
+  ├─ POST   /api/session      shared-password sign-in
+  ├─ DELETE /api/session      clear this browser's session
+  ├─ GET    /api/workspace    read shared state + revision
+  └─ PUT    /api/workspace    validate and compare-and-swap
+             │ Neon serverless HTTPS driver
+             │ server-only DATABASE_URL, parameterized queries
+             ▼
+Neon Free PostgreSQL
+  ├─ orbit_workspace: one versioned JSONB state document
+  └─ orbit_login_limits: hashed address + expiring attempt window
 ```
 
-Full DDL, constraints, indexes, RLS policies and metric views: [`schema.sql`](schema.sql).
+Three Vercel function entry points import a common native Node HTTP handler. There is no always-running server in production, no cross-origin API URL, and no database credential in a `VITE_*` variable. The local development server mounts the exact same API alongside Vite on a single port.
 
-Design decisions worth knowing:
+### Storage modes
 
-- **Soft delete** (`deleted_at`) on everything that can appear in an audit trail. The escalation and audit tables are append-only.
-- **Money/hours are `numeric`**, never floats: `hours numeric(5,2)`.
-- **`activities` stores a timezone-independent date pair plus an optional time window**; all "today/this week" logic is evaluated in the *employee's* timezone on the server. Never trust the browser clock for reporting.
-- **Activity ID is the calendar event UID** (`orbit-{uuid}@group.example`), which makes every sync operation idempotent.
-- **One row per employee per day per activity in `time_entries`** with a unique constraint on `(employee_id, activity_id, entry_date)` if you prefer single submission per day, or allow multiples with a note. The demo allows multiples because splitting a day across two tasks is normal.
+- **Shared**: requires `DATABASE_URL`, `WORKSPACE_PASSWORD`, and `SESSION_SECRET`. The first authenticated visit initializes the database with the pilot dataset once. Thereafter all devices read the same state.
+- **Demo**: no database configured, or a static-only build. Explicit amber banner; state is stored only in this browser's localStorage. This preserves the original demo while account setup is pending.
+- **Configuration/outage error**: a partially configured shared backend or failed database request never silently falls back to a private local copy.
 
----
+Shared company data is not cached in localStorage. Only the selected persona ID is remembered per browser. Changing personas does not write to Neon or affect another person's view.
 
-## 3. Roles, scope and Row Level Security
+### Consistency and free-tier behavior
 
-Roles (in order): `employee` → `supervisor` → `manager` → `unit_head` → `department_head` → `head_operations` → `ceo`.
+- Writes are debounced and serialized. Edits made during an in-flight save use the returned revision for the next save.
+- SQL `UPDATE ... WHERE version = expected_version` and `INSERT ... ON CONFLICT DO NOTHING` provide atomic concurrency control across Vercel instances.
+- A stale save returns HTTP 409. The browser retains its unsaved edits, offers JSON export, and requires an explicit discard/reload. It never automatically force-overwrites newer remote data.
+- Network failures retain unsaved data in the current tab. A before-unload warning asks the user not to close while changes are dirty.
+- Manual refresh and refocusing a clean tab after a minute load other devices' updates. There is no continuous polling or keep-alive job, allowing Neon to suspend when idle.
+- A strict server-side schema validates fields, collection identifiers and required master records. Snapshot payloads are limited to 3 MB. This design is for a small pilot, **not** large-scale multi-user production.
 
-The prototype ships the same logic in TypeScript (`src/lib/permissions.ts`); in production it becomes SQL so it cannot be bypassed by calling the API directly:
+### Access boundary
 
-```sql
--- Everyone can read their own row; managers read their whole reporting tree.
-create or replace function app.can_view_employee(target uuid)
-returns boolean language sql stable security definer as $$
-  with recursive tree as (
-    select id from public.employees where id = auth.uid()
-    union all
-    select e.id from public.employees e join tree t on e.manager_id = t.id
-  )
-  select exists (select 1 from tree where id = target)
-      or app.is_executive()               -- CEO / Head of Operations
-      or app.is_department_head_of(target);
-$$;
-```
+The shared password protects the whole workspace. Signed cookies are HttpOnly, SameSite=Strict, Secure in production, and expire after 12 hours. Secrets stay server-side. Mutations reject cross-origin requests; there is no permissive CORS configuration. Login attempt limits are stored in Postgres, not per-instance memory. Secret rotation plus redeployment invalidates previous cookies.
 
-Policy summary:
+**Every password holder can read and modify every record.** Persona switching and `src/lib/permissions.ts` are product previews only, not authorization. Audit entries can be edited with a snapshot and are not immutable evidence. The pilot must not contain sensitive real employee/payroll data.
 
-| Table | Employee | Supervisor/Manager | Department head | Head of Operations | CEO |
-| --- | --- | --- | --- | --- | --- |
-| own activity / timesheet | read+write | read+write | read+write | read | read |
-| team activities | — | read (reporting tree) | read (department) | read (all operational) | read (group) |
-| timesheet approval | — | approve own tree | approve department | read | read |
-| department master | — | — | edit own department | edit operational | edit all |
-| entities / holidays / settings | — | — | — | edit | edit |
-| escalation log | own record | — | own department | all | all |
+## 2. Existing product model
 
-Enforcement notes:
+The TypeScript model in `src/types.ts` contains:
 
-- Use **one Postgres role + RLS**, never service-role keys in the browser. Only Edge Functions get the service key, and only for sync workers and the escalation scan.
-- Aggregate views (department scores) are exposed through `security definer` views or RPCs that return **only aggregates** — the CEO sees hours per department without automatically seeing a junior's private notes.
-- SSO: Supabase Auth supports **Microsoft Entra ID** and **Google**. Map the IdP group/role claim to `employees.role`; keep `employees.manager_id` as the single source of truth for scope.
-- Sessions: short-lived JWT, refresh rotation, MFA enforced at the IdP for executives.
+- Group → companies → sub-companies; departments with a head and operations owner.
+- Employees, reporting lines, roles, working country and weekly hours.
+- Activities, subtasks, assignees, dates, priority, status and delivery progress.
+- Time entries by employee/activity/day; holidays and country-specific weekly off.
+- Escalation records, simulated calendar connections/jobs, settings and recent audit entries.
 
----
+All screens continue to use the existing analytics and store operations. The deployed pilot persists that complete document instead of pretending that the normalized SQL design is already wired up.
 
-## 4. Calendar synchronisation (Outlook first, Google optional)
+The current metrics run in the browser. Capacity excludes weekly off/public holidays; utilization uses logged effort, not planned time or attendance. `src/lib/analytics.ts` is the current source of truth, and README documents the formula.
 
-### 4.1 Microsoft 365 / Outlook
+## 3. Before production: individual authentication and authorization
 
-1. **Entra ID app registration** (free): multi-tenant if you serve several companies, single-tenant if one group.
-2. Delegated permissions: `Calendars.ReadWrite`, `User.Read`, `offline_access`; add `Mail.Send` only if sending escalation mail as the signed-in PMO.
-3. Admin consent once per tenant; users connect from **Calendar sync → Connect**.
-4. Store the refresh token **encrypted at rest** (Supabase Vault / `pgcrypto` with a key in Edge Function secrets). Never in a public table, never in the browser.
-5. Write events with `POST /me/events` (create) / `PATCH /me/events/{id}` (update) / `DELETE` (cancel). Send `transactionId` and a stable `iCalUId` for idempotency.
-6. Use `showAs` = `busy` for meetings, `free` for multi-day effort tasks, and a category `Orbit / <department>` so users can filter.
-7. Subscribe to **change notifications** (`/subscriptions`, max ~3 days, renew by cron) to pull edits made directly in Outlook back into Orbit (two-way mode). Until then, one-way Orbit → Outlook is the safest default.
+The next phase must replace the shared-password model with individual identities (for example Microsoft Entra ID / Google through an OIDC library). Neon supplies PostgreSQL storage; the current implementation does not provide managed SSO, realtime subscriptions, or employee-level authorization.
 
-### 4.2 Google Calendar
+Enforce these scopes **on the server** before returning records, not just in React:
 
-- Google Cloud project → OAuth consent screen → *Internal* (no verification needed) → `calendar.events` scope.
-- Offline access for refresh tokens; the worker refreshes and retries once on `401`.
-- Same idempotency strategy with `event.id` = activity UUID (base32hex-safe) or `iCalUID`.
+| Role | Intended scope (future enforcement) |
+| --- | --- |
+| Employee | Own activities, calendar and time entries |
+| Supervisor / manager / unit head | Their reporting subtree |
+| Department head | Own department and reporting line |
+| Head of Operations | Departments assigned to their operations portfolio |
+| CEO | Group-wide reporting |
 
-### 4.3 Sync worker design
+Validate tenant boundaries and edits server-side. Use least-privilege database roles and explicit policies/queries. Do not pass a database owner's credentials to browsers. An authenticated employee must not be able to select a CEO persona to acquire rights.
 
-```
-on activity insert/update/delete  →  enqueue sync_jobs (status=queued)
-cron every 2 minutes             →  claim N jobs with SELECT … FOR UPDATE SKIP LOCKED
-                                 →  group by (employee, provider), batch where possible
-                                 →  call Graph / Google with exponential backoff + jitter
-                                 →  mark synced | failed (attempts++, next_attempt_at)
-                                 →  dead-letter after 8 attempts, alert PMO
-```
+## 4. Record-level PostgreSQL migration
 
-- **Idempotent by construction**: the job carries the provider event ID; replays are harmless.
-- **Rate limits**: Graph throttles per mailbox (~10 000 requests/10 min); batch with `$batch` (20 requests) and smooth with a per-mailbox queue. Google quota is 1 M units/day — comfortably enough for a mid-size group.
-- **Conflict policy (two-way)**: last-write-wins on `lastModifiedDateTime`, but never overwrite `title`/`start` if the Orbit activity is `completed`; record a `sync_conflicts` row for review.
-- **Privacy**: only the assignee's own mailbox is written; managers view the calendar **inside Orbit** under RLS, not by reading other people's mailboxes.
-- **Failure UX**: a visible failed count on the dashboard and a retry button per job — silence is the enemy.
+Before concurrent use or data growth makes full snapshots impractical:
 
-### 4.4 Fallback that works on day one
+1. Normalize the domain into tables with foreign keys and migration history.
+2. Replace whole-workspace PUTs with authorized record-level operations and revision checks.
+3. Compute scores/aggregates on the server with indexes on department, assignee and date.
+4. Introduce tenant IDs and validate them throughout the API.
+5. Add append-only, server-attributed audit logging and a documented retention policy.
+6. Provide a migration/import tool for existing pilot snapshots and test restoration.
 
-The app exports a standards-compliant **`.ics`** file (real `VEVENT`s with `UID`, `DTSTART`, `DTEND`, `SUMMARY`, `DESCRIPTION`, `LOCATION`, `CATEGORIES`). A PMO can publish this as a subscribed calendar from any static host before OAuth is approved. This is already implemented in `src/lib/export.ts` and is the recommended go-live stepping stone.
+[`schema.sql`](schema.sql) is a **legacy, Supabase-specific design reference**. It assumes `auth.uid()` and Supabase identity services that this Neon application does not have. It is not a runnable Neon migration; adapt its identities, policies and ID types before using the relational design. The actual runtime tables are in [`neon.sql`](neon.sql), mirrored by `server/repository.mjs`.
 
----
+## 5. Calendar synchronization — not implemented
 
-## 5. Escalation engine
+The UI connection flows and sync jobs remain simulations. `.ics` downloads are real and can be imported into Outlook, Google or Apple Calendar; they are not a live subscription or OAuth connection.
 
-- Scheduled function at **17:30 in each entity's timezone**, or one global run at 18:00 GST with per-entity offsets.
-- For every department, compute the period score using the SQL metric views (identical formula to the UI).
-- If `score < threshold` and no escalation exists for `(department_id, period, period_start)`, insert one and send mail:
-  - **To:** `department_head.email`
-  - **CC:** `head_operations.email`, plus optional `ceo.email` for critical (<50) scores
-  - **Body:** score, utilization, on-time rate, overdue count, link to the filtered calendar and the top three blocked activities.
-- Retry email independently of the score record (transactional outbox pattern) so a mail outage never loses the record.
-- Acknowledgement and closure are explicit statuses; unresolved escalations appear in the Head of Operations' dashboard until closed.
-- **Dedupe + digest:** cap at one email per department per period; a daily digest prevents alert fatigue.
+For a real connector:
 
----
+1. Register a Microsoft Entra application with delegated `Calendars.ReadWrite`, `User.Read` and `offline_access`; enable Google Calendar API with a separate OAuth client if needed.
+2. Associate the consented identity with an authenticated employee.
+3. Store refresh tokens encrypted server-side, separate from the workspace snapshot; never expose them in browser backups.
+4. Add a durable outbox/queue; use the Orbit activity ID as an idempotency key/iCal UID.
+5. Persist provider event IDs, retry with backoff and honor provider throttling.
+6. Start with outbound create/update/delete; add inbound webhooks, renewal and delta-token reconciliation in a later phase.
+7. Verify webhook signatures and ownership; log failures without exposing tokens or personal event details.
 
-## 6. Holidays and country calendars
+A free Vercel deployment does not imply a reliable high-frequency scheduler. Choose a supported durable queue/scheduler and budget separately when enabling this phase.
 
-- Seed the database from **Nager.Date** (`https://date.nager.at/api/v3/PublicHolidays/{year}/{country}`) or `python-holidays`, then store the rows. The portal never calls the API at runtime.
-- Refresh annually by cron for `holiday_horizon_years` (default 5). Merge, never delete manual overrides.
-- **Lunar/religious holidays** (Eid, Ramadan, Diwali, Chinese New Year, Vesak) are moon-sighting dependent: keep `is_tentative boolean` and surface "tentative" in the tooltip. Never let payroll or SLA penalties hinge on a projected date without a manual confirmation step.
-- **Weekly off** is per country (Fri–Sat in the Gulf, Sat–Sun in the West, Sun in India/Pakistan) and is stored in `country_config.weekly_off` as an int array. It directly changes capacity, so a wrong setting silently corrupts every score — make it visible on the settings screen (it is).
-- Company-specific shutdowns (e.g. Eid closure for a whole group) are `company_holiday` rows scoped by entity.
+## 6. Escalation and email — not implemented server-side
 
----
+The current application can calculate scores and compose escalation emails. It does not send them automatically. A future worker should scan closed periods, enforce one escalation per `(department, period, period_start)`, send to the department head with the Head of Operations copied, and record provider delivery IDs with retries and deduplication.
 
-## 7. Reporting performance
+Never describe simulated sync jobs or generated email text as evidence that a mailbox or external calendar has been touched.
 
-At 5 000 employees × ~8 activities/day × 250 days ≈ 10 M activity rows and 3–5 M timesheet rows per year. Postgres handles this comfortably if you:
+## 7. Holidays, availability and operations
 
-1. Index `time_entries (employee_id, entry_date)` and `(department_id, entry_date)` via a denormalised `department_id`.
-2. Keep **materialized views** `mv_department_period_scores` and `mv_employee_period_scores`, refreshed after each timesheet write (or every 15 min) with `CONCURRENTLY`.
-3. Partition `time_entries` and `activities` by year once past ~20 M rows; archive closed years to cold storage.
-4. Cache the dashboard response per user/period for 60 seconds (HTTP `Cache-Control` + Supabase).
-5. Never compute scores in the browser in production; the UI reads the same numbers everyone else sees.
+- The seeded holiday engine covers 12 countries and multiple future years, with per-country weekly off. Future lunar-calendar dates remain tentative; validate authoritative announcements before operational use.
+- Choose a Neon region available near the intended users; do not promise a specific region on every free plan.
+- Track provider quotas, database size, API payload size, conflict rates, save failures and restore success.
+- Add reliable backups, recovery objectives, retention controls, monitoring and incident procedures before important data is stored.
+- Do not defeat scale-to-zero with keep-alive requests. Cold starts are a normal free-tier trade-off.
+- Vercel Hobby is restricted to eligible personal/non-commercial usage. A business portal may need a different plan or hosting provider. No free production SLA or unlimited capacity is promised.
 
-Storage estimate: one timesheet row ≈ 150 bytes → 5 M rows ≈ 750 MB, so a group of ~500 staff stays inside the 500 MB free tier for about a year if you archive closed periods to a free-tier export. Beyond that, Supabase Pro is $25/month — still far below the cost of the custom trackers this replaces.
+## 8. Delivery checklist
 
----
-
-## 8. Security, privacy and governance
-
-- **Least privilege**: RLS, no service keys client-side, scoped OAuth tokens per employee.
-- **Audit**: append-only `audit_log` for master-data changes, escalation status changes and timesheet approvals (who, when, before/after).
-- **Data minimisation**: the portal stores activity titles, hours and outcomes — not email bodies or attachments. Optional activity descriptions should not be used for HR performance decisions without a policy note.
-- **Retention**: keep timesheets for the statutory period in your jurisdiction (often 5–7 years); delete calendar tokens immediately on offboarding (`disconnect` cascades).
-- **Residency**: choose the Supabase region closest to the group (e.g. `ap-southeast-2` Sydney, `me-central-1` for the Gulf) — free tier still lets you pick a region.
-- **Right to erasure**: soft-delete the employee, hard-delete PII in a scheduled job, keep anonymised hours for historical reporting.
-- **Backups**: nightly `pg_dump` to free object storage (Supabase Storage or Cloudflare R2); test a restore quarterly. Supabase free tier has no PITR — this is the single most important thing to add before you trust it with payroll-adjacent data.
-- **Exit plan**: standard Postgres — the schema and data move to Neon, RDS or on-prem without rewrites.
-
----
-
-## 9. Free-tier reality check
-
-| Service | Free limit | What happens at the limit | Mitigation |
-| --- | --- | --- | --- |
-| Supabase | 500 MB DB, 5 GB egress/mo, pauses after 7 days of inactivity | Project pauses (data safe, needs manual unpause) | A daily cron `select 1` keeps it warm; archive old years |
-| Vercel Hobby | 100 GB bandwidth, non-commercial use | Throttle/ask to upgrade | Cloudflare Pages has no bandwidth cap and allows commercial use |
-| Graph | Included with M365 licences | Throttling (429) | Queue + backoff already designed |
-| Google Calendar | 1 M quota units/day | 403 quota exceeded | Per-user pacing; batch |
-| Resend | 100 emails/day, 3 000/mo | Rejections | Digest emails; Graph sendMail as fallback |
-| Sentry | 5k errors/mo | Sampling stops | Fine for a pilot |
-
-**Scale trigger points:** >500 employees or >1 M activity rows/year → move to Supabase Pro ($25/mo) and add PITR. >3 000 employees → dedicated read replica and a separate reporting schema. Neither is a rewrite; both are configuration changes.
-
----
-
-## 10. Phased delivery plan
-
-| Phase | Scope | Effort (1–2 devs) |
-| --- | --- | --- |
-| **0 — Validate** (this repo) | Clickable prototype, scoring model agreed, holiday data reviewed | done |
-| **1 — Pilot** | Supabase schema + RLS, Entra SSO, activities/timesheets live, one department | 2–3 weeks |
-| **2 — Calendar** | Graph one-way sync + `.ics` subscription fallback, sync log and retries | 2 weeks |
-| **3 — Governance** | Materialized score views, escalation engine + email, Head of Operations dashboard, audit trail | 2 weeks |
-| **4 — Rollout** | Entity/department/employee import (CSV or Graph directory), Google option, mobile polish, training | 2–3 weeks |
-| **5 — Scale** | Two-way sync via webhooks, approvals workflow, client billing exports, SSO group mapping, PITR/backups | ongoing |
-
-Data migration from spreadsheets: provide CSV templates for employees (name, email, code, role, manager email, department, country, weekly hours) and let the importer resolve `manager_email` into `manager_id` after insert.
-
----
-
-## 11. What I would monitor from day one
-
-1. **Sync success rate** per provider (target >99%) and the age of the oldest queued job.
-2. **Timesheet submission rate** — % of employees with an entry yesterday. Under 80% means the score is measuring data quality, not performance.
-3. **Escalation volume** per week — a sudden spike usually means a threshold that is too high, not a collapse in performance.
-4. **Holiday/calendar freshness** — last refresh date per country.
-5. **Auth failures** and session refreshes, especially around SSO certificate rollover.
-
----
-
-## 12. Why this design will still make sense in five years
-
-- The **data model is the product**; the UI can be rewritten without touching a single timesheet.
-- Everything runs on **open standards**: Postgres, OAuth2/OIDC, iCalendar, REST. No proprietary lock-in.
-- **Calendar sync is idempotent and observable**, so adding providers (Apple/iCloud via CalDAV, Teams meetings) is incremental.
-- The **score formula is explicit and versioned** (see the settings screen); if governance changes the weights, old periods keep their historical scores.
-- Costs start at **zero** and grow in predictable steps tied to headcount, not to executive urgency.
+| Phase | State |
+| --- | --- |
+| Browser product demo, analytics, export | Implemented |
+| Vercel API + Neon snapshot persistence + shared-password pilot | Implemented in this repository; requires account/environment setup |
+| Provision/confirm a live Neon project and production secrets | Owner dashboard action; not performed merely by merging code |
+| Individual login + server-enforced permissions + normalized records | Planned |
+| Real OAuth calendar sync, durable worker and email delivery | Planned |
+| Backups/PITR, compliance controls, tamper-evident audit and production SLA | Planned / provider setup |
