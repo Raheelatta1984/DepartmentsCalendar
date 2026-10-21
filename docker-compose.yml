@@ -1,0 +1,212 @@
+# Docker Compose for Departments Calendar Infrastructure
+# 
+# This file defines the infrastructure stack for local development and testing.
+# In production on Vercel + Neon, the managed services replace these containers.
+#
+# Services:
+# - postgres: PostgreSQL database (Neon-compatible)
+# - pgbouncer: Connection pooler (PgBouncer)
+# - memcached: Distributed cache
+# - redis: Alternative cache/session store
+# - app: Application server (for local development)
+#
+# Usage:
+#   docker-compose up -d          # Start all services
+#   docker-compose up -d postgres pgbouncer memcached  # Start only infrastructure
+#   docker-compose down           # Stop all services
+#   docker-compose logs -f        # View logs
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database (Neon-compatible)
+  postgres:
+    image: postgres:16-alpine
+    container_name: orbit-postgres
+    environment:
+      POSTGRES_DB: neondb
+      POSTGRES_USER: neon
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-neon_password}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docs/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./docs/neon.sql:/docker-entrypoint-initdb.d/02-neon.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U neon -d neondb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - orbit-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # PgBouncer Connection Pooler
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: orbit-pgbouncer
+    environment:
+      DATABASES_HOST: postgres
+      DATABASES_PORT: "5432"
+      DATABASES_DBNAME: neondb
+      DATABASES_USER: neon
+      DATABASES_PASSWORD: ${POSTGRES_PASSWORD:-neon_password}
+      POOL_MODE: session
+      MAX_CLIENT_CONN: "1000"
+      DEFAULT_POOL_SIZE: "25"
+      MIN_POOL_SIZE: "5"
+      RESERVE_POOL_SIZE: "5"
+      RESERVE_POOL_TIMEOUT: "5"
+      MAX_DB_CONNECTIONS: "100"
+      MAX_USER_CONNECTIONS: "100"
+      SERVER_LIFETIME: "3600"
+      SERVER_IDLE_TIMEOUT: "600"
+      SERVER_CONNECT_TIMEOUT: "15"
+      SERVER_LOGIN_RETRY: "15"
+      QUERY_TIMEOUT: "0"
+      QUERY_WAIT_TIMEOUT: "120"
+      CLIENT_IDLE_TIMEOUT: "0"
+      CLIENT_LOGIN_TIMEOUT: "60"
+      AUTODB_IDLE_TIMEOUT: "3600"
+      LOG_CONNECTIONS: "1"
+      LOG_DISCONNECTIONS: "1"
+      LOG_POOLER_ERRORS: "1"
+      STATS_PERIOD: "60"
+      ADMIN_USERS: "neon"
+      IGNORE_STARTUP_PARAMETERS: "extra_float_digits,application_name"
+    ports:
+      - "6432:6432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - orbit-network
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432", "-U", "neon", "-d", "neondb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  # Memcached for Caching
+  memcached:
+    image: memcached:1.6-alpine
+    container_name: orbit-memcached
+    command: >
+      memcached
+      -m 256
+      -c 1024
+      -t 4
+      -v
+    ports:
+      - "11211:11211"
+    networks:
+      - orbit-network
+    healthcheck:
+      test: ["CMD", "memcached-tool", "localhost:11211", "stats"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # Redis (alternative cache, session store, pub/sub)
+  redis:
+    image: redis:7-alpine
+    container_name: orbit-redis
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - orbit-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # Application Server (for local development with API)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: orbit-app
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://neon:${POSTGRES_PASSWORD:-neon_password}@pgbouncer:6432/neondb?pgbouncer=true&connection_limit=100
+      DATABASE_POOLER_URL: postgresql://neon:${POSTGRES_PASSWORD:-neon_password}@pgbouncer:6432/neondb?pgbouncer=true&connection_limit=100
+      WORKSPACE_PASSWORD: ${WORKSPACE_PASSWORD:-development_password_min_16_chars}
+      SESSION_SECRET: ${SESSION_SECRET:-development_session_secret_min_32_chars_long}
+      READ_REPLICA_URLS: ""
+      MEMCACHED_HOSTS: memcached:11211
+      SHARD_ID: "0"
+      PUBLIC_ORIGIN: http://localhost:5173
+    ports:
+      - "5173:5173"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/dist
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      memcached:
+        condition: service_healthy
+    networks:
+      - orbit-network
+    command: npm run dev
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+networks:
+  orbit-network:
+    driver: bridge
+    name: orbit-network
+
+volumes:
+  postgres_data:
+    name: orbit-postgres-data
+  redis_data:
+    name: orbit-redis-data

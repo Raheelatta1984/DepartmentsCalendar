@@ -1,0 +1,34 @@
+# Development Dockerfile for Departments Calendar
+# Used by docker-compose.yml for local development
+
+FROM node:22-alpine
+
+# Install dependencies for native modules and tools
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    git \
+    bash \
+    curl \
+    postgresql-client \
+    memcached \
+    redis
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy source code
+COPY . .
+
+# Expose ports
+EXPOSE 5173
+
+# Default command (overridden by docker-compose)
+CMD ["npm", "run", "dev"]
