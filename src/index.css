@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-slate-100/70 text-slate-800;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
+  }
+  ::selection {
+    @apply bg-brand-200 text-brand-900;
+  }
+  input[type='date'],
+  input[type='time'] {
+    @apply text-slate-700;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+  .sticky-col {
+    position: sticky;
+    left: 0;
+    z-index: 20;
+  }
+}
+
+/* Custom scrollbars: subtle, works in Chrome/Edge/Safari */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8;
+  background-clip: content-box;
+}
+
+/* Keep the roadmap timeline readable while scrolling */
+@media print {
+  body {
+    background: #fff;
+  }
+  aside,
+  header,
+  button {
+    display: none !important;
+  }
+}
