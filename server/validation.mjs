@@ -67,6 +67,22 @@ export const workspaceSchema = record({
     id, activityId: id, provider, action: z.enum(['create', 'update', 'delete']),
     status: z.enum(['queued', 'synced', 'failed']), at: text, message: text,
   }),
+  standups: rows({
+    id, date, departmentId: id, employeeId: id,
+    lastDayUpdate: text, progressUpdate: text, blockers: text,
+    actionItems: rows({
+      id, title: text, ownerId: id.nullable(), dueDate: date.nullable(),
+      status: z.enum(['open', 'done']),
+    }),
+    supportRequests: rows({
+      id, description: text, type: z.enum(['internal', 'cross_functional']),
+      targetDepartmentId: id.nullable(),
+      status: z.enum(['open', 'acknowledged', 'resolved']),
+      createdAt: text, resolvedAt: text.nullable(),
+    }),
+    status: z.enum(['draft', 'submitted']),
+    submittedAt: text.nullable(), createdAt: text, updatedAt: text,
+  }).optional(),
   settings: record({
     groupName: text, workingDayStart: time, workingDayEnd: time,
     holidayHorizonYears: z.number().int().min(1).max(20), performanceThreshold: number.min(0).max(100),

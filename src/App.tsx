@@ -13,6 +13,7 @@ import { CalendarPage } from './pages/CalendarPage';
 import { ActivitiesPage } from './pages/ActivitiesPage';
 import { RoadmapPage } from './pages/RoadmapPage';
 import { TimesheetPage } from './pages/TimesheetPage';
+import { StandupsPage } from './pages/StandupsPage';
 import { PerformancePage } from './pages/PerformancePage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { CapitalisationPage } from './pages/CapitalisationPage';
@@ -24,7 +25,7 @@ import { WhatsNewPage } from './pages/WhatsNewPage';
 import { ThemeStudioPage } from './pages/ThemeStudioPage';
 import { fontStack, getEntityTheme } from './lib/portal-theme';
 
-const VIEWS: ViewKey[] = ['dashboard', 'calendar', 'activities', 'roadmap', 'timesheet', 'projects', 'capitalisation', 'performance', 'integrations', 'admin', 'whats-new', 'theme-studio'];
+const VIEWS: ViewKey[] = ['dashboard', 'calendar', 'activities', 'roadmap', 'timesheet', 'standups', 'projects', 'capitalisation', 'performance', 'integrations', 'admin', 'whats-new', 'theme-studio'];
 
 function viewFromHash(): ViewKey {
   const hash = window.location.hash.replace(/^#\/?/, '').split('?')[0];
@@ -176,6 +177,7 @@ export function App() {
             ) : null}
             {view === 'roadmap' ? <RoadmapPage filters={filters} setFilters={setFilters} onOpenActivity={openActivity} /> : null}
             {view === 'timesheet' ? <TimesheetPage filters={filters} setFilters={setFilters} onNewActivity={() => newActivity()} /> : null}
+            {view === 'standups' ? <StandupsPage /> : null}
             {view === 'projects' ? <ProjectsPage /> : null}
             {view === 'capitalisation' ? <CapitalisationPage /> : null}
             {view === 'performance' ? <PerformancePage filters={filters} setFilters={setFilters} onOpenEmployee={setEmployeeId} /> : null}

@@ -17,6 +17,17 @@ const state = {
   activities: [], timeEntries: [], holidays: [],
   countries: [{ code: 'AU', name: 'Australia', flag: 'AU', weeklyOff: [0, 6], timezone: 'Australia/Sydney' }],
   escalations: [], connections: [], syncJobs: [], auditLog: [],
+  standups: [
+    {
+      id: 'std-1', date: '2026-10-21', departmentId: 'dept', employeeId: 'employee',
+      lastDayUpdate: 'Closed the reconciliations.', progressUpdate: 'Month-end pack at 60%.', blockers: '',
+      actionItems: [{ id: 'sact-1', title: 'File the pack', ownerId: 'employee', dueDate: '2026-10-22', status: 'open' }],
+      supportRequests: [
+        { id: 'ssup-1', description: 'Need reviewer access', type: 'internal', targetDepartmentId: null, status: 'open', createdAt: '2026-10-21T08:40:00.000Z', resolvedAt: null },
+      ],
+      status: 'submitted', submittedAt: '2026-10-21T08:40:00.000Z', createdAt: '2026-10-21T08:40:00.000Z', updatedAt: '2026-10-21T08:40:00.000Z',
+    },
+  ],
   settings: { groupName: 'Pilot', workingDayStart: '09:00', workingDayEnd: '17:00', holidayHorizonYears: 5, performanceThreshold: 70, weekStartsOn: 1 },
 };
 let pg, repository, server, base, cookie;
@@ -116,6 +127,8 @@ test('invalid or oversized snapshots cannot replace the workspace', async () => 
     { ...state, employees: [...state.employees, ...state.employees] },
     { ...state, settings: { ...state.settings, activeUserId: 'employee' } },
     { ...state, refreshToken: 'never-allowed' },
+    { ...state, standups: [{ ...state.standups[0], status: 'not-a-real-status' }] },
+    { ...state, standups: [{ ...state.standups[0], supportRequests: [{ ...state.standups[0].supportRequests[0], type: 'side-channel' }] }] },
   ]) {
     assert.equal((await call('/api/workspace', { method: 'PUT', body: { version: 2, state: invalid } })).status, 422);
   }

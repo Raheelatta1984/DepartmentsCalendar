@@ -13,7 +13,10 @@ import {
   Clock3,
   Gauge,
   Layers,
+  LifeBuoy,
   Mail,
+  Megaphone,
+  MessagesSquare,
   Plus,
   RefreshCw,
   Building2,
@@ -42,6 +45,8 @@ import { Avatar, Badge, Button, Card, EmptyState, PageHeader, Progress, SectionH
 import { BarList, Donut, LineChart, ScoreRing, Sparkline } from '../components/charts';
 import { ActivityLine, TYPE_COLORS, TypeIcon } from '../components/activity-ui';
 import { useToast } from '../components/toast';
+import { buildStandupPulses, entryFor } from '../lib/standups';
+import { canViewStandupBoard } from '../lib/permissions';
 import {
   departmentsInEntityScope,
   entityScopeLabel,
@@ -144,6 +149,20 @@ export function Dashboard({
   const deptMap = useMemo(() => new Map(state.departments.map((d) => [d.id, d])), [state.departments]);
   const empMap = useMemo(() => new Map(state.employees.map((e) => [e.id, e])), [state.employees]);
   const entityMap = useMemo(() => new Map(state.entities.map((e) => [e.id, e])), [state.entities]);
+
+  /* ---- Daily stand-up pulse (today) --------------------------------
+     High-level department summary with support callouts. Leadership
+     sees every department in scope; the CEO/COO drill from this summary
+     into the full top-to-bottom board on the Daily stand-up tab.       */
+  const isStandupViewer = canViewStandupBoard(scope);
+  const standupPulses = useMemo(
+    () => (isStandupViewer ? buildStandupPulses(state, deptIds, today) : []),
+    [isStandupViewer, state, deptIds, today],
+  );
+  const myStandup = entryFor(state.standups, today, scope.user.id);
+  const openStandupDepartment = (departmentId: string) => {
+    window.location.hash = `#/standups?department=${encodeURIComponent(departmentId)}`;
+  };
 
   /* Connector health follows the same entity focus as every other card. */
   const scopedEmployeeIds = useMemo(() => new Set(scopedEmployees.map((e) => e.id)), [scopedEmployees]);
@@ -340,6 +359,153 @@ export function Dashboard({
           tone="danger"
         />
       </div>
+
+      {/* Daily stand-up pulse — high-level department summary + callouts */}
+      <Card className="mb-4" padded={false}>
+        <div className="px-4 pt-4">
+          <SectionHeader
+            title="Daily stand-up pulse"
+            subtitle={`Department check-ins, blockers and support callouts for ${prettyDate(today)}`}
+            action={
+              <Button size="sm" variant="ghost" onClick={() => onNavigate('standups')}>
+                Open stand-up tab <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            }
+          />
+        </div>
+        {isStandupViewer ? (
+          <div className="max-h-[340px] overflow-y-auto px-2 pb-3 pt-2">
+            <table className="w-full min-w-[720px] border-separate border-spacing-0 text-left">
+              <thead>
+                <tr>
+                  {['Department', 'Head', 'Submission today', 'Pending', 'Blockers', 'Support callouts', ''].map((h) => (
+                    <th
+                      key={h}
+                      className="border-b border-slate-200 bg-white px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500 first:pl-4 last:pr-4"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {standupPulses.map((pulse) => {
+                  const dept = deptMap.get(pulse.departmentId);
+                  if (!dept) return null;
+                  const head = empMap.get(dept.headId ?? '');
+                  const pending = pulse.pendingCount + pulse.draftCount;
+                  return (
+                    <tr
+                      key={dept.id}
+                      className="cursor-pointer transition-colors hover:bg-slate-50/80"
+                      onClick={() => openStandupDepartment(dept.id)}
+                    >
+                      <td className="border-b border-slate-100 py-2.5 pl-4 pr-3">
+                        <div className="flex items-center gap-2">
+                          <span className="h-7 w-1 rounded-full" style={{ background: dept.color }} />
+                          <div className="min-w-0">
+                            <div className="truncate text-xs font-semibold text-slate-800">{dept.name}</div>
+                            <div className="text-[10px] text-slate-400">{dept.code}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="border-b border-slate-100 px-3 py-2.5">
+                        {head ? (
+                          <div className="flex items-center gap-1.5">
+                            <Avatar name={head.name} color={head.avatarColor} size={22} />
+                            <span className="max-w-[110px] truncate text-[11px] text-slate-600">{head.name}</span>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate-400">Unassigned</span>
+                        )}
+                      </td>
+                      <td className="border-b border-slate-100 px-3 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <div className="w-28">
+                            <Progress
+                              value={pulse.submissionRate}
+                              tone={pulse.submissionRate >= 80 ? 'good' : pulse.submissionRate >= 50 ? 'warn' : 'danger'}
+                              height={5}
+                            />
+                          </div>
+                          <span className="text-[11px] font-semibold tabular-nums text-slate-700">
+                            {pulse.submittedCount}/{pulse.memberCount}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="border-b border-slate-100 px-3 py-2.5 text-xs tabular-nums">
+                        {pending > 0 ? <Badge tone="warn">{pending} pending</Badge> : <Badge tone="good">All in</Badge>}
+                      </td>
+                      <td className="border-b border-slate-100 px-3 py-2.5">
+                        {pulse.blockerCount > 0 ? (
+                          <span className="inline-flex items-center gap-1 rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-600">
+                            <AlertTriangle className="h-3 w-3" /> {pulse.blockerCount}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-slate-300">—</span>
+                        )}
+                      </td>
+                      <td className="border-b border-slate-100 px-3 py-2.5">
+                        {pulse.openSupportCount > 0 ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1 rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium text-sky-600">
+                              <LifeBuoy className="h-3 w-3" /> {pulse.openSupportCount}
+                            </span>
+                            {pulse.crossFunctionalCount > 0 ? (
+                              <span className="inline-flex items-center gap-1 rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-600">
+                                <Megaphone className="h-3 w-3" /> {pulse.crossFunctionalCount} cross
+                              </span>
+                            ) : null}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-slate-300">—</span>
+                        )}
+                      </td>
+                      <td className="border-b border-slate-100 py-2.5 pl-2 pr-4 text-right">
+                        <ArrowRight className="ml-auto h-3.5 w-3.5 text-slate-300" />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {standupPulses.length === 0 ? (
+              <div className="p-4">
+                <EmptyState
+                  icon={<MessagesSquare className="h-5 w-5" />}
+                  title="No stand-up data in this entity"
+                  description="No department your role can track sits in the selected entity focus."
+                />
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="px-4 pb-4 pt-2">
+            <button
+              type="button"
+              onClick={() => onNavigate('standups')}
+              className="flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2.5 text-left transition-colors hover:border-brand-200 hover:bg-brand-50/50"
+            >
+              <span className="rounded-lg bg-brand-50 p-2 text-brand-600">
+                <MessagesSquare className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-semibold text-slate-800">Your stand-up for {prettyDate(today)}</div>
+                <div className="text-[11px] text-slate-500">
+                  {myStandup?.status === 'submitted'
+                    ? 'Submitted — leadership can see your update, blockers and action items.'
+                    : myStandup
+                      ? 'You have a draft — finish and submit your daily stand-up.'
+                      : 'Share yesterday’s work, progress, blockers and the action items for the day.'}
+                </div>
+              </div>
+              <Badge tone={myStandup?.status === 'submitted' ? 'good' : myStandup ? 'warn' : 'neutral'}>
+                {myStandup?.status === 'submitted' ? 'Submitted' : myStandup ? 'Draft' : 'Not started'}
+              </Badge>
+            </button>
+          </div>
+        )}
+      </Card>
 
       {/* Trend + mix */}
       <div className="mb-4 grid gap-3 xl:grid-cols-3">

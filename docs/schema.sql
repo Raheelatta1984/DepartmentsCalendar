@@ -25,6 +25,10 @@ create type connection_status as enum ('connected','pending','disconnected');
 create type escalation_status as enum ('open','acknowledged','closed');
 create type sync_action    as enum ('create','update','delete');
 create type sync_status    as enum ('queued','synced','failed','dead');
+create type standup_status as enum ('draft','submitted');
+create type support_request_type   as enum ('internal','cross_functional');
+create type support_request_status as enum ('open','acknowledged','resolved');
+create type standup_action_status  as enum ('open','done');
 
 -- ---------------------------------------------------------------------------
 -- Reference / master data
@@ -243,6 +247,47 @@ create table public.escalations (
 );
 create index escalations_open_idx on public.escalations (status, created_at desc);
 
+-- ---------------------------------------------------------------------------
+-- Daily department stand-ups (one entry per member per working day)
+-- ---------------------------------------------------------------------------
+create table public.standup_entries (
+  id               uuid primary key default gen_random_uuid(),
+  entry_date       date not null,
+  department_id    uuid not null references public.departments(id) on delete cascade,
+  employee_id      uuid not null references public.employees(id) on delete cascade,
+  last_day_update  text not null default '',
+  progress_update  text not null default '',
+  blockers         text not null default '',
+  status           standup_status not null default 'draft',
+  submitted_at     timestamptz,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
+  unique (employee_id, entry_date)
+);
+create index standup_department_day_idx on public.standup_entries (department_id, entry_date);
+
+create table public.standup_action_items (
+  id               uuid primary key default gen_random_uuid(),
+  standup_id       uuid not null references public.standup_entries(id) on delete cascade,
+  title            text not null,
+  owner_id         uuid references public.employees(id) on delete set null,
+  due_date         date,
+  status           standup_action_status not null default 'open'
+);
+create index standup_actions_open_idx on public.standup_action_items (standup_id) where status = 'open';
+
+create table public.support_requests (
+  id                     uuid primary key default gen_random_uuid(),
+  standup_id             uuid not null references public.standup_entries(id) on delete cascade,
+  description            text not null,
+  type                   support_request_type not null,
+  target_department_id   uuid references public.departments(id) on delete set null,
+  status                 support_request_status not null default 'open',
+  created_at             timestamptz not null default now(),
+  resolved_at            timestamptz
+);
+create index support_requests_open_idx on public.support_requests (status, created_at desc);
+
 create table public.audit_log (
   id          bigint generated always as identity primary key,
   actor_id    uuid references public.employees(id) on delete set null,
@@ -418,6 +463,40 @@ create policy escalations_read on public.escalations for select to authenticated
 create policy escalations_update on public.escalations for update to authenticated
   using (auth.uid() = any(recipients) or auth.uid() = any(cc) or app.is_executive())
   with check (auth.uid() = any(recipients) or auth.uid() = any(cc) or app.is_executive());
+
+-- Daily stand-ups: authors write their own row; leadership of the relevant
+-- department and group executives read the whole department's check-ins.
+create policy standups_read on public.standup_entries for select to authenticated
+  using (employee_id = auth.uid()
+         or app.is_executive()
+         or exists (select 1 from public.employees me
+                    where me.id = auth.uid()
+                      and me.role in ('department_head','unit_head','manager','supervisor')
+                      and me.department_id = standup_entries.department_id));
+create policy standups_write on public.standup_entries for all to authenticated
+  using (employee_id = auth.uid())
+  with check (employee_id = auth.uid());
+create policy standup_actions_rw on public.standup_action_items for all to authenticated
+  using (exists (select 1 from public.standup_entries s where s.id = standup_id and s.employee_id = auth.uid()))
+  with check (exists (select 1 from public.standup_entries s where s.id = standup_id and s.employee_id = auth.uid()));
+-- Support callouts are advanced (acknowledge/resolve) by department leadership.
+create policy support_requests_read on public.support_requests for select to authenticated
+  using (exists (
+    select 1 from public.standup_entries s
+    where s.id = support_requests.standup_id
+      and (s.employee_id = auth.uid()
+           or app.is_executive()
+           or exists (select 1 from public.employees me
+                      where me.id = auth.uid()
+                        and me.role in ('department_head','unit_head','manager','supervisor')
+                        and me.department_id = s.department_id))));
+create policy support_requests_update on public.support_requests for update to authenticated
+  using (app.is_executive()
+         or exists (select 1 from public.standup_entries s
+                    join public.employees me on me.id = auth.uid()
+                    where s.id = support_requests.standup_id
+                      and me.department_id = s.department_id
+                      and me.role in ('department_head','unit_head','manager','supervisor')));
 
 create policy audit_read on public.audit_log for select to authenticated
   using (app.is_executive());

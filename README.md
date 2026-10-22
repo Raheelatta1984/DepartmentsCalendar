@@ -25,6 +25,8 @@ Built with React + TypeScript, with a deterministic product demo and an optional
 | Low-performing department reported to department head, CC Head of Operations | **Attention queue → Escalate** and the **rule engine**; generates a ready-to-send email with To/CC and full audit record |
 | Head of Operations sees only the departments he is responsible for | Preview role scope: COO sees every operational department (owner field), not the rest of the group |
 | Daily timesheet by activity, review where time was spent vs the planned task | **Timesheets** — team week grid, entry history, approvals, plan-vs-actual |
+| Daily department stand-up: last working day update, progress, blockers, support requests, action items of the day | **Daily stand-up** tab — one check-in per member per working day, department board layered head → manager → supervisor → employee, internal & cross-functional support callouts |
+| Only department heads / managers / supervisors track their department's stand-up progress; CEO/COO see a high-level summary and drill in department by department | **Role-scoped stand-up board** (supervisor rank and above) + **Executive pulse** for CEO/COO; plain employees only see their own form; a **stand-up pulse card** on the command centre shows per-department submission, blockers and support callouts |
 | Roadmap with department/employee/task/subtask rows, columns for year, quarter, month, week number, day and date | **Roadmap timeline** with all six header rows, collapsible hierarchy, holiday shading and today marker |
 | Country-specific weekly off + public holidays for the next 5 years, with reason shown | **Master setup → Holidays & weekends** (12 countries, multi-year generation, per-country weekend toggles) and shading in calendar/roadmap |
 | Track IT effort by project/task and capitalise it for the board | **IT projects & capex** portfolio (110 projects) + **Capitalisation pack** (AASB 138, AUD) with monthly board approval of resource hours |
@@ -44,7 +46,7 @@ Pick the **group of company**, then the **entity** — the profile list then sho
 | Unit heads / managers / supervisors | Management | Their own reporting tree only |
 | Employees | Self-service | Own calendar, own timesheet, own activity register |
 
-The data deliberately contains a realistic mix: 1 100+ activities, 6 000+ timesheet entries, 890+ holiday records, calendar connections in connected/pending/disconnected states, and a few departments under the 70-point threshold so the escalation flow has something to act on.
+The data deliberately contains a realistic mix: 1 100+ activities, 6 000+ timesheet entries, 890+ holiday records, 570+ daily stand-up entries (with blockers, internal/cross-functional support callouts and 1 100+ action items), calendar connections in connected/pending/disconnected states, and a few departments under the 70-point threshold so the escalation flow has something to act on.
 
 ### Harbourline Retail Australia — independent retail entity and IT capex programme
 
@@ -151,6 +153,7 @@ See [`docs/architecture.svg`](docs/architecture.svg) and [`docs/ARCHITECTURE.md`
 | **Activity register** | Filterable register of every activity with inline status changes, progress, sync state, CSV and .ics export |
 | **Roadmap timeline** | Hierarchical rows (department → employee → activity → subtask) against year/quarter/month/ISO-week/day/date columns, 13/26/52-week horizon |
 | **Timesheets** | Team week grid (click a cell to log), entry history with approvals, approval queue, plan-vs-actual; optional project/task link for capitalisation |
+| **Daily stand-up** | Member check-in form (last working day, progress, blockers, action items, internal/cross-functional support), department board grouped top-to-bottom by reporting layer with acknowledge/resolve callout lifecycle, executive pulse for CEO/COO, and a per-department pulse card on the command centre |
 | **IT projects & capex** | 110-project register with portfolio, category, stage, capex, capitalisation rate, delivery progress and task-level effort |
 | **Capitalisation pack** | Board pack in AUD: capitalised hours and cost by resource/project, excluded effort reconciliation, AASB 138 evidence, board submission and decision log |
 | **Performance & escalation** | Department matrix across all metrics, employee scorecards, escalation log, rule engine, generated email |

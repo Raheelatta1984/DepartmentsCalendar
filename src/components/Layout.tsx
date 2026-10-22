@@ -11,6 +11,7 @@ import {
   Landmark,
   ListChecks,
   Menu,
+  MessagesSquare,
   Plug,
   Plus,
   RefreshCw,
@@ -24,8 +25,9 @@ import {
   X,
 } from 'lucide-react';
 import { useStore } from '../store';
-import { ROLE_LABELS, ROLE_RANK, describeScope } from '../lib/permissions';
+import { ROLE_LABELS, ROLE_RANK, describeScope, canViewStandupBoard } from '../lib/permissions';
 import { entityRoot, entitySubtree } from '../lib/entities';
+import { toISO } from '../lib/dates';
 import type { Entity, ViewKey } from '../types';
 import { Avatar, Badge, Button, Field, IconButton, SearchInput, Select } from './ui';
 import { AiGuideToggle } from './AiGuide';
@@ -42,6 +44,7 @@ export const NAV_ITEMS: { id: ViewKey; label: string; icon: React.ReactNode; gro
   { id: 'activities', label: 'Activity register', icon: <ListChecks className="h-4 w-4" />, group: 'Workspace', hint: 'Tasks, meetings, seminars' },
   { id: 'roadmap', label: 'Roadmap timeline', icon: <GanttChartSquare className="h-4 w-4" />, group: 'Workspace', hint: 'Year → month → week → day grid' },
   { id: 'timesheet', label: 'Timesheets', icon: <Clock3 className="h-4 w-4" />, group: 'Workspace', hint: 'Log and approve effort' },
+  { id: 'standups', label: 'Daily stand-up', icon: <MessagesSquare className="h-4 w-4" />, group: 'Workspace', hint: 'Updates, blockers & support callouts' },
   { id: 'projects', label: 'IT projects & capex', icon: <Wallet className="h-4 w-4" />, group: 'Workspace', hint: 'Capital and operational portfolio' },
   { id: 'capitalisation', label: 'Capitalisation pack', icon: <Landmark className="h-4 w-4" />, group: 'Governance', hint: 'Board approval of IT effort' },
   { id: 'performance', label: 'Performance & escalation', icon: <TrendingUp className="h-4 w-4" />, group: 'Governance', hint: 'Scores, alerts, escalation log' },
@@ -65,6 +68,12 @@ export function Sidebar({
   const { state, scope } = useStore();
   const groups = ['Workspace', 'Governance', 'Configuration'];
   const openEscalations = state.escalations.filter((e) => e.status === 'open').length;
+  const openSupportToday = canViewStandupBoard(scope)
+    ? state.standups
+        .filter((entry) => entry.date === toISO(new Date()) && scope.visibleDepartmentIds.includes(entry.departmentId))
+        .flatMap((entry) => entry.supportRequests)
+        .filter((request) => request.status !== 'resolved').length
+    : 0;
   const entity = state.entities.find((item) => item.id === scope.user.entityId);
   const brandName = entity?.portalHeader || entity?.name || 'Orbit';
 
@@ -133,6 +142,11 @@ export function Sidebar({
                       {item.id === 'performance' && openEscalations ? (
                         <span className="rounded-full bg-rose-500/90 px-1.5 py-0.5 text-[10px] font-semibold text-white">
                           {openEscalations}
+                        </span>
+                      ) : null}
+                      {item.id === 'standups' && openSupportToday ? (
+                        <span className="rounded-full bg-sky-500/90 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                          {openSupportToday}
                         </span>
                       ) : null}
                     </button>

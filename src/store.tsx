@@ -12,7 +12,10 @@ import type {
   Holiday,
   Project,
   Settings,
+  StandupEntry,
   StoreState,
+  SupportRequest,
+  SupportRequestStatus,
   SyncJob,
   TimeEntry,
 } from './types';
@@ -33,6 +36,7 @@ export function normaliseState(state: StoreState): StoreState {
     projects: Array.isArray(state.projects) ? state.projects : [],
     capitalisation: state.capitalisation ?? RETAIL_CAPITALISATION_POLICY,
     capitalisationApprovals: Array.isArray(state.capitalisationApprovals) ? state.capitalisationApprovals : [],
+    standups: Array.isArray(state.standups) ? state.standups : [],
   };
 }
 
@@ -78,6 +82,10 @@ interface StoreContextValue {
   generateHolidays: (countryCode: string, year: number) => number;
   upsertEscalation: (escalation: Escalation) => void;
   setEscalationStatus: (id: string, status: Escalation['status']) => void;
+  upsertStandup: (entry: StandupEntry) => void;
+  deleteStandup: (id: string) => void;
+  setSupportRequestStatus: (entryId: string, requestId: string, status: SupportRequestStatus) => void;
+  toggleStandupAction: (entryId: string, actionId: string) => void;
   connectCalendar: (connection: CalendarConnection) => void;
   disconnectCalendar: (employeeId: string, provider: CalendarProvider) => void;
   pushToCalendars: (activityId: string, providers?: CalendarProvider[]) => void;
@@ -374,6 +382,67 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
           }),
           { action: 'Escalation updated', detail: `${id} → ${status}` },
         ),
+      upsertStandup: (entry) =>
+        save(
+          (prev) => {
+            // One stand-up per member per working day — re-saves replace that row.
+            const duplicate = prev.standups.find(
+              (row) => row.id === entry.id || (row.date === entry.date && row.employeeId === entry.employeeId),
+            );
+            const standups = duplicate
+              ? prev.standups.map((row) => (row.id === duplicate.id ? entry : row))
+              : [entry, ...prev.standups];
+            return { ...prev, standups };
+          },
+          {
+            action: entry.status === 'submitted' ? 'Stand-up submitted' : 'Stand-up draft saved',
+            detail: `${entry.date} · ${entry.employeeId}`,
+          },
+        ),
+      deleteStandup: (id) =>
+        save(
+          (prev) => ({ ...prev, standups: prev.standups.filter((row) => row.id !== id) }),
+          { action: 'Stand-up deleted', detail: id },
+        ),
+      setSupportRequestStatus: (entryId, requestId, status) =>
+        save(
+          (prev) => ({
+            ...prev,
+            standups: prev.standups.map((row) =>
+              row.id !== entryId
+                ? row
+                : {
+                    ...row,
+                    supportRequests: row.supportRequests.map((request: SupportRequest) =>
+                      request.id !== requestId
+                        ? request
+                        : {
+                            ...request,
+                            status,
+                            resolvedAt: status === 'resolved' ? new Date().toISOString() : null,
+                          },
+                    ),
+                  },
+            ),
+          }),
+          { action: 'Support request updated', detail: `${requestId} → ${status}` },
+        ),
+      toggleStandupAction: (entryId, actionId) =>
+        save((prev) => ({
+          ...prev,
+          standups: prev.standups.map((row) =>
+            row.id !== entryId
+              ? row
+              : {
+                  ...row,
+                  actionItems: row.actionItems.map((action) =>
+                    action.id === actionId
+                      ? { ...action, status: action.status === 'done' ? 'open' : 'done' }
+                      : action,
+                  ),
+                },
+          ),
+        })),
       connectCalendar: (connection) =>
         save(
           (prev) => {
@@ -577,6 +646,26 @@ export function emptyHoliday(state: StoreState): Holiday {
     date: new Date().toISOString().slice(0, 10),
     name: '',
     type: 'public_holiday',
+  };
+}
+
+export function emptyStandup(state: StoreState, date: string): StandupEntry {
+  const me = state.employees.find((e) => e.id === state.settings.activeUserId) ?? state.employees[0];
+  const now = new Date().toISOString();
+  return {
+    id: uid('std'),
+    date,
+    departmentId: me.departmentId,
+    employeeId: me.id,
+    lastDayUpdate: '',
+    progressUpdate: '',
+    blockers: '',
+    actionItems: [],
+    supportRequests: [],
+    status: 'draft',
+    submittedAt: null,
+    createdAt: now,
+    updatedAt: now,
   };
 }
 

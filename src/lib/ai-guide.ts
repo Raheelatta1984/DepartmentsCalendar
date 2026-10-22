@@ -1060,6 +1060,101 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
     ],
   },
 
+  standups: {
+    title: 'Daily stand-up',
+    subtitle: 'One check-in a day, visible only to authorised leadership',
+    blurb:
+      'Every member records one stand-up per working day: what was completed on the last working day, a progress update, any blockers, support callouts (internal or cross-functional) and the action items for the day. Supervisors, managers and department heads track their own department; the CEO and COO start from an executive pulse and drill department by department, top to bottom through every employee layer. Plain employees only ever see their own form.',
+    tips: [
+      'Submit both the last-working-day update and the progress update — the form blocks submission until both are filled.',
+      'Raise cross-functional support against the department that needs to help; it appears as a violet callout on the board and the dashboard pulse.',
+      'Department leadership can acknowledge and resolve support callouts, and tick action items while tracking the team.',
+      'Use the date navigator to review any previous working day; future days are closed by design.',
+    ],
+    watch:
+      'A stand-up is department-scoped: nobody can read another department’s entries unless their role already scopes that department.',
+    context: [
+      'One row per employee per working day — re-saving replaces that day’s entry.',
+      'Pending means no row exists yet; a draft is saved but not yet submitted.',
+      'The dashboard pulse reads the same stand-up snapshot as this tab.',
+    ],
+    sections: [
+      {
+        match: ['my daily stand-up', 'my stand-up'],
+        guide: {
+          title: 'My stand-up',
+          blurb: 'Your personal check-in form for the selected working day.',
+          tips: [
+            'Blockers can be left empty — that reads as “unblocked” on the board.',
+            'Add action items with due dates and raise support requests before submitting.',
+            'Drafts stay private to you; only submitted stand-ups reach leadership.',
+          ],
+        },
+      },
+      {
+        match: ['department board', 'stand-up pulse'],
+        guide: {
+          title: 'Department board',
+          blurb: 'The department read top to bottom: head, unit heads and managers, supervisors, then team members.',
+          tips: [
+            'Expand a person to read their full update, blockers, action items and support callouts.',
+            'The pulse tiles reconcile to the rows below — submitted, pending, blockers, open support and open actions.',
+            'Use Remind on a pending member to queue a workspace notification.',
+          ],
+        },
+      },
+      {
+        match: ['executive pulse', 'department stand-up summary'],
+        guide: {
+          title: 'Executive pulse',
+          blurb: 'High-level, department-wise stand-up summary for the CEO and Head of Operations.',
+          tips: [
+            'Cards surface submission rate plus blocker and support callouts at a glance.',
+            'Open a department card to drill into the full top-to-bottom employee detail.',
+            'Cross-functional callouts are flagged violet so inter-department dependencies do not hide.',
+          ],
+        },
+      },
+      {
+        match: ['support callouts', 'support'],
+        guide: {
+          title: 'Support callouts',
+          blurb: 'Internal help requests and cross-functional support raised inside a stand-up.',
+          tips: [
+            'Open → acknowledged → resolved is the full lifecycle; only department leadership can advance it.',
+            'Cross-functional requests name the department being asked for help.',
+          ],
+        },
+      },
+    ],
+    subTabs: [
+      {
+        match: ['my stand-up'],
+        guide: {
+          title: 'Sub-tab · My stand-up',
+          blurb: 'Self-service check-in, available to every role.',
+          tips: ['Save a draft if the day is still in motion, then submit once complete.'],
+        },
+      },
+      {
+        match: ['executive pulse'],
+        guide: {
+          title: 'Sub-tab · Executive pulse',
+          blurb: 'CEO/COO summary across every department in their scope.',
+          tips: ['Drill from any department card into its detailed board.'],
+        },
+      },
+      {
+        match: ['department board'],
+        guide: {
+          title: 'Sub-tab · Department board',
+          blurb: 'Layered tracking for supervisors through department heads.',
+          tips: ['Only departments inside your role scope appear in the picker.'],
+        },
+      },
+    ],
+  },
+
   'whats-new': {
     title: 'What’s new',
     subtitle: 'What changed, and what it means for you',

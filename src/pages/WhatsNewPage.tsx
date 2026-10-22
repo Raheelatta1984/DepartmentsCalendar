@@ -1,8 +1,23 @@
 import React from 'react';
-import { ArrowUpRight, CalendarDays, CheckCircle2, Clock3, LayoutGrid, Palette, Sparkles, WandSparkles } from 'lucide-react';
+import { ArrowUpRight, CalendarDays, CheckCircle2, Clock3, LayoutGrid, MessagesSquare, Palette, Sparkles, WandSparkles } from 'lucide-react';
 import { Badge, Button, Card, PageHeader } from '../components/ui';
 
 const updates = [
+  {
+    label: 'Just added',
+    date: 'October 2026',
+    title: 'Daily stand-up tab with department pulse and support callouts',
+    description:
+      'A dedicated Daily stand-up tab gives every member a check-in form — last working day update, progress, blockers, support requests and the day’s action items. Supervisors, managers and department heads track their own department on a top-to-bottom board, while the CEO and COO get an executive pulse with high-level department summaries that drill into every employee layer. A stand-up pulse card now sits on the command centre with submission progress and blocker/support callouts.',
+    icon: <MessagesSquare className="h-4 w-4" />,
+    tone: 'brand' as const,
+    bullets: [
+      'One stand-up per member per working day, with drafts and submit states',
+      'Internal and cross-functional support callouts with acknowledge → resolve lifecycle',
+      'Role-scoped board: leadership sees only their authorised departments',
+      'Executive pulse for CEO/COO plus a stand-up pulse card on the command centre',
+    ],
+  },
   {
     label: 'Just added',
     date: 'October 2026',
