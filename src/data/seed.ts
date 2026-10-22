@@ -20,6 +20,7 @@ import { COUNTRIES, buildHolidayDataset } from './countries';
 import { RETAIL_CAPITALISATION_POLICY, RETAIL_CIO_ID, RETAIL_COMPANY_ID, RETAIL_IT_DEPT_ID, retailSample } from './retail-seed';
 import { buildApproval, capitalisationReport, monthKey, monthScope } from '../lib/capitalisation';
 import { toISO } from '../lib/dates';
+import { buildStandupSeed } from './standup-seed';
 
 /* ------------------------------------------------------------------ */
 /* Deterministic pseudo-random generator so the demo is reproducible  */
@@ -592,17 +593,28 @@ export function createSeedState(): StoreState {
   // Harbourline Retail Australia is seeded as an independent entity tree with
   // its own IT project portfolio. Existing Meridian data is merged, never replaced.
   const retail = retailSample();
+  const holidayRows = buildHolidayDataset(years, COUNTRIES.map((c) => c.code));
+  const seededEmployees = [...EMPLOYEES, ...retail.employees];
+  const seededDepartments = [...DEPARTMENTS, ...retail.departments];
+  const seededActivities = [...ACTIVITIES, ...retail.activities];
   const base: StoreState = {
     entities: [...ENTITIES, ...retail.entities],
-    departments: [...DEPARTMENTS, ...retail.departments],
-    employees: [...EMPLOYEES, ...retail.employees],
-    activities: [...ACTIVITIES, ...retail.activities],
+    departments: seededDepartments,
+    employees: seededEmployees,
+    activities: seededActivities,
     timeEntries: [...TIME_ENTRIES, ...retail.timeEntries],
     projects: retail.projects,
     capitalisation: RETAIL_CAPITALISATION_POLICY,
     capitalisationApprovals: [],
-    holidays: buildHolidayDataset(years, COUNTRIES.map((c) => c.code)),
+    holidays: holidayRows,
     countries: COUNTRIES,
+    standups: buildStandupSeed({
+      employees: seededEmployees,
+      departments: seededDepartments,
+      activities: seededActivities,
+      holidays: holidayRows,
+      countries: COUNTRIES,
+    }),
     escalations: ESCALATIONS.map((esc) => {
       const dept = DEPARTMENTS.find((d) => d.id === esc.departmentId);
       const head = EMPLOYEES.find((e) => e.id === dept?.headId);

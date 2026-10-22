@@ -100,6 +100,36 @@ export function canViewEmployee(scope: Scope, employeeId: string) {
   return scope.visibleEmployeeIds.includes(employeeId);
 }
 
+/* ------------------------------------------------------------------ */
+/* Daily stand-up authorization                                        */
+/*                                                                     */
+/* Every member writes their own stand-up. Progress and activity       */
+/* tracking is restricted to the leadership layer of the relevant      */
+/* department (supervisor → manager → unit head → department head),    */
+/* while the CEO/COO see every department they are responsible for.    */
+/* Plain employees never open another person's stand-up.               */
+/* ------------------------------------------------------------------ */
+
+/** Supervisors and above can open the department stand-up board. */
+export function canViewStandupBoard(scope: Scope): boolean {
+  return ROLE_RANK[scope.user.role] >= ROLE_RANK.supervisor;
+}
+
+/** Leadership may only track stand-ups for departments inside their scope. */
+export function canViewDepartmentStandups(scope: Scope, departmentId: string): boolean {
+  return canViewStandupBoard(scope) && scope.visibleDepartmentIds.includes(departmentId);
+}
+
+/** A stand-up entry is editable by its author; leadership tracks but does not rewrite. */
+export function canEditStandupEntry(scope: Scope, employeeId: string): boolean {
+  return scope.user.id === employeeId;
+}
+
+/** Department leadership and group executives can acknowledge/resolve support callouts. */
+export function canResolveSupportRequest(scope: Scope, departmentId: string): boolean {
+  return canViewDepartmentStandups(scope, departmentId);
+}
+
 export function describeScope(scope: Scope) {
   switch (scope.user.role) {
     case 'ceo':

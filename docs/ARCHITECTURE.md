@@ -290,3 +290,12 @@ The workspace model now carries three additive collections alongside the origina
 4. Every in-scope entry ends up in exactly one bucket, so the board pack reconciles logged hours to capitalised + excluded effort.
 
 The board workflow (submit → refresh → approve/reject) is stored through the same shared-workspace persistence and audit log as the rest of the portal. As with the performance scores, calculations run client-side for the pilot; move the same queries server-side before using the numbers for statutory reporting.
+## 11. Daily department stand-ups
+
+The workspace model carries an additive `standups` collection (one `StandupEntry` per employee per working day; older snapshots heal to an empty list via `normaliseState`). Each entry holds the last-working-day update, progress update, blockers, the day's action items (`StandupActionItem[]`) and support callouts (`SupportRequest[]`, either internal or cross-functional with a target department).
+
+- **Self-service check-in**: every role writes only its own entry through the Daily stand-up tab (draft → submitted). Re-saving the same day replaces the row, so the unique key is effectively `(employeeId, date)`.
+- **Leadership tracking**: the department board is restricted by `canViewStandupBoard` (supervisor rank and above) and intersected with the existing role scope, so a manager/supervisor sees only their own department while department heads see their owned units. The board reads top to bottom — department head → unit heads/managers → supervisors → team members (`standupLayers`).
+- **Executive pulse**: the CEO and COO start from a high-level, department-wise summary (submission rate, blockers, open and cross-functional support) and drill into any in-scope department's full layered board. A matching stand-up pulse card is embedded on the command centre.
+- **Support lifecycle**: department leadership advances callouts open → acknowledged → resolved; the sidebar and command centre surface unresolved callouts for the selected day.
+- The Neon JSONB document persists the whole collection through the same validated, compare-and-swap workspace write; the strict Zod schema in `server/validation.mjs` whitelists the new shapes, and the relational target design (including row-level policies) is documented in `schema.sql`.

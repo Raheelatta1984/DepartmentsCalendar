@@ -265,6 +265,61 @@ export interface Escalation {
   note: string;
 }
 
+/* ------------------------------------------------------------------ */
+/* Daily department stand-up                                           */
+/* ------------------------------------------------------------------ */
+export type SupportRequestType = 'internal' | 'cross_functional';
+export type SupportRequestStatus = 'open' | 'acknowledged' | 'resolved';
+export type StandupActionStatus = 'open' | 'done';
+export type StandupStatus = 'draft' | 'submitted';
+
+/** A blocker raised in a stand-up that needs help from another person/team. */
+export interface SupportRequest {
+  id: string;
+  description: string;
+  /** internal = help inside the department; cross_functional = another department. */
+  type: SupportRequestType;
+  /** The department asked for help when the request is cross-functional. */
+  targetDepartmentId: string | null;
+  status: SupportRequestStatus;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+/** Action item the member commits to during the stand-up. */
+export interface StandupActionItem {
+  id: string;
+  title: string;
+  ownerId: string | null;
+  dueDate: string | null;
+  status: StandupActionStatus;
+}
+
+/**
+ * One member's stand-up for one working day: last working day update,
+ * progress, blockers, support callouts and the day's action items.
+ * One row per employee per date (upserted).
+ */
+export interface StandupEntry {
+  id: string;
+  /** yyyy-MM-dd — the working day the stand-up covers. */
+  date: string;
+  departmentId: string;
+  employeeId: string;
+  /** Share on last working day's activity. */
+  lastDayUpdate: string;
+  /** Progress update against current deliverables. */
+  progressUpdate: string;
+  /** Blockers — empty string means the member is unblocked. */
+  blockers: string;
+  actionItems: StandupActionItem[];
+  supportRequests: SupportRequest[];
+  status: StandupStatus;
+  submittedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CalendarConnection {
   id: string;
   employeeId: string;
@@ -306,6 +361,7 @@ export interface StoreState {
   escalations: Escalation[];
   connections: CalendarConnection[];
   syncJobs: SyncJob[];
+  standups: StandupEntry[];
   settings: Settings;
   auditLog: AuditEntry[];
   projects: Project[];
@@ -370,6 +426,7 @@ export type ViewKey =
   | 'activities'
   | 'roadmap'
   | 'timesheet'
+  | 'standups'
   | 'projects'
   | 'capitalisation'
   | 'performance'

@@ -2,6 +2,7 @@ import type { AppFilters, StoreState, ViewKey } from '../types';
 import type { Scope } from './permissions';
 import { departmentsInEntityScope, entityScopeLabel, entitySubtreeIds } from './entities';
 import { filterActivities, filterEntries, groupScore } from './analytics';
+import { buildStandupPulses } from './standups';
 import { fromISO, humanHours, periodLabel, periodRange, toISO } from './dates';
 
 /* ------------------------------------------------------------------ */
@@ -138,6 +139,21 @@ export function buildLiveFacts({
         { label: 'Departments scored', value: String(summary.departments.length) },
         { label: 'Below threshold', value: `${below} under ${state.settings.performanceThreshold}` },
         { label: 'Delivery score', value: `${summary.score}/100` },
+      ];
+    }
+    case 'standups': {
+      const pulses = buildStandupPulses(state, departmentIds, today);
+      const submitted = pulses.reduce((total, pulse) => total + pulse.submittedCount, 0);
+      const members = pulses.reduce((total, pulse) => total + pulse.memberCount, 0);
+      const blockers = pulses.reduce((total, pulse) => total + pulse.blockerCount, 0);
+      const support = pulses.reduce((total, pulse) => total + pulse.openSupportCount, 0);
+      const cross = pulses.reduce((total, pulse) => total + pulse.crossFunctionalCount, 0);
+      return [
+        { label: 'Date', value: today },
+        { label: 'Departments tracked', value: String(pulses.length) },
+        { label: 'Submitted today', value: `${submitted} of ${members} people` },
+        { label: 'Blockers', value: String(blockers) },
+        { label: 'Open support', value: `${support} (${cross} cross-functional)` },
       ];
     }
     case 'integrations': {
