@@ -138,7 +138,7 @@ Neon Free PostgreSQL
   Versioned workspace snapshot + persistent sign-in attempt limits
 ```
 
-Writes are debounced and serialized, with atomic revision checks in Postgres. Conflicting/offline edits stay in the current tab for export or retry instead of silently overwriting newer remote changes. Persona selection is device-local; shared company data is not cached in localStorage. This is one trusted pilot workspace, not a normalized enterprise backend.
+Every `/api/*` call first passes an in-process request guard (per-client sliding-window rate limits, a 5 s read micro-cache with `ETag`/`304` revalidation, a negative cache with a Bloom filter for known misses, and a circuit breaker for Neon outages) so repeated, abusive or pointless requests never reach the database — see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#request-guard-rate-limits-negative-caching-and-bloom-filters-serverrequest-guardmjs). Writes are debounced and serialized, with atomic revision checks in Postgres. Conflicting/offline edits stay in the current tab for export or retry instead of silently overwriting newer remote changes. Persona selection is device-local; shared company data is not cached in localStorage. This is one trusted pilot workspace, not a normalized enterprise backend.
 
 See [`docs/architecture.svg`](docs/architecture.svg) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Real OAuth calendar sync, SSO, server-enforced employee scopes, durable scheduled delivery and immutable audit logging are **planned, not implemented**. The actual Neon schema is [`docs/neon.sql`](docs/neon.sql); the older [`docs/schema.sql`](docs/schema.sql) is a Supabase-specific future reference and must not be run for this deployment.
 

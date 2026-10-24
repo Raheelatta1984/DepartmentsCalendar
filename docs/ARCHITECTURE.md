@@ -52,6 +52,19 @@ The shared password protects the whole workspace. Signed cookies are HttpOnly, S
 
 **Every password holder can read and modify every record.** Persona switching and `src/lib/permissions.ts` are product previews only, not authorization. Audit entries can be edited with a snapshot and are not immutable evidence. The pilot must not contain sensitive real employee/payroll data.
 
+### Request guard: rate limits, negative caching and Bloom filters (`server/request-guard.mjs`)
+
+Every API request passes through an in-process guard before anything touches Neon. It is dependency-free and costs microseconds; on Vercel each warm instance keeps its own state, and the Postgres login limiter remains the cross-instance source of truth.
+
+| Layer | What it protects | Behaviour |
+| --- | --- | --- |
+| **Rate limiter** (sliding window, per client HMAC + route class) | Everything | `config` 120/min, `session:login` 10/min, `session:logout` 30/min, `workspace:read` 60/min, `workspace:write` 40/min, unknown routes 20/min, global 240/min. Over-limit → `429` with `Retry-After` and `RateLimit-*` headers. Override with `RATE_LIMIT_<CLASS>_PER_MINUTE`; disable with `REQUEST_GUARD_DISABLED=1`. |
+| **Read micro-cache + single-flight** | `GET /api/workspace` (up to 3 MB JSONB per read) | Snapshot is cached for 5 s (`WORKSPACE_READ_CACHE_MS`), concurrent reads share one query, a successful `PUT` primes the cache with the stored state, and a weak `ETag` lets the browser send `If-None-Match` and receive `304` with no body and no database read. |
+| **Negative cache** (bounded TTL map with a Bloom filter in front) | Known misses / known failures | Empty workspace (10 s), cookies that failed verification (5 min), clients blocked by the persisted login limiter (15 min, served `429` from memory), unknown routes (10 min) and a **circuit breaker** that fails fast for 5 s after a Neon connection error instead of queueing more attempts. A Bloom miss skips the map lookup entirely. |
+| **Bloom filter of rejected password fingerprints** | `POST /api/session` (two DB statements per guess) | A guess that was already rejected is answered `401` without the database. A false positive can never lock out the correct password: the real constant-time comparison always runs first and a correct password always proceeds. |
+
+Headers: `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`, `Retry-After` (on 429/503) and `ETag` on workspace responses. Responses stay `Cache-Control: no-store`; revalidation is handled explicitly by the client (`src/lib/workspace-api.ts`).
+
 ## 2. New Infrastructure Components (v2.0)
 
 ### 2.1 PgBouncer Connection Pooling (`server/pgbouncer.mjs`)
