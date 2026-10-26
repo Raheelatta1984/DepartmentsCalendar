@@ -7,8 +7,9 @@ import { ApiError } from './workspace-api';
  * A Neon free-tier database suspends when idle and wakes on the first request,
  * so "The shared database is temporarily unavailable" is usually a transient
  * cold start rather than an outage. Every place that talks to the API therefore
- * retries itself with a short, capped backoff *and* keeps a manual refresh one
- * click away — the visitor never has to know which one is needed.
+ * retries itself with a short, capped backoff for at most five attempts, then
+ * pauses automatic requests and keeps a manual refresh one click away. A person
+ * can retry again after checking the connection; the app never polls forever.
  *
  * The server can override the wait with `Retry-After` (circuit breaker, rate
  * limit); otherwise we walk these delays. Non-retryable verdicts (bad setup,
@@ -16,6 +17,8 @@ import { ApiError } from './workspace-api';
  * broken configuration only hides the real message.
  */
 export const RETRY_DELAYS_MS = [2_000, 5_000, 10_000, 20_000, 30_000];
+/** Stop automatic retries after five attempts; a person can still retry manually. */
+export const MAX_AUTO_RETRIES = RETRY_DELAYS_MS.length;
 export const MIN_RETRY_DELAY_MS = 1_000;
 export const MAX_RETRY_DELAY_MS = 60_000;
 

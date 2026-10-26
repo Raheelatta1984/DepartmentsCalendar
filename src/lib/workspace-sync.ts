@@ -1,5 +1,5 @@
 import { ApiError, readWorkspace, writeWorkspace, type SharedState, type Snapshot } from './workspace-api';
-import { RETRY_DELAYS_MS, isRetryable, permanentError, retryDelayForError } from './retry';
+import { MAX_AUTO_RETRIES, RETRY_DELAYS_MS, isRetryable, permanentError, retryDelayForError } from './retry';
 
 export type SyncStatus = 'saved' | 'pending' | 'saving' | 'refreshing' | 'error' | 'conflict';
 export interface SyncInfo {
@@ -8,6 +8,8 @@ export interface SyncInfo {
   dirty: boolean;
   /** Epoch ms of the next automatic retry; undefined when none is scheduled. */
   retryAt?: number;
+  /** True once the bounded automatic retry budget has been used up. */
+  autoRetryExhausted?: boolean;
 }
 interface Transport {
   read: typeof readWorkspace;
@@ -26,9 +28,12 @@ export class WorkspaceSync {
   private attempts = 0;
   private busy = false;
   private blocked = false;
+  private blockedRetryable = false;
   private disposed = false;
   private paused = false;
+  private autoRetryExhausted = false;
   private status: SyncStatus = 'saved';
+  private message = '';
   private lastContact = Date.now();
 
   constructor(
@@ -47,7 +52,18 @@ export class WorkspaceSync {
 
   private notify(status: SyncStatus, message = '') {
     this.status = status;
-    if (!this.disposed) this.onStatus({ status, message, dirty: this.dirty, retryAt: this.retryAt });
+    this.message = message;
+    this.publishStatus();
+  }
+
+  private publishStatus() {
+    if (!this.disposed) this.onStatus({
+      status: this.status,
+      message: this.message,
+      dirty: this.dirty,
+      retryAt: this.retryAt,
+      autoRetryExhausted: this.autoRetryExhausted,
+    });
   }
 
   /** Cancel a scheduled automatic retry without touching the current status. */
@@ -57,21 +73,32 @@ export class WorkspaceSync {
     this.retryAt = undefined;
   }
 
+  private isHidden() {
+    return typeof document !== 'undefined' && document.visibilityState === 'hidden';
+  }
+
   /**
-   * Transient failures (sleeping database, dropped connection, throttle) retry
-   * themselves so the workspace finishes opening - and a pending edit finishes
-   * saving - without the visitor reloading the page. Unsaved edits stay in the
-   * tab throughout because `flush`/`refresh` never discard local state on error.
+   * Transient failures retry with bounded backoff. After five automatic retries
+   * the sync pauses and asks for a manual retry, rather than polling forever.
+   * A hidden tab also parks the retry until the user returns.
    */
   private scheduleRetry(error: unknown) {
     this.clearRetry();
-    if (this.disposed || this.paused || !isRetryable(error)) { this.attempts = 0; return; }
+    this.autoRetryExhausted = false;
+    this.blockedRetryable = isRetryable(error);
+    if (this.disposed || this.paused || !this.blockedRetryable) { this.attempts = 0; return; }
+    if (this.attempts >= MAX_AUTO_RETRIES) {
+      this.autoRetryExhausted = true;
+      return;
+    }
+    if (this.isHidden()) return;
     const delay = retryDelayForError(error, this.attempts++, this.retryDelays);
     this.retryAt = Date.now() + delay;
     this.retryTimer = setTimeout(() => {
       this.retryTimer = undefined;
       this.retryAt = undefined;
       if (this.disposed || this.paused) return;
+      if (this.isHidden()) { this.publishStatus(); return; }
       this.blocked = false;
       if (this.dirty) void this.flush(); else void this.refresh();
     }, delay);
@@ -81,6 +108,8 @@ export class WorkspaceSync {
     this.clearRetry();
     this.attempts = 0;
     this.blocked = false;
+    this.blockedRetryable = false;
+    this.autoRetryExhausted = false;
     this.lastContact = Date.now();
   }
 
@@ -151,18 +180,30 @@ export class WorkspaceSync {
     if (!this.dirty && !this.blocked && Date.now() - this.lastContact >= 60_000) void this.refresh();
   }
 
-  /** Manual retry: an explicit click (or a reconnect) restarts the backoff. */
+  /** Manual retry: an explicit click starts a fresh, bounded retry budget. */
   retry() {
     if (this.status === 'conflict') return; // requires an explicit discard / reload
     this.clearRetry();
     this.attempts = 0;
+    this.autoRetryExhausted = false;
+    this.blocked = false;
+    this.blockedRetryable = false;
+    if (this.dirty) void this.flush(); else void this.refresh();
+  }
+
+  /** The browser came back online or visible: resume without resetting the budget. */
+  retryIfBlocked() {
+    if (!this.blocked || !this.blockedRetryable || this.status === 'conflict' || this.autoRetryExhausted || this.isHidden()) return;
+    this.clearRetry();
     this.blocked = false;
     if (this.dirty) void this.flush(); else void this.refresh();
   }
 
-  /** The browser came back online: retry immediately, but only if we were stuck. */
-  retryIfBlocked() {
-    if (this.blocked) this.retry();
+  /** Park a pending retry when the tab is backgrounded; resume when it returns. */
+  pauseRetryForHidden() {
+    if (!this.isHidden() || !this.retryTimer) return;
+    this.clearRetry();
+    this.publishStatus();
   }
 
   pause() { this.paused = true; this.clearRetry(); clearTimeout(this.timer); }

@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { authenticated, clearSessionCookie, passwordsMatch, rateLimitKey, readConfig, sessionCookie } from './auth.mjs';
+import { classifyDatabaseError } from './database-errors.mjs';
 import { createNeonRepository } from './repository.mjs';
 import { createRequestGuard, etagFor } from './request-guard.mjs';
 import { loginSchema, saveSchema } from './validation.mjs';
@@ -68,13 +69,37 @@ export function createHandler({ env = process.env, repository, logger = console,
   let config;
   try { config = readConfig(env); } catch { /* report a safe setup error, never connection-string details */ }
   let database = repository;
+  const databaseFailure = (error) => {
+    const diagnosis = classifyDatabaseError(error);
+    if (diagnosis.retryable) guard.rememberDatabaseDown();
+    else guard.forgetDatabaseDown();
+    guard.invalidateWorkspace();
+    // Log only a fixed diagnostic code. Neon error messages can contain SQL,
+    // database names, or connection details and must never be copied to logs.
+    if (typeof logger.error === 'function') logger.error('Neon workspace database operation failed.', { code: diagnosis.code });
+    return fail(diagnosis.status, diagnosis.message, {
+      databaseFailure: true,
+      databaseCode: diagnosis.code,
+      retryable: diagnosis.retryable,
+      ...(diagnosis.retryable ? { retryAfter: Math.ceil(guard.config.ttls.databaseDownMs / 1000) } : {}),
+    });
+  };
+  const runDatabase = async (operation) => {
+    try { return await operation(); }
+    catch (error) { throw databaseFailure(error); }
+  };
   const getDatabase = async () => {
     // Circuit breaker: while Neon is known to be down, fail fast instead of
     // queueing more connection attempts behind a dead endpoint.
     const downUntil = guard.databaseDownUntil();
-    if (downUntil) throw fail(503, 'The shared database is temporarily unavailable. Your unsaved changes have not been discarded. Please retry.', { retryAfter: Math.ceil((downUntil - Date.now()) / 1000), circuitOpen: true, retryable: true });
+    if (downUntil) throw fail(503, 'The shared database is temporarily unavailable. Your unsaved changes have not been discarded. Please retry.', {
+      retryAfter: Math.max(1, Math.ceil((downUntil - Date.now()) / 1000)),
+      circuitOpen: true,
+      databaseCode: 'DATABASE_UNAVAILABLE',
+      retryable: true,
+    });
     database ??= createNeonRepository(config.databaseUrl);
-    await database.initialize();
+    await runDatabase(() => database.initialize());
     // Reaching the database closes the breaker, so the next request is a real
     // attempt instead of another fast failure.
     guard.forgetDatabaseDown();
@@ -145,7 +170,7 @@ export function createHandler({ env = process.env, repository, logger = console,
         if (!correct && guard.hasRejectedPassword(guess)) throw fail(401, 'Incorrect workspace password.');
 
         const db = await getDatabase();
-        if (!await db.consumeLoginAttempt(clientKey)) {
+        if (!await runDatabase(() => db.consumeLoginAttempt(clientKey))) {
           guard.rememberLoginBlocked(clientKey);
           response.setHeader('Retry-After', '900');
           throw fail(429, 'Too many sign-in attempts. Try again in 15 minutes.', { retryAfter: 900, retryable: false });
@@ -160,7 +185,10 @@ export function createHandler({ env = process.env, repository, logger = console,
       if (routeClass === 'workspace:read') {
         // Negative cache: nobody has created the workspace yet.
         if (guard.isEmptyWorkspace()) return send(response, 200, { state: null, version: 0, updated_at: null });
-        const snapshot = await guard.readWorkspace(async () => (await getDatabase()).read());
+        const snapshot = await guard.readWorkspace(async () => {
+          const db = await getDatabase();
+          return runDatabase(() => db.read());
+        });
         if (!snapshot.state) { guard.rememberEmptyWorkspace(); return send(response, 200, snapshot); }
         const etag = etagFor(snapshot.version, snapshot.updated_at);
         response.setHeader('ETag', etag);
@@ -175,7 +203,7 @@ export function createHandler({ env = process.env, repository, logger = console,
       const parsed = saveSchema.safeParse(await jsonBody(request));
       if (!parsed.success) throw fail(422, 'Invalid workspace data. Check required master records, field values and unique IDs.');
       const db = await getDatabase();
-      const saved = await db.save(parsed.data.version, parsed.data.state);
+      const saved = await runDatabase(() => db.save(parsed.data.version, parsed.data.state));
       guard.invalidateWorkspace();
       if (!saved) throw fail(409, 'Another device saved a newer version. Export your unsaved changes, then load the latest data.');
       // Prime the read cache with what we just stored so the next GET (or the
@@ -184,30 +212,24 @@ export function createHandler({ env = process.env, repository, logger = console,
       response.setHeader('ETag', etagFor(saved.version, saved.updated_at));
       return send(response, 200, saved);
     } catch (error) {
-      const status = Number.isInteger(error.status) ? error.status : 503;
-      let retryAfterSeconds = 0;
-      if (status === 503 && !error.status) {
-        // An unhandled database failure: assume transient (a sleeping Neon
-        // instance or a dropped connection) and ask the browser to retry.
-        guard.rememberDatabaseDown();
-        guard.invalidateWorkspace();
-        logger.error('Neon workspace request failed; check database availability and server environment.');
-        retryAfterSeconds = Math.ceil(guard.config.ttls.databaseDownMs / 1000);
-        response.setHeader('Retry-After', String(retryAfterSeconds));
-      } else if (error.circuitOpen) {
-        retryAfterSeconds = Math.max(1, error.retryAfter);
-        response.setHeader('Retry-After', String(retryAfterSeconds));
-      } else if (status === 429) {
-        retryAfterSeconds = Math.max(1, Number(error.retryAfter) || 1);
+      const status = Number.isInteger(error?.status) ? error.status : 500;
+      const retryable = typeof error?.retryable === 'boolean' ? error.retryable : false;
+      const hintedRetry = Number(error?.retryAfter);
+      const retryAfterSeconds = Number.isFinite(hintedRetry) && hintedRetry > 0
+        ? Math.ceil(hintedRetry)
+        : 0;
+      if (retryAfterSeconds > 0) response.setHeader('Retry-After', String(retryAfterSeconds));
+      if (!Number.isInteger(error?.status) && typeof logger.error === 'function') {
+        // Do not log the exception: unexpected errors can carry user input or
+        // provider details. Database failures are logged with a safe fixed code.
+        logger.error('Unhandled workspace API error.');
       }
-      // Tell the browser whether the same request can succeed on its own. Setup
-      // errors, bad sessions, conflicts and validation failures cannot.
-      const retryable = typeof error.retryable === 'boolean'
-        ? error.retryable
-        : status === 429 || status === 502 || status === 503 || status === 504;
       return send(response, status, {
-        error: error.status ? error.message : 'The shared database is temporarily unavailable. Your unsaved changes have not been discarded. Please retry.',
+        error: error?.status && typeof error.message === 'string'
+          ? error.message
+          : 'The server could not complete this request. Check the server configuration and try again.',
         retryable,
+        ...(error?.databaseCode ? { code: error.databaseCode } : {}),
         ...(retryable && retryAfterSeconds > 0 ? { retryAfterSeconds } : {}),
       });
     }

@@ -17,7 +17,7 @@ export function useWorkspacePersistence(
   setState: Dispatch<SetStateAction<StoreState>>,
   shared?: SharedConnection,
 ): WorkspacePersistence {
-  const [info, setInfo] = useState<SyncInfo>({ status: 'saved', message: '', dirty: false });
+  const [info, setInfo] = useState<SyncInfo>({ status: 'saved', message: '', dirty: false, autoRetryExhausted: false });
   const current = useRef(state);
   current.current = state;
   const sync = useRef<WorkspaceSync | null>(null);
@@ -29,10 +29,18 @@ export function useWorkspacePersistence(
     sync.current = controller;
     controller.update(toSharedState(current.current));
     const onFocus = () => {
+      if (document.visibilityState === 'hidden') return;
       // Do not refresh underneath an open editor or a focused form field.
-      if (document.visibilityState === 'hidden' || document.querySelector('[role="dialog"]') ||
+      if (document.querySelector('[role="dialog"]') ||
         document.activeElement?.matches('input, textarea, select, [contenteditable="true"]')) return;
+      // A blocked request may have been waiting for the browser to reconnect or
+      // the tab to return. Resume within the same bounded retry budget.
+      controller.retryIfBlocked();
       controller.refreshOnFocus();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') controller.pauseRetryForHidden();
+      else onFocus();
     };
     const onLeave = (event: BeforeUnloadEvent) => {
       if (controller.dirty) { event.preventDefault(); event.returnValue = ''; }
@@ -41,14 +49,14 @@ export function useWorkspacePersistence(
     // through, so retry immediately instead of waiting for the next backoff.
     const onOnline = () => controller.retryIfBlocked();
     window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('online', onOnline);
     window.addEventListener('beforeunload', onLeave);
     return () => {
       controller.dispose();
       sync.current = null;
       window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('online', onOnline);
       window.removeEventListener('beforeunload', onLeave);
     };
