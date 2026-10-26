@@ -1,4 +1,5 @@
 import { addDays, differenceInCalendarDays, format, startOfWeek } from 'date-fns';
+import { HARBOURLINE_TENANT_ID, TENANTS } from './tenant-seed';
 import type {
   Activity,
   ActivityType,
@@ -50,8 +51,13 @@ export const RETAIL_IT_DEPT_ID = 'rdept-it';
 /* ------------------------------------------------------------------ */
 /* Entity tree — a new, separate group with its own company + sub-co    */
 /* ------------------------------------------------------------------ */
+const HARBOURLINE_ENTITY = (entity: Omit<Entity, 'tenantId'>): Entity => ({
+  ...entity,
+  tenantId: HARBOURLINE_TENANT_ID,
+});
+
 export const RETAIL_ENTITIES: Entity[] = [
-  {
+  HARBOURLINE_ENTITY({
     id: RETAIL_GROUP_ID,
     name: 'Harbourline Retail Australia',
     code: 'HRA',
@@ -61,8 +67,8 @@ export const RETAIL_ENTITIES: Entity[] = [
     timezone: 'Australia/Sydney',
     industry: 'Retail — stores, eCommerce & supply chain',
     currency: 'AUD',
-  },
-  {
+  }),
+  HARBOURLINE_ENTITY({
     id: RETAIL_COMPANY_ID,
     name: 'Harbourline Retail Australia Pty Ltd',
     code: 'HRAL',
@@ -72,8 +78,8 @@ export const RETAIL_ENTITIES: Entity[] = [
     timezone: 'Australia/Sydney',
     industry: 'Omnichannel retail',
     currency: 'AUD',
-  },
-  {
+  }),
+  HARBOURLINE_ENTITY({
     id: RETAIL_SERVICES_ID,
     name: 'Harbourline Retail Services Pty Ltd',
     code: 'HRSV',
@@ -83,7 +89,7 @@ export const RETAIL_ENTITIES: Entity[] = [
     timezone: 'Australia/Melbourne',
     industry: 'Store operations & distribution support',
     currency: 'AUD',
-  },
+  }),
 ];
 
 interface RetailDeptSpec {
@@ -807,6 +813,10 @@ export function withRetailSample(state: StoreState): StoreState {
   const sample = retailSample();
   return {
     ...state,
+    tenants: mergeById(
+      state.tenants ?? [],
+      TENANTS.filter((tenant) => tenant.id === HARBOURLINE_TENANT_ID),
+    ),
     entities: mergeById(state.entities, sample.entities),
     departments: mergeById(state.departments, sample.departments),
     employees: mergeById(state.employees, sample.employees),

@@ -22,7 +22,7 @@ import {
   Trash2,
   Users,
 } from 'lucide-react';
-import { useStore } from '../store';
+import { useScopedState, useStore } from '../store';
 import type { AppFilters, TimeEntry } from '../types';
 import { TYPE_LABELS, capacityHoursFor, filterEntries, inRange } from '../lib/analytics';
 import { buildDayMeta, fromISO, humanHours, toISO, workingDays } from '../lib/dates';
@@ -42,7 +42,10 @@ export function TimesheetPage({
   setFilters: (patch: Partial<AppFilters>) => void;
   onNewActivity: () => void;
 }) {
-  const { state, scope, deleteTimeEntry, toggleEntryApproved } = useStore();
+  const { scope, deleteTimeEntry, toggleEntryApproved  } = useStore();
+  /* Operational rows come from the active tenant, cut down to the departments
+     the calendar is implemented for (master setting: one / several / all). */
+  const state = useScopedState();
   const toast = useToast();
   const [tab, setTab] = useState<Tab>('grid');
   const [weekAnchor, setWeekAnchor] = useState<Date>(new Date());

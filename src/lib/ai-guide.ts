@@ -1060,6 +1060,101 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
     ],
   },
 
+  leave: {
+    title: 'Leave, PTO and public holidays',
+    subtitle: 'Tentative date → line-manager approval → approved PTO on every calendar',
+    blurb:
+      'Any employee can plan a holiday here as a tentative date. The request goes to the line manager; once approved it becomes approved holidays (PTO) on the tenant calendar for the employee, their line manager, up to hire management, and every colleague who may need cover. PTO is counted in its own hours bucket and always excludes public holidays, which are shown as PH. The tab also answers “who is away and who do I ask instead”.',
+    tips: [
+      'Pick the from/to dates and check the live preview: PTO hours, PH days excluded, weekly-off days and the balance after the request.',
+      'Name a delegate if someone else should pick the work up — otherwise the first available manager up the line is offered as the responsible contact.',
+      'Line managers, department heads and group executives approve or reject from the Approvals sub-tab; a decision note is kept with the record.',
+      'Use the Team calendar sub-tab to see approved PTO and PH across the departments in scope, and who is next responsible for anyone away.',
+    ],
+    watch:
+      'Only approved requests appear as PTO on the calendar, and public holidays are never counted as PTO. A tentative (pending) request is visible to the employee and their approvers, not as confirmed leave.',
+    context: [
+      'PTO hours = working days × contracted daily hours; PH and weekly-off days are excluded from both the hours and the balance.',
+      'Sick, unpaid, parental, study and other leave are tracked but never draw down the PTO balance.',
+      'Every screen only sees the active tenant, cut down to the departments the calendar is implemented for.',
+    ],
+    sections: [
+      {
+        match: ['plan a holiday', 'request', 'log a tentative date'],
+        guide: {
+          title: 'Plan a holiday',
+          blurb: 'A tentative date range that only becomes PTO once it is approved.',
+          tips: [
+            'The preview recalculates as you change the dates — it shows exactly what will be counted.',
+            'Overlapping pending or approved requests are blocked before submission.',
+            'The reason and named delegate are visible to your approver.',
+          ],
+        },
+      },
+      {
+        match: ['pto', 'balance', 'entitlement'],
+        guide: {
+          title: 'PTO balance',
+          blurb: 'Entitlement, approved, pending and remaining hours, with PH excluded tracked separately.',
+          tips: [
+            'Entitlement comes from the tenant’s PTO policy (working days per year).',
+            'PH excluded shows the public-holiday hours that fell inside approved leave and were not counted.',
+            'Non-PTO absence (sick, unpaid …) is reported outside the PTO bucket.',
+          ],
+        },
+      },
+      {
+        match: ['approval queue', 'approve'],
+        guide: {
+          title: 'Approval queue',
+          blurb: 'Tentative dates waiting on the signed-in approver, with clash warnings and a decision note.',
+          tips: [
+            'Approving turns the range into PTO immediately for the whole management chain and every calendar.',
+            'The queue warns when a teammate is already away on the same dates so cover can be checked first.',
+            'Requests from your own line, your department, or the group appear here — never another tenant’s.',
+          ],
+        },
+      },
+      {
+        match: ['team calendar', 'on leave today', 'public holidays this month', 'pto by person'],
+        guide: {
+          title: 'Team leave calendar',
+          blurb: 'Approved PTO and PH across the calendar scope, with the next responsible contact for anyone away.',
+          tips: [
+            'Approved PTO is deliberately visible to all colleagues in scope so blockers and assistance can be planned.',
+            'Public holidays are badged PH and are excluded from every PTO total.',
+            'Next responsible follows the named delegate, then the first available manager, then the department head and operations owner.',
+          ],
+        },
+      },
+    ],
+    subTabs: [
+      {
+        match: ['my leave'],
+        guide: {
+          title: 'Sub-tab · My leave & PTO',
+          blurb: 'Your own balance, request form and request history.',
+          tips: ['Approved rows are already PTO on the calendar; pending rows are still tentative.'],
+        },
+      },
+      {
+        match: ['approvals'],
+        guide: {
+          title: 'Sub-tab · Approvals',
+          blurb: 'The decision queue for line managers, department heads and group executives.',
+          tips: ['Every decision is written to the audit trail with the note and the approver.'],
+        },
+      },
+      {
+        match: ['team calendar'],
+        guide: {
+          title: 'Sub-tab · Team calendar',
+          blurb: 'The month grid, who is away today and next responsible contact.',
+          tips: ['Switch months with the arrows; the selected day lists everyone in scope and their status.'],
+        },
+      },
+    ],
+  },
   standups: {
     title: 'Daily stand-up',
     subtitle: 'One check-in a day, visible only to authorised leadership',

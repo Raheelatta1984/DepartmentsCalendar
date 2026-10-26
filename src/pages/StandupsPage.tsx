@@ -17,7 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { addDays } from 'date-fns';
-import { useStore, emptyStandup, newId } from '../store';
+import { useScopedState, useStore, emptyStandup, newId } from '../store';
 import type { StandupActionItem, StandupEntry, SupportRequest, SupportRequestStatus } from '../types';
 import {
   ROLE_LABELS,
@@ -84,7 +84,10 @@ function DateNavigator({ date, onChange }: { date: string; onChange: (iso: strin
 /* ------------------------------------------------------------------ */
 
 function MyStandupTab({ date }: { date: string }) {
-  const { state, scope, upsertStandup } = useStore();
+  const { scope, upsertStandup  } = useStore();
+  /* Operational rows come from the active tenant, cut down to the departments
+     the calendar is implemented for (master setting: one / several / all). */
+  const state = useScopedState();
   const toast = useToast();
   const me = scope.user;
   const existing = entryFor(state.standups, date, me.id);
@@ -400,7 +403,8 @@ function PulseTiles({ pulse }: { pulse: DepartmentStandupPulse }) {
 /* ------------------------------------------------------------------ */
 
 function StandupDetail({ entry, departmentId }: { entry: StandupEntry; departmentId: string }) {
-  const { state, scope, setSupportRequestStatus, toggleStandupAction } = useStore();
+  const { scope, setSupportRequestStatus, toggleStandupAction } = useStore();
+  const state = useScopedState();
   const canResolve = canResolveSupportRequest(scope, departmentId);
   const canToggle = canResolve || canEditStandupEntry(scope, entry.employeeId);
   const deptMap = new Map(state.departments.map((d) => [d.id, d]));
@@ -520,7 +524,8 @@ function DepartmentBoardTab({
   onDepartmentChange: (id: string) => void;
   onDateChange: (iso: string) => void;
 }) {
-  const { state, scope } = useStore();
+  const { scope } = useStore();
+  const state = useScopedState();
   const toast = useToast();
   const [openId, setOpenId] = useState<string | null>(null);
   const department = state.departments.find((d) => d.id === departmentId) ?? scope.visibleDepartments[0];
@@ -697,7 +702,8 @@ function DepartmentBoardTab({
 /* ------------------------------------------------------------------ */
 
 function ExecutivePulseTab({ date, onOpenDepartment }: { date: string; onOpenDepartment: (id: string) => void }) {
-  const { state, scope } = useStore();
+  const { scope } = useStore();
+  const state = useScopedState();
   const pulses = useMemo(
     () => buildStandupPulses(state, scope.visibleDepartments.map((d) => d.id), date),
     [state, scope.visibleDepartments, date],

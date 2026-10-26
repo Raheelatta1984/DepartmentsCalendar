@@ -1,25 +1,39 @@
 import type { Settings, StoreState } from '../types';
 
-export type SharedState = Omit<StoreState, 'settings'> & { settings: Omit<Settings, 'activeUserId'> };
+export type SharedState = Omit<StoreState, 'settings'> & {
+  settings: Omit<Settings, 'activeUserId' | 'activeTenantId'>;
+};
 export interface Snapshot { state: SharedState; version: number }
 export interface WorkspaceConfig { mode: 'demo' | 'shared'; authenticated: boolean }
 
 export function toSharedState(state: StoreState): SharedState {
-  const { activeUserId: _localPersona, ...settings } = state.settings;
+  // Persona and tenant focus are per-device preferences, never shared state.
+  const { activeUserId: _localPersona, activeTenantId: _localTenant, ...settings } = state.settings;
   return { ...state, settings };
 }
 
 const PERSONA_KEY = 'orbit.portal.persona.v1';
+const TENANT_KEY = 'orbit.portal.tenant.v1';
 export function fromSharedState(state: SharedState, activeUserId?: string): StoreState {
   if (!activeUserId) {
     try { activeUserId = localStorage.getItem(PERSONA_KEY) ?? undefined; } catch { /* private storage unavailable */ }
   }
   const user = state.employees.find((employee) => employee.id === activeUserId) ?? state.employees[0];
-  return { ...state, settings: { ...state.settings, activeUserId: user.id } };
+  let rememberedTenant: string | undefined;
+  try { rememberedTenant = localStorage.getItem(TENANT_KEY) ?? undefined; } catch { /* preference only */ }
+  const sharedTenantId = (state.settings as { activeTenantId?: string }).activeTenantId ?? '';
+  return {
+    ...state,
+    settings: { ...state.settings, activeUserId: user.id, activeTenantId: rememberedTenant ?? sharedTenantId },
+  };
 }
 
 export function rememberPersona(activeUserId: string) {
   try { localStorage.setItem(PERSONA_KEY, activeUserId); } catch { /* preference only */ }
+}
+
+export function rememberTenant(activeTenantId: string) {
+  try { localStorage.setItem(TENANT_KEY, activeTenantId); } catch { /* preference only */ }
 }
 
 /** Statuses that a retry can plausibly fix on its own (sleeping database, blip, throttle). */

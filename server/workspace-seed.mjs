@@ -20,10 +20,13 @@ import { workspaceSchema } from './validation.mjs';
 
 export class SeedError extends Error {}
 
-/** activeUserId is a per-device persona preference; it must never be shared. */
+/**
+ * activeUserId and activeTenantId are per-device preferences (who is signed in
+ * and which tenant they are looking at); they must never be shared.
+ */
 function withoutDevicePersona(state) {
-  if (typeof state?.settings?.activeUserId !== 'string') return state;
-  const { activeUserId: _devicePersona, ...settings } = state.settings;
+  if (!state?.settings) return state;
+  const { activeUserId: _devicePersona, activeTenantId: _deviceTenant, ...settings } = state.settings;
   return { ...state, settings };
 }
 

@@ -23,7 +23,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import { useStore } from '../store';
+import { useScopedState, useStore } from '../store';
 import type { AppFilters } from '../types';
 import { filterActivities, scoreTone } from '../lib/analytics';
 import { fromISO, humanHours, isoWeek, quarterOf, toISO } from '../lib/dates';
@@ -49,7 +49,10 @@ export function RoadmapPage({
   setFilters: (patch: Partial<AppFilters>) => void;
   onOpenActivity: (id: string) => void;
 }) {
-  const { state, scope, toggleSubtask } = useStore();
+  const { scope, toggleSubtask  } = useStore();
+  /* Operational rows come from the active tenant, cut down to the departments
+     the calendar is implemented for (master setting: one / several / all). */
+  const state = useScopedState();
   const toast = useToast();
   const [horizon, setHorizon] = useState<Horizon>('quarter');
   const [density, setDensity] = useState<'compact' | 'comfortable'>('compact');

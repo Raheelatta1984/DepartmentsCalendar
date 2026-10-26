@@ -24,7 +24,7 @@ import {
   TrendingUp,
   Users,
 } from 'lucide-react';
-import { useStore } from '../store';
+import { useScopedState, useStore } from '../store';
 import type { AppFilters, Department, Employee, PeriodKey, ViewKey } from '../types';
 import {
   TYPE_LABELS,
@@ -47,6 +47,7 @@ import { ActivityLine, TYPE_COLORS, TypeIcon } from '../components/activity-ui';
 import { useToast } from '../components/toast';
 import { buildStandupPulses, entryFor } from '../lib/standups';
 import { canViewStandupBoard } from '../lib/permissions';
+import { awayOnDate, leaveOnDate, nextResponsible, ptoTotals } from '../lib/leave';
 import {
   departmentsInEntityScope,
   entityScopeLabel,
@@ -68,7 +69,10 @@ export function Dashboard({
   onNewActivity: () => void;
   onOpenEmployee: (id: string) => void;
 }) {
-  const { state, scope, upsertEscalation } = useStore();
+  const { scope, tenant, upsertEscalation } = useStore();
+  /* Operational rows come from the active tenant, cut down to the departments
+     the calendar is implemented for (master setting: one / several / all). */
+  const state = useScopedState();
   const toast = useToast();
   const [escalating, setEscalating] = useState<string | null>(null);
   const today = toISO(new Date());
@@ -163,6 +167,20 @@ export function Dashboard({
   const openStandupDepartment = (departmentId: string) => {
     window.location.hash = `#/standups?department=${encodeURIComponent(departmentId)}`;
   };
+
+  /* ---- Leave & PTO -------------------------------------------------
+     Approved PTO is shown on the command centre so the department can
+     plan cover. Public holidays are excluded from the PTO totals.      */
+  const pto = useMemo(() => ptoTotals(state, scopedEmployees, tenant, new Date().getFullYear()), [state, scopedEmployees, tenant]);
+  const awayToday = useMemo(() => awayOnDate(state, deptIds, today), [state, deptIds, today]);
+  const myLeaveToday = leaveOnDate(state, scope.user.id, today);
+  const pendingLeave = useMemo(
+    () =>
+      (state.leaves ?? []).filter(
+        (leave) => leave.status === 'pending' && scope.visibleDepartmentIds.includes(leave.departmentId),
+      ),
+    [state.leaves, scope.visibleDepartmentIds],
+  );
 
   /* Connector health follows the same entity focus as every other card. */
   const scopedEmployeeIds = useMemo(() => new Set(scopedEmployees.map((e) => e.id)), [scopedEmployees]);

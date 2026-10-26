@@ -74,10 +74,13 @@ export function getScope(state: StoreState, userId: string): Scope {
   }
 
   const visibleDepartmentIds = visibleDepartments.map((d) => d.id);
+  /* Group executives see the people of the departments in scope — which is
+     already the active tenant cut down to the departments the calendar is
+     implemented for. Nobody outside those departments is ever listed. */
   const visibleEmployeeIds =
     user.role === 'ceo' || user.role === 'head_operations'
       ? state.employees
-          .filter((e) => (user.role === 'ceo' ? true : visibleDepartmentIds.includes(e.departmentId) || e.role === 'ceo'))
+          .filter((e) => visibleDepartmentIds.includes(e.departmentId) || e.id === user.id)
           .map((e) => e.id)
       : Array.from(new Set([user.id, ...reports]));
 

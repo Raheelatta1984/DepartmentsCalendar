@@ -12,6 +12,7 @@ import {
   ListChecks,
   Menu,
   MessagesSquare,
+  Plane,
   Plug,
   Plus,
   RefreshCw,
@@ -27,6 +28,7 @@ import {
 import { useStore } from '../store';
 import { ROLE_LABELS, ROLE_RANK, describeScope, canViewStandupBoard } from '../lib/permissions';
 import { entityRoot, entitySubtree } from '../lib/entities';
+import { CALENDAR_SCOPE_LABELS, describeCalendarScope } from '../lib/tenants';
 import { toISO } from '../lib/dates';
 import type { Entity, ViewKey } from '../types';
 import { Avatar, Badge, Button, Field, IconButton, SearchInput, Select } from './ui';
@@ -45,6 +47,7 @@ export const NAV_ITEMS: { id: ViewKey; label: string; icon: React.ReactNode; gro
   { id: 'roadmap', label: 'Roadmap timeline', icon: <GanttChartSquare className="h-4 w-4" />, group: 'Workspace', hint: 'Year → month → week → day grid' },
   { id: 'timesheet', label: 'Timesheets', icon: <Clock3 className="h-4 w-4" />, group: 'Workspace', hint: 'Log and approve effort' },
   { id: 'standups', label: 'Daily stand-up', icon: <MessagesSquare className="h-4 w-4" />, group: 'Workspace', hint: 'Updates, blockers & support callouts' },
+  { id: 'leave', label: 'Leave & PTO', icon: <Plane className="h-4 w-4" />, group: 'Workspace', hint: 'Holidays plan, approvals, PH' },
   { id: 'projects', label: 'IT projects & capex', icon: <Wallet className="h-4 w-4" />, group: 'Workspace', hint: 'Capital and operational portfolio' },
   { id: 'capitalisation', label: 'Capitalisation pack', icon: <Landmark className="h-4 w-4" />, group: 'Governance', hint: 'Board approval of IT effort' },
   { id: 'performance', label: 'Performance & escalation', icon: <TrendingUp className="h-4 w-4" />, group: 'Governance', hint: 'Scores, alerts, escalation log' },
@@ -65,7 +68,7 @@ export function Sidebar({
   mobileOpen: boolean;
   onCloseMobile: () => void;
 }) {
-  const { state, scope } = useStore();
+  const { state, scope, tenant, tenants, calendarScope } = useStore();
   const groups = ['Workspace', 'Governance', 'Configuration'];
   const openEscalations = state.escalations.filter((e) => e.status === 'open').length;
   const openSupportToday = canViewStandupBoard(scope)
@@ -75,7 +78,7 @@ export function Sidebar({
         .filter((request) => request.status !== 'resolved').length
     : 0;
   const entity = state.entities.find((item) => item.id === scope.user.entityId);
-  const brandName = entity?.portalHeader || entity?.name || 'Orbit';
+  const brandName = entity?.portalHeader || tenant?.name || entity?.name || 'Orbit';
 
   return (
     <>
@@ -102,9 +105,9 @@ export function Sidebar({
 
         <div className="mx-3 mb-4 rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2.5">
           <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-slate-500">
-            <Building2 className="h-3 w-3" /> Group
+            <Building2 className="h-3 w-3" /> Tenant {tenants.length > 1 ? `· 1 of ${tenants.length}` : ''}
           </div>
-          <div className="mt-1 truncate text-xs font-semibold text-slate-100">{state.settings.groupName}</div>
+          <div className="mt-1 truncate text-xs font-semibold text-slate-100">{tenant?.name ?? state.settings.groupName}</div>
           <div className="mt-1.5 flex flex-wrap gap-1">
             <Badge tone="brand" className="!bg-brand-500/15 !text-brand-200 !ring-brand-400/20">
               {state.entities.filter((e) => e.type !== 'group').length} entities
@@ -112,6 +115,12 @@ export function Sidebar({
             <Badge tone="neutral" className="!bg-white/5 !text-slate-300 !ring-white/10">
               {state.departments.length} depts
             </Badge>
+          </div>
+          <div className="mt-1.5 flex items-start gap-1 text-[9px] leading-snug text-slate-500">
+            <CalendarDays className="mt-0.5 h-2.5 w-2.5 flex-none" />
+            <span>
+              {CALENDAR_SCOPE_LABELS[calendarScope.mode]} · {describeCalendarScope(tenant, state.departments)}
+            </span>
           </div>
         </div>
 
@@ -186,7 +195,7 @@ export function Topbar({
   onToggleMobile: () => void;
   onGlobalSearch: () => void;
 }) {
-  const { state, scope, setActiveUser, resetDemo, workspace } = useStore();
+  const { state, scope, tenant, tenants, calendarScope, setActiveTenant, setActiveUser, resetDemo, workspace } = useStore();
   const [userMenu, setUserMenu] = useState(false);
   const [notifMenu, setNotifMenu] = useState(false);
   const active = NAV_ITEMS.find((i) => i.id === view);
@@ -252,6 +261,23 @@ export function Topbar({
         >
           Search people, tasks… <kbd className="rounded border border-slate-200 bg-slate-50 px-1 text-[10px] text-slate-400">⌘K</kbd>
         </button>
+
+        <Select
+          aria-label="Tenant"
+          value={tenant?.id ?? ''}
+          onChange={(e) => {
+            setActiveTenant(e.target.value);
+            onNavigate('dashboard');
+          }}
+          title="Tenant — switching tenants changes every entity, department, person and calendar on screen"
+          className="hidden !py-1.5 !text-[11px] md:block md:!w-[186px]"
+        >
+          {tenants.map((row) => (
+            <option key={row.id} value={row.id}>
+              {row.name}
+            </option>
+          ))}
+        </Select>
 
         <AiGuideToggle />
 
@@ -430,6 +456,9 @@ export function Topbar({
 
       {/* Scope ribbon */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-slate-100 bg-slate-50/80 px-3 py-1.5 text-[10px] text-slate-500 sm:px-5">
+        <span className="flex items-center gap-1 rounded bg-slate-200/70 px-1.5 py-0.5 font-semibold text-slate-700">
+          <Building2 className="h-3 w-3" /> {tenant?.code ?? 'tenant'} · {CALENDAR_SCOPE_LABELS[calendarScope.mode]}
+        </span>
         <span className="flex items-center gap-1 font-medium text-slate-600">
           <Users className="h-3 w-3" /> {describeScope(scope)}
         </span>

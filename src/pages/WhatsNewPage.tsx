@@ -1,8 +1,24 @@
 import React from 'react';
-import { ArrowUpRight, CalendarDays, CheckCircle2, Clock3, LayoutGrid, MessagesSquare, Palette, RefreshCw, Sparkles, WandSparkles } from 'lucide-react';
+import { ArrowUpRight, CalendarDays, CheckCircle2, Clock3, LayoutGrid, MessagesSquare, Palette, Plane, RefreshCw, Sparkles, WandSparkles } from 'lucide-react';
 import { Badge, Button, Card, PageHeader } from '../components/ui';
 
 const updates = [
+  {
+    label: 'Just added',
+    date: 'October 2026',
+    title: 'Multiple tenants with no cross-tenant data, plus a Leave & PTO tab and a single-department calendar setting',
+    description:
+      'The workspace now hosts several tenants side by side. A tenant owns its own group → companies → sub-companies → departments → people, and switching tenant in the top bar changes every entity, department, person, activity, timesheet, stand-up, project, PTO record and audit event on screen — nothing from another tenant is ever read, written or configured. A new Leave & PTO tab lets an employee log a tentative holiday date; once the line manager approves it, it becomes approved PTO on every calendar for the employee, their management chain and any colleague who needs cover. PTO is counted in its own bucket and always excludes public holidays, which are badged PH and reported separately. Master setup gained a department calendar scope so the calendar can run for a single department — the default IT department — several departments, or all of them.',
+    icon: <Plane className="h-4 w-4" />,
+    tone: 'brand' as const,
+    bullets: [
+      'Tenant switcher in the top bar; tenant isolation enforced on read and on write',
+      'Leave & PTO tab: tentative date → line-manager approval → approved PTO and a separate PTO balance',
+      'Public holidays badged PH and excluded from every PTO hour and total',
+      'Who is away and who is next responsible, on the calendar, the command centre and Employee 360',
+      'Master setup → Tenants & calendar scope: single department (default IT), selected departments or all departments',
+    ],
+  },
   {
     label: 'Just added',
     date: 'October 2026',

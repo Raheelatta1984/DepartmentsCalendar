@@ -11,6 +11,7 @@ import type {
   TimeEntry,
 } from '../types';
 import { clamp, fromISO, pct, periodRange, toISO, workingDays } from './dates';
+import { approvedPtoDaysInRange, approvedPtoHoursInRange } from './leave';
 
 const holidaysByCountry = (holidays: Holiday[]) => {
   const map = new Map<string, Holiday[]>();
@@ -91,7 +92,10 @@ export function employeeScore(
   // For a period that is still running, compare effort against the capacity
   // that has actually elapsed — otherwise every Monday would look like 20%.
   const effectiveEnd = start <= toISO(new Date()) && end > toISO(new Date()) ? toISO(new Date()) : end;
-  const capacity = capacityHoursFor(employee, start, effectiveEnd, holidays, state.countries);
+  // Approved PTO is removed from capacity: leave is a separate bucket, not
+  // an under-utilisation penalty.
+  const ptoHours = approvedPtoHoursInRange(state, employee, start, effectiveEnd);
+  const capacity = Math.max(0, Math.round((capacityHoursFor(employee, start, effectiveEnd, holidays, state.countries) - ptoHours) * 10) / 10);
   const activities = state.activities.filter((a) => a.assigneeId === employee.id && inRange(a, start, end));
   const entries = state.timeEntries.filter(
     (t) => t.employeeId === employee.id && t.date >= start && t.date <= end,
@@ -141,7 +145,16 @@ export function departmentScore(
 
   const effectiveEnd = startISO <= toISO(new Date()) && endISO > toISO(new Date()) ? toISO(new Date()) : endISO;
   const capacity = round1(
-    members.reduce((sum, m) => sum + capacityHoursFor(m, startISO, effectiveEnd, holidays, state.countries), 0),
+    members.reduce(
+      (sum, m) =>
+        sum +
+        Math.max(
+          0,
+          capacityHoursFor(m, startISO, effectiveEnd, holidays, state.countries) -
+            approvedPtoHoursInRange(state, m, startISO, effectiveEnd),
+        ),
+      0,
+    ),
   );
   const fullCapacity = round1(
     members.reduce((sum, m) => sum + capacityHoursFor(m, startISO, endISO, holidays, state.countries), 0),
@@ -164,7 +177,11 @@ export function departmentScore(
   let loggedDays = 0;
   members.forEach((m) => {
     const cfg = state.countries.find((c) => c.code === m.countryCode);
-    const days = workingDays(startISO, effectiveEnd, cfg?.weeklyOff ?? [0, 6], holidays, m.countryCode);
+    const days = Math.max(
+      0,
+      workingDays(startISO, effectiveEnd, cfg?.weeklyOff ?? [0, 6], holidays, m.countryCode) -
+        approvedPtoDaysInRange(state, m, startISO, effectiveEnd),
+    );
     expectedDays += days;
     const distinct = new Set(entries.filter((e) => e.employeeId === m.id).map((e) => e.date));
     loggedDays += Math.min(days, distinct.size);

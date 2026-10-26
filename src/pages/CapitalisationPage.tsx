@@ -15,7 +15,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { useStore } from '../store';
+import { useScopedState, useStore } from '../store';
 import type { CapitalisationApproval } from '../types';
 import {
   EXCLUSION_LABELS,
@@ -53,7 +53,10 @@ const statusTone: Record<CapitalisationApproval['status'], 'neutral' | 'warn' | 
 };
 
 export function CapitalisationPage() {
-  const { state, scope, submitCapitalisation, decideCapitalisation, loadRetailSample } = useStore();
+  const { scope, submitCapitalisation, decideCapitalisation, loadRetailSample  } = useStore();
+  /* Operational rows come from the active tenant, cut down to the departments
+     the calendar is implemented for (master setting: one / several / all). */
+  const state = useScopedState();
   const toast = useToast();
   const retailEntity = useMemo(
     () => state.entities.find((entity) => entity.name.startsWith('Harbourline') && entity.type === 'company'),

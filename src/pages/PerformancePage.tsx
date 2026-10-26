@@ -17,7 +17,7 @@ import {
   TrendingUp,
   X,
 } from 'lucide-react';
-import { useStore } from '../store';
+import { useScopedState, useStore } from '../store';
 import type { AppFilters, Escalation, PeriodKey } from '../types';
 import {
   capacityHoursFor,
@@ -45,7 +45,10 @@ export function PerformancePage({
   setFilters: (patch: Partial<AppFilters>) => void;
   onOpenEmployee: (id: string) => void;
 }) {
-  const { state, scope, upsertEscalation, setEscalationStatus } = useStore();
+  const { scope, upsertEscalation, setEscalationStatus  } = useStore();
+  /* Operational rows come from the active tenant, cut down to the departments
+     the calendar is implemented for (master setting: one / several / all). */
+  const state = useScopedState();
   const toast = useToast();
   const [drillDept, setDrillDept] = useState<string | null>(null);
   const [employeeQuery, setEmployeeQuery] = useState('');

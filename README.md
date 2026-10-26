@@ -2,9 +2,13 @@
 
 A working, deployable prototype of the portal you described: **every department's daily activity, follow-ups, appointments, meetings, seminars, sessions and tasks exposed up the chain from the newest employee to the CEO**, with workload measured from hours actually spent, a central calendar per department and per person, country-aware public holidays, timesheets, performance scoring and automatic escalation to the department head with the Head of Operations in copy.
 
+**Multiple tenants, one deployment.** The workspace hosts several tenants side by side — a tenant is its own group → companies → sub-companies → departments → people tree. Switching tenant changes every entity, department, person, activity, timesheet, stand-up, project, PTO record and audit event on screen: **no row of another tenant is ever read, written, listed or configured.** A tenant is also the master switch for the calendar roll-out: **one department (the default IT department), a selected list, or all departments.**
+
+**Holidays plan, PTO and public holidays.** The **Leave & PTO** tab lets an employee log a tentative date; the line manager approves it and it becomes approved holidays (PTO) on the calendar for the employee, their line manager and up to hire management — and it stays visible to colleagues so a blocker or an assistance request is never a surprise. **PTO hours are counted in their own bucket and always exclude public holidays (PH)**, which are badged PH on every calendar and reported separately.
+
 Built with React + TypeScript, with a deterministic product demo and an optional **shared Neon Free PostgreSQL workspace on the existing GitHub-linked Vercel deployment**. The frontend and server-only API deploy together. Follow [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) to connect Neon and configure secrets; merging code alone does not create a database.
 
-**Pilot access model:** anyone with the workspace password can view and edit the entire shared workspace. Persona switching previews employee scopes but is **not individual authentication or server-enforced authorization**. Do not store sensitive real employee/payroll data yet. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for what is implemented versus planned.
+**Pilot access model:** anyone with the workspace password can view and edit the entire shared workspace. Persona switching and tenant switching preview employee and tenant scopes but are **not individual authentication or server-enforced authorization**. Do not store sensitive real employee/payroll data yet. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for what is implemented versus planned.
 
 ---
 
@@ -33,26 +37,35 @@ Built with React + TypeScript, with a deterministic product demo and an optional
 | AI guide that helps on every screen, toggleable on/off | **AI guide panel at the top of every tab and section** — GUIDE badge, italic promise, prose explanation, numbered **Do this** steps, one **Watch** caution and a collapsible **Live context** block computed from the same live snapshot the screen reads. It follows the section / sub-tab in focus, folds to a single line, and hides with × or the top-bar toggle |
 | Dashboard focused on one legal entity | **Command centre → entity picker** — all entities in scope, a group of companies, a company or one of its subsidiaries; every card, score, queue and the day board recompute for that entity tree only |
 | Select a profile only after group of company and entity, scoped to that company’s people | **Avatar menu → Select profile** — group of company → entity → profile list showing only that entity’s employees |
+| Multiple tenants, each with its own entities, sub-entities and departments; **no cross-tenant information or resource** | **Top bar → Tenant** switcher + **Master setup → Tenants & calendar scope**. Tenants, entities, departments, people, activities, timesheets, stand-ups, projects, capitalisation packs, PTO and audit rows are attributed and filtered on read *and* on write |
+| Holidays plan: employee logs a tentative date, line manager approves it, approved holidays show as PTO and count in a separate PTO total, excluding PH public holidays | **Leave & PTO** tab — request → approval → PTO; PH excluded from the hours and reported on its own line; PH badge on every calendar; PTO balance per person and per team |
+| Approved leave visible on the calendar to the employee, their line manager, up to hire management — and to other employees who need cover | **Department calendar** (PTO chips + PH), **Leave & PTO → Team calendar**, **Employee 360** and the command centre card all show who is away and **who is next responsible** |
+| Master settings to choose whether the calendar is for a single department, several departments or all departments | **Master setup → Tenants & calendar scope** — single (default: IT), multiple (pick departments) or all; every operational screen follows it |
 
 ### Demo profiles (switch from the avatar menu, top-right)
 
-Pick the **group of company**, then the **entity** — the profile list then shows only that entity’s employees, never all profiles from multiple entities at once.
+Pick the **group of company**, then the **entity** — the profile list then shows only that entity’s employees, never all profiles from multiple entities at once, and never another tenant’s people.
+
+**The portal opens on Harbourline Retail Australia** (the IT-first tenant) with its IT department head signed in, and the calendar implemented for the **single IT department (RIT)**. Switch tenant in the top bar to **Meridian Group Holdings**, which has the calendar rolled out to all of its departments.
 
 | Persona | Role | Sees |
 | --- | --- | --- |
-| Arjun Mehta | CEO | All 9 entities, 22 departments, 117 people (Meridian group + Harbourline Retail Australia) |
+| Priya Raman | IT department head (default profile) | Harbourline IT calendar, its people, PTO approvals and the default IT calendar scope |
+| Charlotte Whitmore | Harbourline CEO | The departments in the Harbourline calendar scope (plus her own office), portfolio scoring, escalation log |
+| Arjun Mehta | Meridian CEO | Meridian’s 6 entities, 14 departments and its people — never Harbourline rows |
 | Layla Al Mansoori | Head of Operations | All operational departments, portfolio scoring, escalation log |
 | Fatima Noor / Ravi Krishnan / … | Department heads | Own department + reporting line |
 | Unit heads / managers / supervisors | Management | Their own reporting tree only |
 | Employees | Self-service | Own calendar, own timesheet, own activity register |
 
-The data deliberately contains a realistic mix: 1 100+ activities, 6 000+ timesheet entries, 890+ holiday records, 570+ daily stand-up entries (with blockers, internal/cross-functional support callouts and 1 100+ action items), calendar connections in connected/pending/disconnected states, and a few departments under the 70-point threshold so the escalation flow has something to act on.
+The data deliberately contains a realistic mix across **two tenants**: 1 100+ activities, 6 000+ timesheet entries, 890+ holiday records, 450+ daily stand-up entries (with blockers, internal/cross-functional support callouts and action items), 22 leave requests (approved, pending, PH-crossing, sick and unpaid), calendar connections in connected/pending/disconnected states, and a few departments under the 70-point threshold so the escalation flow has something to act on.
 
-### Harbourline Retail Australia — independent retail entity and IT capex programme
+### Harbourline Retail Australia — the default tenant (IT-first) and IT capex programme
 
-The demo now also contains **Harbourline Retail Australia**, a retail group that is completely separate from Meridian: its own group → company → sub-company tree, Australian country/timezone rules (AUD reporting currency), retail departments (Store Operations, Merchandising, Finance, Supply Chain, Digital, People & Culture) and a 33-person **Information Technology (PMO)** department.
+**Harbourline Retail Australia** is the tenant the portal opens on, a retail group that is completely separate from Meridian: its own group → company → sub-company tree, Australian country/timezone rules (AUD reporting currency), retail departments (Store Operations, Merchandising, Finance, Supply Chain, Digital, People & Culture) and a 33-person **Information Technology (PMO)** department.
 
 - **110 IT projects** across delivery, operations, security, data & analytics, infrastructure, integration, digital experience, enterprise apps, network and compliance.
+- **Calendar scope: single department (Information Technology, RIT)** — the default master setting. Change it to *multiple* or *all* in **Master setup → Tenants & calendar scope** and every operational screen follows.
 - **30 capital projects** (board-funded capex, AASB 138 development effort) and **80 operational run projects** that are expensed.
 - Project tasks are real activities on the calendar/timesheet, so resources log daily effort against the exact task.
 - The **Capitalisation pack** screen reports only capital-project development effort, converts hours to fully-loaded AUD cost, reconciles every expensed hour, and drives a submit → board decision workflow with an audit trail.
@@ -78,7 +91,18 @@ utilizationScore= 100 − |utilization − 85| × 1.3        (clamped 0–100; p
 onTimeRate      = completed activities whose deadline has passed ÷ all activities whose deadline has passed
 completionRate  = average delivery progress of in-period activities (completed = 100)
 score           = 40% utilizationScore + 35% onTimeRate + 25% completionRate
+
+capacity on leave = capacity − approved PTO hours in the period
+                    (leave is a separate bucket, so it is never scored as under-utilisation)
+
+PTO hours       = working days in the approved range × (contracted weekly hours ÷ 5)
+                  working days exclude the country's weekly-off days AND public holidays
+public holiday (PH) hours = public-holiday days inside the range × daily hours  → reported separately, never counted as PTO
+PTO remaining   = tenant PTO entitlement (working days) × daily hours − approved annual-leave hours
+                  (sick, unpaid, parental, study and other leave are tracked outside the PTO balance)
 ```
+
+Calendar scope is a per-tenant master setting: `single` (one department — the default IT department), `multiple` (an explicit list) or `all`. It filters departments, people, activities, timesheets, stand-ups, projects, capitalisation packs, PTO and performance on every operational screen and in the AI guide's live context; the signed-in person's own department is always kept so nobody is locked out of their own calendar.
 
 Escalation rule: at the end of every day/week/month/quarter, any department whose score is below the configured threshold (default **70**) produces one escalation record per period. Recipients: **department head (To)**, **Head of Operations (CC)**. Duplicate suppression is by `(department_id, period, period_start)`. The pilot keeps recent editable audit entries and escalation acknowledgement/closure statuses. Immutable, server-attributed audit logging and automatic delivery are future work.
 
@@ -106,6 +130,8 @@ Individual checks:
 npm test              # embedded PostgreSQL + real API tests + shared React store/sync tests
 npm run smoke         # all 8 screens inside jsdom
 npm run smoke:store   # store CRUD, time entries, holiday generation, escalation and personas
+npm run smoke:tenancy # tenant isolation, PTO/PH maths, calendar-scope master setting
+npm run smoke:leave   # store-level tenant switching and the leave request → approval lifecycle
 ```
 
 ## 4. Existing Vercel deployment + Neon Free
@@ -155,12 +181,13 @@ See [`docs/architecture.svg`](docs/architecture.svg) and [`docs/ARCHITECTURE.md`
 | **Activity register** | Filterable register of every activity with inline status changes, progress, sync state, CSV and .ics export |
 | **Roadmap timeline** | Hierarchical rows (department → employee → activity → subtask) against year/quarter/month/ISO-week/day/date columns, 13/26/52-week horizon |
 | **Timesheets** | Team week grid (click a cell to log), entry history with approvals, approval queue, plan-vs-actual; optional project/task link for capitalisation |
+| **Leave & PTO** | Plan a holiday (tentative date → line manager approval → approved PTO), PTO balance excluding public holidays (PH), approval queue for line managers and above, team leave calendar with PH badges, who is away and who is next responsible |
 | **Daily stand-up** | Member check-in form (last working day, progress, blockers, action items, internal/cross-functional support), department board grouped top-to-bottom by reporting layer with acknowledge/resolve callout lifecycle, executive pulse for CEO/COO, and a per-department pulse card on the command centre |
 | **IT projects & capex** | 110-project register with portfolio, category, stage, capex, capitalisation rate, delivery progress and task-level effort |
 | **Capitalisation pack** | Board pack in AUD: capitalised hours and cost by resource/project, excluded effort reconciliation, AASB 138 evidence, board submission and decision log |
 | **Performance & escalation** | Department matrix across all metrics, employee scorecards, escalation log, rule engine, generated email |
 | **Calendar sync** | Provider cards, per-employee connections, sync queue log, production checklist, troubleshooting |
-| **Master setup** | Entities, departments, employees, holidays/weekends, group settings, audit trail, full JSON backup |
+| **Master setup** | Tenants & calendar scope (single / multiple / all departments, PTO entitlement), entities, departments, employees, holidays/weekends, group settings, audit trail, full JSON backup |
 
 ---
 
@@ -171,8 +198,8 @@ api/                  Vercel function entry points (config, session, workspace)
 server/               shared Node API, authentication, validation, Neon repository
 src/
   components/         layout, modals, charts, workspace login and save status
-  data/               12-country holiday engine + deterministic demo and retail capex datasets
-  lib/                analytics, capitalisation engine, permissions preview, exports, dates, shared-state sync
+  data/               12-country holiday engine + tenant register, leave seed and retail capex datasets
+  lib/                analytics, capitalisation engine, tenant isolation, leave/PTO engine, permissions preview, exports, dates, shared-state sync
   pages/              one file per screen
   store.tsx           state/actions + local-demo or shared-Neon persistence
   types.ts            domain model
@@ -192,7 +219,8 @@ vercel.json           existing Vercel project build/API configuration
 ## 8. Honest limitations
 
 - **Shared storage needs setup.** With no Neon variables, data remains local to the browser. A successful static deployment does not automatically create/connect Neon.
-- **Trusted pilot only.** Shared-password holders can access all records. Employee/persona scope is a UI preview, not authenticated authorization; audit entries are not tamper-proof.
+- **Trusted pilot only.** Shared-password holders can access all records. Employee/persona scope and tenant isolation are enforced by the application over one shared snapshot, not by per-tenant authentication or row-level policies in the database; audit entries are not tamper-proof.
+- **Tenant isolation is application-level.** No screen, calculation or export can read another tenant’s rows, and writes merge back per tenant — but the raw JSONB snapshot is still one trusted workspace protected by one shared password.
 - **Snapshot scale.** One versioned JSONB workspace, 3 MB request limit, full-state saves and explicit conflict handling. Record-level APIs, individual identities and migrations are needed before broad or sensitive production use.
 - **Calendar sync is simulated.** No OAuth tokens are stored and no external mailbox is touched. `.ics` exports are real downloads, not subscriptions.
 - **Emails are composed, not sent.** Use Copy/Open in mail app. There is no automatic background delivery.

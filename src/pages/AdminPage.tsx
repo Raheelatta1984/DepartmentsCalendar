@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Building2,
@@ -19,21 +19,55 @@ import {
   Users,
 } from 'lucide-react';
 import { useStore, newId } from '../store';
-import type { Department, Employee, Entity, Holiday, Role } from '../types';
+import type { CalendarScopeMode, Department, Employee, Entity, Holiday, Role, Tenant } from '../types';
 import { ROLE_LABELS, ROLE_RANK } from '../lib/permissions';
+import {
+  CALENDAR_SCOPE_HINTS,
+  CALENDAR_SCOPE_LABELS,
+  describeCalendarScope,
+  normaliseCalendarScope,
+  tenantDepartments,
+  tenantStats,
+} from '../lib/tenants';
 import { fromISO, horizonYears, toISO } from '../lib/dates';
 import { Avatar, Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, SearchInput, SectionHeader, Select, Tabs, Toggle } from '../components/ui';
 import { useToast } from '../components/toast';
 
-type Tab = 'entities' | 'departments' | 'employees' | 'holidays' | 'settings' | 'audit';
+type Tab = 'tenants' | 'entities' | 'departments' | 'employees' | 'holidays' | 'settings' | 'audit';
 
 const ROLE_OPTIONS = Object.keys(ROLE_LABELS) as Role[];
 const COLORS = ['#3b82f6', '#f59e0b', '#8b5cf6', '#10b981', '#ef4444', '#06b6d4', '#ec4899', '#eab308', '#6366f1', '#14b8a6', '#f97316', '#84cc16'];
 
 export function AdminPage() {
-  const { state, scope, save, upsertEntity, deleteEntity, upsertDepartment, deleteDepartment, upsertEmployee, deleteEmployee, addHoliday, deleteHoliday, generateHolidays, updateSettings, resetDemo, workspace } = useStore();
+  const {
+    state,
+    scope,
+    tenants,
+    tenant,
+    calendarScope,
+    calendarDepartmentIds,
+    save,
+    setActiveTenant,
+    setCalendarScope,
+    upsertTenant,
+    deleteTenant,
+    upsertEntity,
+    deleteEntity,
+    upsertDepartment,
+    deleteDepartment,
+    upsertEmployee,
+    deleteEmployee,
+    addHoliday,
+    deleteHoliday,
+    generateHolidays,
+    updateSettings,
+    resetDemo,
+    workspace,
+  } = useStore();
   const toast = useToast();
-  const [tab, setTab] = useState<Tab>('entities');
+  const [tab, setTab] = useState<Tab>('tenants');
+  const [tenantDraft, setTenantDraft] = useState<Tenant | null>(null);
+  const [scopeDraft, setScopeDraft] = useState(calendarScope);
   const [entityDraft, setEntityDraft] = useState<Entity | null>(null);
   const [deptDraft, setDeptDraft] = useState<Department | null>(null);
   const [empDraft, setEmpDraft] = useState<Employee | null>(null);
@@ -43,6 +77,12 @@ export function AdminPage() {
   const [holidayYear, setHolidayYear] = useState(new Date().getFullYear());
   const [settingsDraft, setSettingsDraft] = useState(state.settings);
   const [holidayView, setHolidayView] = useState<'list' | 'coverage'>('list');
+
+  /* The scope editor follows the active tenant; it never edits another
+     tenant's configuration. */
+  useEffect(() => {
+    setScopeDraft(calendarScope);
+  }, [calendarScope, tenant?.id]);
 
   const canEdit = scope.canManageMaster;
   const empMap = useMemo(() => new Map(state.employees.map((e) => [e.id, e])), [state.employees]);
@@ -119,6 +159,7 @@ export function AdminPage() {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Tabs<Tab>
           tabs={[
+            { id: 'tenants', label: 'Tenants & calendar scope' },
             { id: 'entities', label: 'Entities & group' },
             { id: 'departments', label: 'Departments' },
             { id: 'employees', label: 'Employees' },
@@ -136,6 +177,233 @@ export function AdminPage() {
         ) : null}
       </div>
 
+      {tab === 'tenants' ? (
+        <div className="grid gap-3 xl:grid-cols-3">
+          <div className="space-y-3 xl:col-span-2">
+            <Card padded={false}>
+              <div className="flex flex-wrap items-end justify-between gap-2 px-4 pt-4">
+                <SectionHeader
+                  title="Tenants"
+                  subtitle="A tenant is a hard boundary: its entities, sub-entities, departments, people, activities, PTO and audit trail are never visible to another tenant"
+                  action={
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      disabled={!canEdit}
+                      onClick={() =>
+                        setTenantDraft({
+                          id: newId('tnt'),
+                          name: '',
+                          code: '',
+                          countryCode: state.countries[0]?.code ?? 'AU',
+                          timezone: state.countries[0]?.timezone ?? 'Australia/Sydney',
+                          currency: 'AUD',
+                          industry: '',
+                          status: 'active',
+                          calendarScope: { mode: 'single', departmentIds: [] },
+                          ptoAnnualEntitlementDays: 20,
+                        })
+                      }
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Add tenant
+                    </Button>
+                  }
+                />
+              </div>
+              <div className="mt-3 grid gap-2 px-4 pb-4 sm:grid-cols-2">
+                {tenants.map((row) => {
+                  const stats = tenantStats(state, row.id);
+                  const active = row.id === tenant?.id;
+                  return (
+                    <div
+                      key={row.id}
+                      className={`rounded-xl border p-3 ${active ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200 bg-white'}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="truncate text-xs font-semibold text-slate-900">{row.name}</div>
+                          <div className="text-[10px] text-slate-500">
+                            {row.code} · {row.currency} · {row.countryCode}
+                          </div>
+                        </div>
+                        {active ? <Badge tone="brand">active</Badge> : <Badge tone="neutral">{row.status}</Badge>}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1 text-[10px] text-slate-500">
+                        <Badge tone="neutral">{stats.entities} entities</Badge>
+                        <Badge tone="neutral">{stats.departments} departments</Badge>
+                        <Badge tone="neutral">{stats.people} people</Badge>
+                      </div>
+                      <div className="mt-2 text-[10px] text-slate-600">
+                        <span className="font-medium text-slate-700">Calendar:</span> {CALENDAR_SCOPE_LABELS[row.calendarScope.mode]} ·{' '}
+                        {describeCalendarScope(row, state.departments)}
+                      </div>
+                      <div className="text-[10px] text-slate-500">PTO entitlement {row.ptoAnnualEntitlementDays} working days / year</div>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        <Button size="sm" disabled={active} onClick={() => setActiveTenant(row.id)}>
+                          {active ? 'Active' : 'Switch to tenant'}
+                        </Button>
+                        <Button size="sm" disabled={!canEdit} onClick={() => setTenantDraft(row)}>
+                          <Pencil className="h-3 w-3" /> Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          disabled={!canEdit || tenants.length <= 1}
+                          title={tenants.length <= 1 ? 'A workspace always keeps one tenant' : 'Remove this tenant and everything it owns'}
+                          onClick={() => {
+                            if (confirm(`Delete ${row.name} and every entity, department, person, activity and leave record it owns?`)) {
+                              deleteTenant(row.id);
+                              toast.push({ tone: 'success', title: 'Tenant removed', description: 'Other tenants were left unchanged.' });
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+
+            <Card>
+              <SectionHeader
+                title="Department calendar scope"
+                subtitle={`Master setting for ${tenant?.name ?? 'this tenant'} — is the calendar implemented for one department, several departments, or all of them?`}
+                action={<Badge tone="brand">{CALENDAR_SCOPE_LABELS[scopeDraft.mode]}</Badge>}
+              />
+              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                {(['single', 'multiple', 'all'] as CalendarScopeMode[]).map((mode) => (
+                  <button
+                    key={mode}
+                    disabled={!canEdit}
+                    onClick={() =>
+                      setScopeDraft((prev) => {
+                        const departments = state.departments;
+                        const fallback = prev.departmentIds.length ? prev.departmentIds : departments.slice(0, 1).map((d) => d.id);
+                        return normaliseCalendarScope(
+                          { mode, departmentIds: mode === 'all' ? [] : fallback },
+                          departments.map((d) => d.id),
+                        );
+                      })
+                    }
+                    className={`rounded-xl border p-3 text-left transition-colors ${
+                      scopeDraft.mode === mode
+                        ? 'border-brand-400 bg-brand-50/60 ring-1 ring-brand-200'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
+                    } disabled:cursor-not-allowed disabled:opacity-60`}
+                  >
+                    <div className="text-xs font-semibold text-slate-800">{CALENDAR_SCOPE_LABELS[mode]}</div>
+                    <div className="mt-0.5 text-[10px] leading-snug text-slate-500">{CALENDAR_SCOPE_HINTS[mode]}</div>
+                  </button>
+                ))}
+              </div>
+
+              {scopeDraft.mode !== 'all' ? (
+                <div className="mt-3 rounded-lg border border-slate-200 p-3">
+                  <div className="mb-1.5 text-[11px] font-semibold text-slate-700">
+                    Departments in scope {scopeDraft.mode === 'single' ? '(choose one)' : '(choose one or more)'}
+                  </div>
+                  <div className="grid gap-1.5 sm:grid-cols-2">
+                    {state.departments.map((department) => {
+                      const checked = scopeDraft.departmentIds.includes(department.id);
+                      const entity = state.entities.find((row) => row.id === department.entityId);
+                      return (
+                        <label
+                          key={department.id}
+                          className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2 py-1.5 text-[11px] ${
+                            checked ? 'border-brand-300 bg-brand-50/50' : 'border-slate-200'
+                          }`}
+                        >
+                          <input
+                            type={scopeDraft.mode === 'single' ? 'radio' : 'checkbox'}
+                            checked={checked}
+                            disabled={!canEdit}
+                            onChange={(e) => {
+                              setScopeDraft((prev) => {
+                                const allowed = state.departments.map((d) => d.id);
+                                const next = prev.departmentIds.filter((id) => id !== department.id);
+                                const departmentIds = e.target.checked
+                                  ? prev.mode === 'single'
+                                    ? [department.id]
+                                    : [...next, department.id]
+                                  : prev.mode === 'single'
+                                    ? [department.id]
+                                    : next;
+                                return normaliseCalendarScope({ mode: prev.mode, departmentIds }, allowed);
+                              });
+                            }}
+                            className="h-3.5 w-3.5 accent-brand-600"
+                          />
+                          <span className="h-2 w-2 rounded-full" style={{ background: department.color }} />
+                          <span className="min-w-0 flex-1 truncate text-slate-700">{department.name}</span>
+                          <span className="text-[9px] text-slate-400">{entity?.code}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="mt-3 rounded-lg bg-slate-50/70 p-2.5 text-[11px] text-slate-600">
+                <div className="font-medium text-slate-700">What this controls</div>
+                Every operational screen in this tenant — command centre, calendar, activity register, roadmap, timesheets, stand-ups, projects,
+                capitalisation, PTO and performance — reads only these departments. A person’s own department is always kept so nobody is locked
+                out of their own calendar.
+                <div className="mt-1.5 text-[10px] text-slate-500">
+                  Live scope: {calendarDepartmentIds.length} department(s) ·{' '}
+                  {state.employees.filter((employee) => calendarDepartmentIds.includes(employee.departmentId)).length} people
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button
+                  variant="primary"
+                  disabled={!canEdit}
+                  onClick={() => {
+                    setCalendarScope(scopeDraft);
+                    toast.push({
+                      tone: 'success',
+                      title: 'Calendar scope saved',
+                      description: `${CALENDAR_SCOPE_LABELS[scopeDraft.mode]} — every screen now reads only those departments.`,
+                    });
+                  }}
+                >
+                  <Save className="h-3.5 w-3.5" /> Save calendar scope
+                </Button>
+                <Button onClick={() => setScopeDraft(calendarScope)}>Reset</Button>
+              </div>
+            </Card>
+          </div>
+
+          <div className="space-y-3">
+            <Card>
+              <SectionHeader title="Isolation rules" subtitle="How a tenant is kept separate" />
+              <ul className="mt-2 space-y-1.5 text-[11px] leading-relaxed text-slate-600">
+                <li>Entities and sub-entities carry a tenant id; departments inherit it, people inherit their department’s.</li>
+                <li>Activities, timesheets, stand-ups, projects, capitalisation packs, connector health, PTO and escalations are filtered by that ownership on read and again on write.</li>
+                <li>Profile selection is limited to the active tenant, so another tenant’s people can never be impersonated.</li>
+                <li>Public holidays and country rules are reference data shared by the workspace; each person still uses their own country.</li>
+                <li>Deleting a tenant removes exactly its rows — every other tenant is left untouched.</li>
+              </ul>
+            </Card>
+            <Card>
+              <SectionHeader title="Active tenant" subtitle="What the portal is showing right now" />
+              <div className="mt-2 space-y-1.5 text-[11px] text-slate-600">
+                <Row label="Tenant" value={tenant?.name ?? '—'} />
+                <Row label="Code" value={tenant?.code ?? '—'} />
+                <Row label="Currency" value={tenant?.currency ?? '—'} />
+                <Row label="Calendar scope" value={CALENDAR_SCOPE_LABELS[calendarScope.mode]} />
+                <Row label="Departments in scope" value={calendarDepartmentIds.length} />
+                <Row label="PTO entitlement" value={`${tenant?.ptoAnnualEntitlementDays ?? 20} days`} />
+                <Row label="Entities in tenant" value={tenantStats(state, tenant?.id ?? '').entities} />
+                <Row label="People in tenant" value={tenantStats(state, tenant?.id ?? '').people} />
+              </div>
+            </Card>
+          </div>
+        </div>
+      ) : null}
+
       {tab === 'entities' ? (
         <Card padded={false}>
           <div className="px-4 pt-4">
@@ -150,12 +418,13 @@ export function AdminPage() {
                   onClick={() =>
                     setEntityDraft({
                       id: newId('ent'),
+                      tenantId: tenant?.id ?? '',
                       name: '',
                       code: '',
                       type: 'company',
                       parentId: state.entities[0]?.id ?? null,
-                      countryCode: 'AE',
-                      timezone: 'Asia/Dubai',
+                      countryCode: tenant?.countryCode ?? 'AE',
+                      timezone: tenant?.timezone ?? 'Asia/Dubai',
                       industry: '',
                     })
                   }
@@ -344,13 +613,13 @@ export function AdminPage() {
                     id: newId('emp'),
                     name: '',
                     email: '',
-                    code: `MGH-${Math.floor(1000 + Math.random() * 8999)}`,
+                    code: `${tenant?.code ?? 'EMP'}-${Math.floor(1000 + Math.random() * 8999)}`,
                     entityId: state.departments[0]?.entityId ?? state.entities[0].id,
                     departmentId: state.departments[0]?.id ?? '',
                     role: 'employee',
                     managerId: scope.user.id,
-                    countryCode: 'AE',
-                    weeklyHours: 45,
+                    countryCode: tenant?.countryCode ?? 'AE',
+                    weeklyHours: scope.user.weeklyHours,
                     joinDate: toISO(new Date()),
                     status: 'active',
                     avatarColor: COLORS[Math.floor(Math.random() * COLORS.length)],
@@ -727,6 +996,103 @@ score            = 40% utilizationScore + 35% onTimeRate + 25% completionRate`}<
           </div>
         </Card>
       ) : null}
+
+      {/* Tenant modal */}
+      <Modal
+        open={!!tenantDraft}
+        onClose={() => setTenantDraft(null)}
+        title={tenants.some((row) => row.id === tenantDraft?.id) ? 'Edit tenant' : 'Add tenant'}
+        subtitle="A tenant owns its own entity tree, departments, people and PTO policy. Nothing is shared with another tenant."
+        width="max-w-2xl"
+        footer={
+          <>
+            <Button size="sm" onClick={() => setTenantDraft(null)}>Cancel</Button>
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => {
+                if (!tenantDraft?.name.trim() || !tenantDraft.code.trim()) {
+                  toast.push({ tone: 'error', title: 'Name and code are required' });
+                  return;
+                }
+                const draftDepartments = tenantDepartments(
+                  { entities: state.entities.filter((entity) => entity.tenantId === tenantDraft.id), departments: state.departments },
+                  tenantDraft.id,
+                ).map((department) => department.id);
+                upsertTenant({
+                  ...tenantDraft,
+                  calendarScope: normaliseCalendarScope(
+                    tenantDraft.calendarScope,
+                    draftDepartments.length ? draftDepartments : state.departments.map((department) => department.id),
+                  ),
+                });
+                setTenantDraft(null);
+                toast.push({ tone: 'success', title: 'Tenant saved', description: 'Isolation applies immediately to every screen.' });
+              }}
+            >
+              <Check className="h-3.5 w-3.5" /> Save tenant
+            </Button>
+          </>
+        }
+      >
+        {tenantDraft ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Tenant name" className="sm:col-span-2">
+              <Input value={tenantDraft.name} onChange={(e) => setTenantDraft({ ...tenantDraft, name: e.target.value })} placeholder="Harbourline Retail Australia" />
+            </Field>
+            <Field label="Short code">
+              <Input value={tenantDraft.code} onChange={(e) => setTenantDraft({ ...tenantDraft, code: e.target.value.toUpperCase() })} placeholder="HRA" />
+            </Field>
+            <Field label="Reporting currency">
+              <Input value={tenantDraft.currency} onChange={(e) => setTenantDraft({ ...tenantDraft, currency: e.target.value.toUpperCase() })} placeholder="AUD" />
+            </Field>
+            <Field label="Country">
+              <Select value={tenantDraft.countryCode} onChange={(e) => setTenantDraft({ ...tenantDraft, countryCode: e.target.value })}>
+                {state.countries.map((country) => (
+                  <option key={country.code} value={country.code}>{country.flag} {country.name}</option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Timezone">
+              <Input value={tenantDraft.timezone} onChange={(e) => setTenantDraft({ ...tenantDraft, timezone: e.target.value })} />
+            </Field>
+            <Field label="PTO entitlement (working days / year)" hint="public holidays excluded">
+              <Input
+                type="number"
+                min={0}
+                max={60}
+                value={tenantDraft.ptoAnnualEntitlementDays}
+                onChange={(e) => setTenantDraft({ ...tenantDraft, ptoAnnualEntitlementDays: Number(e.target.value) })}
+              />
+            </Field>
+            <Field label="Status">
+              <Select value={tenantDraft.status} onChange={(e) => setTenantDraft({ ...tenantDraft, status: e.target.value as Tenant['status'] })}>
+                <option value="active">Active</option>
+                <option value="archived">Archived</option>
+              </Select>
+            </Field>
+            <Field label="Calendar scope" className="sm:col-span-2">
+              <Select
+                value={tenantDraft.calendarScope.mode}
+                onChange={(e) =>
+                  setTenantDraft({
+                    ...tenantDraft,
+                    calendarScope: { mode: e.target.value as CalendarScopeMode, departmentIds: tenantDraft.calendarScope.departmentIds },
+                  })
+                }
+              >
+                {(['single', 'multiple', 'all'] as CalendarScopeMode[]).map((mode) => (
+                  <option key={mode} value={mode}>{CALENDAR_SCOPE_LABELS[mode]}</option>
+                ))}
+              </Select>
+            </Field>
+            <p className="text-[10px] leading-relaxed text-slate-500 sm:col-span-2">
+              {CALENDAR_SCOPE_HINTS[tenantDraft.calendarScope.mode]} Department selection is managed in the calendar-scope panel after switching to
+              this tenant.
+            </p>
+          </div>
+        ) : null}
+      </Modal>
 
       {/* Entity modal */}
       <Modal

@@ -3,6 +3,7 @@ import type { Scope } from './permissions';
 import { departmentsInEntityScope, entityScopeLabel, entitySubtreeIds } from './entities';
 import { filterActivities, filterEntries, groupScore } from './analytics';
 import { buildStandupPulses } from './standups';
+import { approvalQueue, awayOnDate, ptoSummary } from './leave';
 import { fromISO, humanHours, periodLabel, periodRange, toISO } from './dates';
 
 /* ------------------------------------------------------------------ */
@@ -154,6 +155,21 @@ export function buildLiveFacts({
         { label: 'Submitted today', value: `${submitted} of ${members} people` },
         { label: 'Blockers', value: String(blockers) },
         { label: 'Open support', value: `${support} (${cross} cross-functional)` },
+      ];
+    }
+    case 'leave': {
+      const tenant = state.tenants.find((row) => row.id === state.settings.activeTenantId);
+      const year = new Date().getFullYear();
+      const mine = ptoSummary(state, scope.user, tenant, year);
+      const queue = approvalQueue(state, scope);
+      const away = awayOnDate(state, departments.map((department) => department.id), today);
+      return [
+        ...periodFacts,
+        { label: 'My PTO', value: `${mine.approvedPtoHours}h approved · ${mine.remainingPtoHours}h left of ${mine.entitlementHours}h` },
+        { label: 'Pending', value: `${mine.pendingRequests} request(s) · ${mine.pendingPtoHours}h` },
+        { label: 'Public holidays excluded', value: `${mine.publicHolidayHoursExcluded}h inside approved leave` },
+        { label: 'Waiting on me', value: String(queue.length) },
+        { label: 'Away today', value: `${away.length} in calendar scope` },
       ];
     }
     case 'integrations': {
