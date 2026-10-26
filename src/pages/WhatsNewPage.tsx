@@ -1,8 +1,23 @@
 import React from 'react';
-import { ArrowUpRight, CalendarDays, CheckCircle2, Clock3, LayoutGrid, MessagesSquare, Palette, Sparkles, WandSparkles } from 'lucide-react';
+import { ArrowUpRight, CalendarDays, CheckCircle2, Clock3, LayoutGrid, MessagesSquare, Palette, RefreshCw, Sparkles, WandSparkles } from 'lucide-react';
 import { Badge, Button, Card, PageHeader } from '../components/ui';
 
 const updates = [
+  {
+    label: 'Just added',
+    date: 'October 2026',
+    title: 'A sleeping database wakes itself — automatic refresh, with a manual retry',
+    description:
+      'Neon suspends when nobody is editing, so “The shared database is temporarily unavailable” is normally a cold start rather than an outage. The workspace now detects that case and refreshes itself on a short, capped backoff with a live countdown, while keeping Refresh now, Retry now and Reload page one click away. Queued edits and unsaved changes stay in this tab throughout, and the first successful attempt still creates the schema and seeds the pilot data exactly once if the database is empty. Only failures a retry cannot fix — an incomplete configuration, an expired session or a version conflict — ask you to act instead.',
+    icon: <RefreshCw className="h-4 w-4" />,
+    tone: 'brand' as const,
+    bullets: [
+      'Automatic refresh with a countdown on the opening screen and in the status bar',
+      'Manual Refresh now / Retry now and Reload page are always available',
+      'Unsaved edits are never discarded by an automatic retry',
+      'Background tabs wait for you to return instead of polling, and a reconnect retries immediately',
+    ],
+  },
   {
     label: 'Just added',
     date: 'October 2026',

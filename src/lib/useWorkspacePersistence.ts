@@ -37,14 +37,19 @@ export function useWorkspacePersistence(
     const onLeave = (event: BeforeUnloadEvent) => {
       if (controller.dirty) { event.preventDefault(); event.returnValue = ''; }
     };
+    // A reconnect is exactly when a queued edit or a stuck read can finally go
+    // through, so retry immediately instead of waiting for the next backoff.
+    const onOnline = () => controller.retryIfBlocked();
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onFocus);
+    window.addEventListener('online', onOnline);
     window.addEventListener('beforeunload', onLeave);
     return () => {
       controller.dispose();
       sync.current = null;
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onFocus);
+      window.removeEventListener('online', onOnline);
       window.removeEventListener('beforeunload', onLeave);
     };
   }, [shared, setState]);

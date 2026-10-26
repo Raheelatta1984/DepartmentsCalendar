@@ -22,8 +22,29 @@ export function rememberPersona(activeUserId: string) {
   try { localStorage.setItem(PERSONA_KEY, activeUserId); } catch { /* preference only */ }
 }
 
+/** Statuses that a retry can plausibly fix on its own (sleeping database, blip, throttle). */
+const RETRYABLE_STATUS = new Set([0, 408, 425, 429, 500, 502, 503, 504]);
+
+export function isRetryableStatus(status: number) { return RETRYABLE_STATUS.has(status); }
+
+export interface ApiErrorOptions {
+  /** Server verdict when it knows a retry cannot help (bad setup, stale session, conflict). */
+  retryable?: boolean;
+  /** Seconds the server asked us to wait before trying again. */
+  retryAfterSeconds?: number;
+}
+
 export class ApiError extends Error {
-  constructor(public status: number, message: string) { super(message); }
+  readonly retryable: boolean;
+  readonly retryAfterSeconds: number;
+
+  constructor(public status: number, message: string, options: ApiErrorOptions = {}) {
+    super(message);
+    this.name = 'ApiError';
+    this.retryable = options.retryable ?? isRetryableStatus(status);
+    const wait = Number(options.retryAfterSeconds);
+    this.retryAfterSeconds = Number.isFinite(wait) && wait > 0 ? wait : 0;
+  }
 }
 
 // Last known workspace snapshot + validator. The server answers 304 Not
@@ -45,7 +66,7 @@ async function request<T>(path: string, options: RequestInit & { etag?: string }
       },
     });
   } catch {
-    throw new ApiError(0, 'Cannot reach the server. Check your connection and retry. Unsaved changes are still in this tab.');
+    throw new ApiError(0, 'Cannot reach the server. Check your connection and retry. Unsaved changes are still in this tab.', { retryable: true });
   }
   const contentType = response.headers.get('content-type') ?? '';
   // Explicitly support the static demo (GitHub Pages / vite preview). An API
@@ -55,11 +76,20 @@ async function request<T>(path: string, options: RequestInit & { etag?: string }
   }
   if (response.status === 304) return { data: undefined as T, response };
   let data;
-  try { data = response.status === 204 ? undefined : await response.json(); } catch { throw new ApiError(response.status, 'The server returned an invalid response. Please retry.'); }
+  try { data = response.status === 204 ? undefined : await response.json(); } catch {
+    throw new ApiError(response.status, 'The server returned an invalid response. Please retry.', { retryable: true });
+  }
   if (!response.ok) {
-    const retryAfter = Number(response.headers.get('retry-after'));
-    const hint = response.status === 429 && retryAfter > 0 ? ` Wait ${retryAfter}s before retrying.` : '';
-    throw new ApiError(response.status, (data?.error ?? 'The shared workspace request failed.') + (data?.error?.includes('second') ? '' : hint));
+    const retryAfterHeader = Number(response.headers.get('retry-after'));
+    const retryAfterSeconds = Number(data?.retryAfterSeconds) > 0
+      ? Number(data.retryAfterSeconds)
+      : Number.isFinite(retryAfterHeader) && retryAfterHeader > 0 ? retryAfterHeader : 0;
+    const hint = response.status === 429 && retryAfterSeconds > 0 ? ` Wait ${retryAfterSeconds}s before retrying.` : '';
+    const message = data?.error ?? 'The shared workspace request failed.';
+    throw new ApiError(response.status, message + (message.includes('second') ? '' : hint), {
+      retryable: typeof data?.retryable === 'boolean' ? data.retryable : undefined,
+      retryAfterSeconds,
+    });
   }
   return { data: data as T, response };
 }
