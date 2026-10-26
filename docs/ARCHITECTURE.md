@@ -31,7 +31,7 @@ Three Vercel function entry points import a common native Node HTTP handler. The
 
 ### Storage modes
 
-- **Shared**: requires `DATABASE_URL`, `WORKSPACE_PASSWORD`, and `SESSION_SECRET`. The first authenticated visit initializes the database with the pilot dataset once. Thereafter all devices read the same state.
+- **Shared**: requires `DATABASE_URL`, `WORKSPACE_PASSWORD`, and `SESSION_SECRET`. The database is initialised with the pilot dataset exactly once — either ahead of time with `npm run db:init` (`scripts/seed-workspace.mjs` → `server/workspace-seed.mjs`), or lazily by the first authenticated visit. Thereafter all devices read the same state and no page load or refresh ever reseeds it.
 - **Demo**: no database configured, or a static-only build. Explicit amber banner; state is stored only in this browser's localStorage. This preserves the original demo while account setup is pending.
 - **Configuration/outage error**: a partially configured shared backend or failed database request never silently falls back to a private local copy.
 
