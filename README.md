@@ -95,6 +95,7 @@ npm run dev      # website + same-origin API at http://localhost:5173
 npm run check    # type-check, PostgreSQL/API tests, sync tests, build, all-screen/store smoke tests
 npm run build    # type-check + production frontend build into dist/
 npm run preview  # static browser-only demo, not the shared API
+npm run db:init  # one-shot: create the Neon schema + seed the pilot dataset if empty
 ```
 
 Without database variables, the app explicitly uses browser-only `localStorage`. **Avatar menu → Reset demo data** resets only this local demo. To test shared storage, edit the ignored `.env` with a separate development Neon connection and authentication secrets; never put them in `VITE_*` variables or source control.
@@ -116,7 +117,8 @@ One-time setup in your own dashboards:
 1. Create/connect a **Neon Free** project. Copy its pooled PostgreSQL URL with `sslmode=require`.
 2. In the **existing Vercel project → Settings → Environment Variables**, set server-only `DATABASE_URL`, `WORKSPACE_PASSWORD` (≥16 characters) and independent `SESSION_SECRET` (≥32 characters) for **Production**.
 3. Redeploy. Environment-variable changes do not alter an already built deployment.
-4. Open the same Vercel HTTPS URL on any computer/phone, sign in, and wait for **Saved to Neon** after changes. A second device can load the same data. Already-open tabs have **Refresh** and a safe conflict warning.
+4. Optional but recommended: with the same three values in your local ignored `.env`, run `npm run db:init -- --dry-run` and then `npm run db:init`. This creates the schema and seeds the pilot dataset *before* anyone opens the app, so the first page load and every refresh is a plain read. It is idempotent and never overwrites an existing workspace.
+5. Open the same Vercel HTTPS URL on any computer/phone, sign in, and wait for **Saved to Neon** after changes. A second device can load the same data. Already-open tabs have **Refresh** and a safe conflict warning.
 
 Until configured, the public site stays an explicitly labelled **browser-only demo**, not a working shared database. Never publish credentials, disable the password gate, or give production database access to arbitrary preview builds.
 
@@ -175,7 +177,7 @@ src/
   store.tsx           state/actions + local-demo or shared-Neon persistence
   types.ts            domain model
 tests/                real HTTP/API and embedded PostgreSQL tests
-scripts/              UI/store/shared-sync smoke checks + owner backup restore
+scripts/              UI/store/shared-sync smoke checks + owner seed (db:init) and backup restore
 docs/
   DEPLOYMENT.md       existing Vercel + Neon Free setup, verification and recovery
   ARCHITECTURE.md     implemented pilot and production roadmap

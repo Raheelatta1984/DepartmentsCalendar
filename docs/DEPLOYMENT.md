@@ -43,10 +43,22 @@ Run it twice: use one result for the workspace password and the other for the se
 
 There are no frontend database credentials. Browser requests use relative `/api/config`, `/api/session`, and `/api/workspace` URLs, so the same build works on your existing public Vercel domain and custom domains.
 
+### Optional: initialise the database before the first page load
+
+The first authenticated visit seeds the pilot dataset, so the very first page view pays for schema creation plus a multi-megabyte write. To move that work ahead of any user access (recommended for a fresh Neon database), run the one-shot initialiser from a machine with the same server variables:
+
+```bash
+cp .env.example .env     # DATABASE_URL, WORKSPACE_PASSWORD, SESSION_SECRET
+npm run db:init -- --dry-run   # report only: empty, or already at revision N
+npm run db:init                # create schema + seed revision 1 if empty
+```
+
+`db:init` is idempotent and safe to repeat or to run while the site is live: an existing workspace is never replaced, and if a first visit wins the race the CLI reports the winner's revision instead of overwriting it. The seeded payload is validated against the API schema and the 3 MB limit *before* anything is written, and failures print no credentials or workspace data. Do not run it against a database you intend to restore from a backup — use `npm run db:restore` for that.
+
 ## 3. Verify from two devices
 
 1. Open the existing production URL in a new/private window. You should see **One workspace. Any device.**, not the dashboard or the browser-only demo banner.
-2. Enter the workspace password. The first successful visit seeds the shared pilot dataset exactly once. Concurrent first visits cannot reset one another's workspace.
+2. Enter the workspace password. If you did not run `npm run db:init`, the first successful visit seeds the shared pilot dataset exactly once; concurrent first visits cannot reset one another's workspace. Either way the seed happens only once and every later load or refresh is a plain read.
 3. Confirm the blue status panel says **Shared workspace · Saved to Neon**.
 4. Create a test activity and wait for **Saved to Neon** before closing the tab.
 5. Open the same URL on another computer/phone, sign in, and confirm the activity exists. In an already open tab, click **Refresh**. Clean tabs also reload shared data on refocus after at least a minute; there is no continuous background polling.
