@@ -64,6 +64,23 @@ test('missing database is an explicit demo; partially configured workspaces fail
   assert.deepEqual(await response.json(), { mode: 'shared', authenticated: false });
 });
 
+test('demo mode (no DATABASE_URL) serves config over HTTP without a database or secrets', async () => {
+  // Regression: the demo config used to lack a session secret, so rateLimitKey()
+  // threw a TypeError from createHmac and every route, including /api/config,
+  // returned a generic 500 that blocked the whole application from loading.
+  const demo = createHandler({ env: {}, logger: { error() {} } });
+  const config = await invoke(demo, '/api/config', 'GET');
+  assert.equal(config.status, 200);
+  assert.deepEqual(JSON.parse(config.body), { mode: 'demo', authenticated: false });
+  // Shared-storage routes fail closed with a non-retryable setup error.
+  const workspace = await invoke(demo, '/api/workspace', 'GET');
+  assert.equal(workspace.status, 503);
+  assert.equal(JSON.parse(workspace.body).retryable, false);
+  // Unknown routes still get the standard 404 instead of crashing in the limiter.
+  const unknown = await invoke(demo, '/api/does-not-exist', 'GET');
+  assert.equal(unknown.status, 404);
+});
+
 test('database reads and writes require a signed session', async () => {
   assert.equal((await call('/api/workspace', { session: '' })).status, 401);
   assert.equal((await call('/api/workspace', { method: 'PUT', body: { version: 0, state }, session: '' })).status, 401);

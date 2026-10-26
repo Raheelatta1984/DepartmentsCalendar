@@ -37,14 +37,22 @@ export function rateLimitKey(request, config) {
   const ip = config.onVercel
     ? String(request.headers['x-vercel-forwarded-for'] ?? request.headers['x-forwarded-for'] ?? 'unknown').split(',')[0].trim()
     : request.socket?.remoteAddress ?? 'local';
-  return createHmac('sha256', config.sessionSecret).update(ip).digest('hex');
+  // Fallback keeps the API responsive if a partial config ever reaches here;
+  // readConfig() normally supplies the secret (or the demo placeholder).
+  return createHmac('sha256', config.sessionSecret ?? DEMO_SESSION_PLACEHOLDER).update(ip).digest('hex');
 }
+
+// Fixed, non-secret placeholder for browser-only demo mode. It keeps HMAC-based
+// helpers (per-client rate-limit keys) working without a configured secret, and
+// it can never authenticate a session: authenticated() and every shared-storage
+// route require mode === 'shared' and a real SESSION_SECRET.
+const DEMO_SESSION_PLACEHOLDER = 'orbit-demo-mode-placeholder';
 
 export function readConfig(env) {
   const url = env.DATABASE_URL?.trim();
   if (!url) {
     if (env.WORKSPACE_PASSWORD || env.SESSION_SECRET) throw new Error('DATABASE_URL is required when workspace authentication is configured.');
-    return { mode: 'demo' };
+    return { mode: 'demo', sessionSecret: DEMO_SESSION_PLACEHOLDER };
   }
   let database;
   try { database = new URL(url); } catch { throw new Error('DATABASE_URL must be a Neon PostgreSQL connection string.'); }
