@@ -185,6 +185,33 @@ test('invalid sessions, unknown routes and database outages are negative-cached'
   assert.equal(tripped.body.retryable, true);
 });
 
+test('persistent Neon schema errors stop auto-retries and do not trip the transient outage breaker', async () => {
+  const guard = createRequestGuard({ env });
+  let initializeCalls = 0;
+  const repository = {
+    async initialize() {
+      initializeCalls++;
+      throw Object.assign(new Error('relation public.orbit_workspace does not exist'), { code: '42P01' });
+    },
+  };
+  const handler = createHandler({ env, repository, guard, logger: { error() {} } });
+  const cookie = sessionCookie(config).split(';')[0];
+
+  const first = await invoke(handler, '/api/workspace', 'GET', { headers: { cookie } });
+  assert.equal(first.status, 503);
+  assert.equal(first.body.retryable, false);
+  assert.equal(first.body.code, 'DATABASE_SCHEMA_OR_PERMISSION');
+  assert.match(first.body.error, /npm run db:init/);
+  assert.equal(first.headers['Retry-After'], undefined);
+  assert.equal(guard.databaseDownUntil(), undefined);
+
+  // A later manual retry reaches Neon again, but the browser will not poll this
+  // permanent schema error automatically.
+  const second = await invoke(handler, '/api/workspace', 'GET', { headers: { cookie } });
+  assert.equal(second.body.retryable, false);
+  assert.equal(initializeCalls, 2);
+});
+
 test('the breaker reopens for business once a database call succeeds again', async () => {
   let down = true;
   const guard = createRequestGuard({ env });

@@ -46,9 +46,12 @@ export const migrations = [
     metadata jsonb NOT NULL DEFAULT '{}', -- Additional metadata
     uploaded_by text,                -- Uploader reference
     uploaded_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz,
     CONSTRAINT valid_shard CHECK (shard_id >= 0 AND shard_id < 8192)
   )`,
+  // Add the field to installations created by an older schema revision.
+  `ALTER TABLE public.orbit_images ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now()`,
   
   // Index for shard-based queries
   `CREATE INDEX IF NOT EXISTS orbit_images_shard_idx ON public.orbit_images (shard_id)`,

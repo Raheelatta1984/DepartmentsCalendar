@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import React, { act } from 'react';
 import { JSDOM } from 'jsdom';
 import { WorkspaceSync } from '../src/lib/workspace-sync.ts';
+import { MAX_AUTO_RETRIES } from '../src/lib/retry.ts';
 import { ApiError, fromSharedState, getWorkspaceConfig, toSharedState } from '../src/lib/workspace-api.ts';
 import { createSeedState } from '../src/data/seed.ts';
 import { workspaceSchema } from '../server/validation.mjs';
@@ -150,9 +151,9 @@ retrying.dispose();
 console.log('PASS: offline saves and failed refreshes retain data and can be retried');
 
 /* Auto-refresh: "The shared database is temporarily unavailable" usually means a
-   suspended Neon instance that wakes on the first request. The sync engine must
-   retry that by itself - keeping queued edits - while never retrying a verdict
-   that a retry cannot fix (bad setup, cross-origin, expired session). */
+   suspended Neon instance that wakes on the first request. The sync engine retries
+   a bounded number of times, keeps queued edits, and never retries a verdict that
+   a retry cannot fix (bad setup, cross-origin, expired session). */
 let autoWrites = 0;
 let autoInfo;
 const auto = new WorkspaceSync({ state: initial, version: 1 }, (value) => { autoInfo = value; }, () => assert.fail('an automatic retry must not reload the UI'), {
@@ -186,10 +187,34 @@ hard.update(change('Never retried'));
 await hard.flush();
 assert.equal(hardInfo.status, 'error');
 assert.equal(hardInfo.retryAt, undefined, 'a non-retryable failure is shown to the user, not retried on a timer');
+hard.retryIfBlocked(); // browser focus/online events must not override the server verdict
 await sleep(150);
 assert.equal(hardFailures, 1, 'a non-retryable failure is never sent again automatically');
 hard.dispose();
 console.log('PASS: non-retryable failures never auto-retry');
+
+let exhaustedWrites = 0;
+let exhaustedInfo;
+const exhausted = new WorkspaceSync({ state: initial, version: 1 }, (value) => { exhaustedInfo = value; }, () => {}, {
+  read: async () => assert.fail('unexpected read'),
+  write: async () => {
+    exhaustedWrites++;
+    throw new ApiError(503, 'Neon remains unavailable.', { retryable: true });
+  },
+}, 60_000, [1]);
+exhausted.update(change('Keep my edits'));
+await exhausted.flush();
+for (let attempt = 0; attempt < MAX_AUTO_RETRIES; attempt++) await sleep(1_050);
+assert.equal(exhaustedWrites, MAX_AUTO_RETRIES + 1, 'the initial write gets no more than five automatic retries');
+assert.equal(exhaustedInfo.autoRetryExhausted, true, 'the user is told when automatic retries are paused');
+assert.equal(exhaustedInfo.retryAt, undefined, 'no timer remains after the retry budget is exhausted');
+assert.equal(exhausted.dirty, true, 'queued user edits are preserved after retries stop');
+exhausted.retryIfBlocked();
+assert.equal(exhaustedWrites, MAX_AUTO_RETRIES + 1, 'an online/focus event cannot reset the automatic retry budget');
+exhausted.retry();
+assert.equal(exhaustedWrites, MAX_AUTO_RETRIES + 2, 'a deliberate manual retry starts a fresh budget');
+exhausted.dispose();
+console.log('PASS: automatic retries stop after five attempts; manual retry remains available');
 
 const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost:5173/' });
 globalThis.window = dom.window;

@@ -13,7 +13,11 @@ This repository now includes the Vite frontend and three same-origin Vercel Node
 3. Alternatively, use the Neon integration in your **existing** Vercel project's Storage/Marketplace area. Verify the selected plan is Free and the connection is attached to this project, not a new frontend.
 4. Keep credentials private. Do not put the connection string in an issue, chat, source file, `vercel.json`, or a `VITE_*` variable.
 
-The server uses `@neondatabase/serverless` over HTTPS; it does not open a permanent TCP connection or keep Neon awake. On the first sign-in it automatically creates the two tables defined in [`neon.sql`](neon.sql). The default Neon database-owner role can do this. The older [`schema.sql`](schema.sql) is a **Supabase-specific future reference**, not the schema used by this deployment; do not run it on Neon.
+The server uses `@neondatabase/serverless` over HTTPS; it does not open a permanent TCP connection or keep Neon awake. On first use it idempotently creates the runtime tables and indexes defined in [`neon.sql`](neon.sql). The Neon database-owner role can do this; a restricted role may need an owner to run the schema initializer first. The older [`schema.sql`](schema.sql) is a **Supabase-specific future reference**, not the schema used by this deployment; do not run it on Neon.
+
+### If you are moving from Supabase or another existing database
+
+The application is already wired to Neon; `DATABASE_URL` must point at the Neon PostgreSQL endpoint, not a Supabase URL. The active app stores a versioned workspace snapshot in `orbit_workspace` plus login limits in `orbit_login_limits`. It does **not** automatically translate the legacy relational tables in `schema.sql`. For a fresh Neon project, use `npm run db:init` (it creates the schema and seeds only if empty). To move existing app data, export a JSON backup from the app and use `npm run db:restore` against Neon. If your source has only raw Supabase relational rows and no Orbit backup, those rows need an explicit data transformation to the current `StoreState` format; do not run the Supabase SQL file on Neon or assume a direct SQL copy is safe.
 
 ## 2. Configure the existing Vercel project
 
@@ -49,11 +53,11 @@ The first authenticated visit seeds the pilot dataset, so the very first page vi
 
 ```bash
 cp .env.example .env     # DATABASE_URL, WORKSPACE_PASSWORD, SESSION_SECRET
-npm run db:init -- --dry-run   # report only: empty, or already at revision N
-npm run db:init                # create schema + seed revision 1 if empty
+npm run db:init -- --dry-run   # verify Neon + ensure schema; does not seed workspace data
+npm run db:init                # seed revision 1 only if the workspace is empty
 ```
 
-`db:init` is idempotent and safe to repeat or to run while the site is live: an existing workspace is never replaced, and if a first visit wins the race the CLI reports the winner's revision instead of overwriting it. The seeded payload is validated against the API schema and the 3 MB limit *before* anything is written, and failures print no credentials or workspace data. Do not run it against a database you intend to restore from a backup — use `npm run db:restore` for that.
+`db:init -- --dry-run` may create any missing schema tables while checking the connection, but it does not seed workspace data. The normal `db:init` is idempotent and safe to repeat or run while the site is live: an existing workspace is never replaced, and if a first visit wins the race the CLI reports the winner's revision instead of overwriting it. The seeded payload is validated against the API schema and the 3 MB limit *before* anything is written, and failures print no credentials or workspace data. Do not run the seed command against a database you intend to restore from a backup — use `npm run db:restore` for that.
 
 ## 3. Verify from two devices
 
@@ -116,7 +120,9 @@ For important data, also arrange provider/database backups and test a restore. A
 | --- | --- |
 | Amber **Browser-only demo** banner | Check `DATABASE_URL` is set for the correct Vercel environment, then redeploy. Static-only hosts cannot provide the shared API. |
 | **Workspace setup is incomplete** | Check the URL is Neon PostgreSQL with `sslmode=require`, password is ≥16 characters and session secret ≥32. Redeploy after fixes. |
-| **Database temporarily unavailable** | A sleeping Neon instance wakes on the first request, so the app retries by itself (2 s → 30 s backoff) and the screen counts down to the next attempt. Use **Refresh now** to try immediately or **Reload page** for a clean boot; a successful boot also creates the schema and seeds the pilot data if the database is empty. Only investigate project status, quotas and role/table permissions if the message persists with a non-retryable setup error. Existing unsaved edits are retained. |
+| **Database temporarily unavailable** | A sleeping Neon instance may wake on the first request. The app retries up to five times with backoff, then pauses instead of refreshing forever; use **Refresh now** for a deliberate retry. If Neon keeps failing, verify the Vercel `DATABASE_URL` points to the right Neon project/branch, check Neon status/quotas, and redeploy after changing environment variables. Unsaved edits remain in the tab. |
+| **Neon schema or permission error** | The API reports this as non-retryable. Run `npm run db:init -- --dry-run`, then `npm run db:init` locally using the target Neon `DATABASE_URL` and a database-owner role. The initializer is idempotent and never replaces an existing workspace. Alternatively apply [`neon.sql`](neon.sql) in Neon SQL Editor. Do not run the Supabase-specific `schema.sql`. |
+| **Neon credential or endpoint error** | Check the server-only `DATABASE_URL` value, role password, Neon project and branch. Confirm the hostname ends in `.neon.tech`, includes `sslmode=require`, and redeploy Vercel. Do not keep refreshing while the URL/credentials are wrong. |
 | **Cross-origin requests** error | Remove or correct `PUBLIC_ORIGIN`; use one consistent domain rather than mixing preview and production URLs. |
 | **Session expired** | Export unsaved edits, then sign out and sign back in. A secret rotation invalidates all old sessions. |
 | **Newer changes on another device** | Export a backup, load latest, then reapply changes. There is intentionally no force-overwrite button. |

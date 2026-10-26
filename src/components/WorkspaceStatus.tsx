@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Cloud, Download, LogOut, RefreshCw, RotateCw } from 'lucide-react';
 import { useStore } from '../store';
 import { downloadWorkspace } from '../lib/workspace-api';
-import { useRetryCountdown } from '../lib/retry';
+import { MAX_AUTO_RETRIES, useRetryCountdown } from '../lib/retry';
 import { Button } from './ui';
 
 export function WorkspaceStatus() {
@@ -27,7 +27,7 @@ export function WorkspaceStatus() {
           <Cloud className="h-4 w-4" /> Shared workspace · {labels[workspace.status]}
         </p>
         {problem && workspace.status !== 'conflict' ? (
-          <Button size="sm" disabled={busy} onClick={workspace.retry} title="Retry the database request immediately instead of waiting for the next automatic attempt">
+          <Button size="sm" disabled={busy} onClick={workspace.retry} title="Retry the database request now. Unsaved changes remain in this tab until saved.">
             <RefreshCw className="h-3.5 w-3.5" /> Retry now
           </Button>
         ) : null}
@@ -45,7 +45,12 @@ export function WorkspaceStatus() {
       </div>
       {retryIn > 0 ? (
         <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-600">
-          <RotateCw className="h-3.5 w-3.5 animate-spin" /> Retrying automatically in {retryIn}s — the database wakes on the next request. Your edits stay in this tab.
+          <RotateCw className="h-3.5 w-3.5 animate-spin" /> Retrying automatically in {retryIn}s — your edits stay in this tab.
+        </p>
+      ) : null}
+      {workspace.autoRetryExhausted ? (
+        <p className="mt-2 text-xs text-rose-800">
+          Automatic retries paused after {MAX_AUTO_RETRIES} attempts. Check the Neon connection and schema, then use Retry now. Your edits are still in this tab.
         </p>
       ) : null}
       {workspace.message ? <p role="alert" className="mt-2 text-xs text-rose-800">{workspace.message}</p> : null}

@@ -3,14 +3,14 @@ import { Database, Globe2, Loader2, LockKeyhole, RefreshCw, RotateCw } from 'luc
 import { StoreProvider } from '../store';
 import { createSeedState } from '../data/seed';
 import { ApiError, getWorkspaceConfig, readWorkspace, signIn, signOut, toSharedState, writeWorkspace } from '../lib/workspace-api';
-import { isRetryable, retryDelayMs, useRetryCountdown } from '../lib/retry';
+import { MAX_AUTO_RETRIES, isRetryable, retryDelayMs, useRetryCountdown } from '../lib/retry';
 import type { SharedConnection } from '../lib/useWorkspacePersistence';
 import { Button, Input } from './ui';
 
 type BootState =
   | { phase: 'loading' }
   | { phase: 'login'; error?: string }
-  | { phase: 'error'; error: string; retryable: boolean; retryAfterSeconds: number }
+  | { phase: 'error'; error: string; retryable: boolean; retryAfterSeconds: number; autoRetryExhausted: boolean }
   | { phase: 'ready'; shared?: SharedConnection };
 
 export function WorkspaceGateway({ children }: { children: React.ReactNode }) {
@@ -60,11 +60,13 @@ export function WorkspaceGateway({ children }: { children: React.ReactNode }) {
       } catch (error) {
         if (cancelled) return;
         if (error instanceof ApiError && error.status === 401) return setBoot({ phase: 'login' });
+        const retryable = isRetryable(error);
         setBoot({
           phase: 'error',
           error: error instanceof Error ? error.message : 'Unable to load the workspace.',
-          retryable: isRetryable(error),
+          retryable,
           retryAfterSeconds: error instanceof ApiError ? error.retryAfterSeconds : 0,
+          autoRetryExhausted: retryable && autoRetries.current >= MAX_AUTO_RETRIES,
         });
       }
     };
@@ -74,17 +76,17 @@ export function WorkspaceGateway({ children }: { children: React.ReactNode }) {
 
   /**
    * Auto-refresh while the workspace cannot be opened: a suspended Neon database
-   * wakes on the first request, so retrying by itself is usually all that is
-   * needed. Backoff is short and capped, a non-retryable failure is never
-   * retried, and a background tab waits for the visitor to return instead of
-   * polling (which would keep the database awake for nobody).
+   * may wake after a small number of retries. The retry budget is finite; after
+   * that, a person must retry manually. Non-retryable failures never retry, and
+   * a background tab waits for the visitor to return instead of polling.
    */
   useEffect(() => {
-    if (boot.phase !== 'error' || !boot.retryable) { setRetryAt(undefined); return; }
+    if (boot.phase !== 'error' || !boot.retryable || boot.autoRetryExhausted) { setRetryAt(undefined); return; }
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
       const wake = () => {
         if (document.visibilityState === 'hidden') return;
         cleanup();
+        autoRetries.current += 1;
         setRetryAt(undefined);
         setAttempt((value) => value + 1);
       };
@@ -143,14 +145,20 @@ export function WorkspaceGateway({ children }: { children: React.ReactNode }) {
           <div className="mt-4 space-y-3">
             <p role="alert" className="text-sm text-rose-700">{boot.error}</p>
             {boot.retryable ? (
-              <p className="flex items-start gap-2 text-xs leading-relaxed text-slate-500">
-                <RefreshCw className={`mt-0.5 h-3.5 w-3.5 flex-none ${countdown > 0 ? 'animate-spin' : ''}`} />
-                <span>
-                  {countdown > 0
-                    ? `Refreshing automatically in ${countdown}s. A sleeping database wakes on its first request, so this usually clears itself — no reload needed.`
-                    : 'Refreshing automatically…'}
-                </span>
-              </p>
+              boot.autoRetryExhausted ? (
+                <p className="text-xs leading-relaxed text-slate-500">
+                  Automatic retries paused after {MAX_AUTO_RETRIES} attempts. Check the Neon connection, schema and permissions, then choose Refresh now. Your data has not been deleted.
+                </p>
+              ) : (
+                <p className="flex items-start gap-2 text-xs leading-relaxed text-slate-500">
+                  <RefreshCw className={`mt-0.5 h-3.5 w-3.5 flex-none ${countdown > 0 ? 'animate-spin' : ''}`} />
+                  <span>
+                    {countdown > 0
+                      ? `Refreshing automatically in ${countdown}s. The app will pause if the connection stays down.`
+                      : 'Refreshing automatically…'}
+                  </span>
+                </p>
+              )
             ) : (
               <p className="text-xs leading-relaxed text-slate-500">This will not fix itself: check the workspace configuration, then retry.</p>
             )}
