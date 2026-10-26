@@ -18,6 +18,7 @@ import { capacityHoursFor, employeeScore, scoreSeries, workloadBand } from '../l
 import { ROLE_LABELS } from '../lib/permissions';
 import { fromISO, humanHours, toISO } from '../lib/dates';
 import { Avatar, Badge, Button, Modal, Progress, SectionHeader } from './ui';
+import { LEAVE_TYPE_SHORT, leaveOnDate, nextResponsible, ptoSummary } from '../lib/leave';
 import { ActivityLine, StatusBadge, SyncPips, TypeIcon, TYPE_COLORS } from './activity-ui';
 import { HeatGrid, ScoreRing, Sparkline } from './charts';
 
@@ -32,7 +33,7 @@ export function EmployeeModal({
   onOpenActivity: (id: string) => void;
   onNewActivity: () => void;
 }) {
-  const { state, scope } = useStore();
+  const { state, scope, tenant } = useStore();
   const employee = state.employees.find((e) => e.id === employeeId);
 
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
@@ -97,6 +98,10 @@ export function EmployeeModal({
   const connections = state.connections.filter((c) => c.employeeId === employee.id);
   const capacity = capacityHoursFor(employee, toISO(weekStart), toISO(weekEnd), state.holidays, state.countries);
   const band = workloadBand(score?.utilization ?? 0);
+  const pto = ptoSummary(state, employee, tenant, new Date().getFullYear());
+  const todayISO = toISO(new Date());
+  const leaveToday = leaveOnDate(state, employee.id, todayISO);
+  const cover = nextResponsible(state, employee.id, todayISO);
   const canReview =
     scope.user.id === employee.id ||
     scope.user.role === 'ceo' ||
@@ -244,6 +249,44 @@ export function EmployeeModal({
               </div>
             </div>
           </div>
+        </div>
+
+        <div>
+          <SectionHeader title="Leave, PTO & public holidays" subtitle="Approved PTO is on every calendar in the tenant; public holidays are excluded" />
+          <div className="mt-1.5 grid gap-2 text-[11px] sm:grid-cols-4">
+            <div className="rounded-lg bg-slate-50 px-2.5 py-1.5">
+              <div className="text-[9px] uppercase tracking-wider text-slate-400">PTO remaining</div>
+              <div className="font-semibold tabular-nums text-slate-900">{pto.remainingPtoHours}h</div>
+              <div className="text-[9px] text-slate-500">of {pto.entitlementHours}h</div>
+            </div>
+            <div className="rounded-lg bg-violet-50 px-2.5 py-1.5">
+              <div className="text-[9px] uppercase tracking-wider text-violet-500">Approved PTO</div>
+              <div className="font-semibold tabular-nums text-violet-800">{pto.approvedPtoHours}h</div>
+              <div className="text-[9px] text-violet-600">{pto.approvedRequests} request(s)</div>
+            </div>
+            <div className="rounded-lg bg-amber-50 px-2.5 py-1.5">
+              <div className="text-[9px] uppercase tracking-wider text-amber-600">Pending</div>
+              <div className="font-semibold tabular-nums text-amber-800">{pto.pendingPtoHours}h</div>
+              <div className="text-[9px] text-amber-700">{pto.pendingRequests} tentative</div>
+            </div>
+            <div className="rounded-lg bg-rose-50 px-2.5 py-1.5">
+              <div className="text-[9px] uppercase tracking-wider text-rose-500">PH excluded</div>
+              <div className="font-semibold tabular-nums text-rose-800">{pto.publicHolidayHoursExcluded}h</div>
+              <div className="text-[9px] text-rose-600">never PTO</div>
+            </div>
+          </div>
+          {leaveToday ? (
+            <p className="mt-1.5 rounded bg-violet-50 px-2 py-1 text-[10px] text-violet-700">
+              On {LEAVE_TYPE_SHORT[leaveToday.type]} now ({leaveToday.startDate} → {leaveToday.endDate}). Next responsible:{' '}
+              <span className="font-semibold">{cover?.employee.name ?? 'department head'}</span>
+              {cover ? ` (${cover.reason})` : ''}.
+            </p>
+          ) : pto.upcomingLeave ? (
+            <p className="mt-1.5 text-[10px] text-slate-500">
+              Next leave: {LEAVE_TYPE_SHORT[pto.upcomingLeave.type]} {pto.upcomingLeave.startDate} → {pto.upcomingLeave.endDate} ({pto.upcomingLeave.hours}h
+              PTO{pto.upcomingLeave.publicHolidayDays ? `, ${pto.upcomingLeave.publicHolidayDays} PH excluded` : ''}).
+            </p>
+          ) : null}
         </div>
 
         <div>

@@ -315,3 +315,38 @@ The workspace model carries an additive `standups` collection (one `StandupEntry
 - **Executive pulse**: the CEO and COO start from a high-level, department-wise summary (submission rate, blockers, open and cross-functional support) and drill into any in-scope department's full layered board. A matching stand-up pulse card is embedded on the command centre.
 - **Support lifecycle**: department leadership advances callouts open → acknowledged → resolved; the sidebar and command centre surface unresolved callouts for the selected day.
 - The Neon JSONB document persists the whole collection through the same validated, compare-and-swap workspace write; the strict Zod schema in `server/validation.mjs` whitelists the new shapes, and the relational target design (including row-level policies) is documented in `schema.sql`.
+## 12. Tenants — the hard isolation boundary
+
+The workspace snapshot can hold several tenants at once (today: **Harbourline Retail Australia**, the IT-first tenant the portal opens on, and **Meridian Group Holdings**). A tenant owns its own entity tree (group → company → sub-company), departments, people, activities, timesheets, stand-ups, projects, capitalisation packs, calendar connections, PTO and audit history.
+
+Isolation is implemented in `src/lib/tenants.ts` and enforced twice:
+
+1. **On read.** `scopeStateToTenant(state, tenantId)` is the only state the React store exposes to a screen. It resolves every row’s owner from its entity → department → person chain (`buildTenantIndex`) and drops anything owned by another tenant. The context therefore never contains another tenant’s entities, sub-entities, departments, people, activities, time entries, stand-ups, projects, capitalisation approvals, escalations, connections, sync jobs, leave records or audit events.
+2. **On write.** Every store action is expressed against the active tenant and merged back with `mergeTenantState(full, edited, tenantId)`. Rows of other tenants are kept exactly as they were — in place and byte-identical, so a no-op save does not even mark the shared workspace dirty — while the edited tenant’s rows are replaced, deleted or added. `removeTenant` deletes a tenant and only its rows.
+
+The tenant register (`tenants[]`) is shared so the top-bar switcher can list tenant names, and holidays/countries remain workspace reference data (each person still uses their own country’s calendar). Persona selection is restricted to employees of the active tenant, and `activeUserId` / `activeTenantId` are device-local preferences stripped from the shared snapshot (`toSharedState`, `withoutDevicePersona`).
+
+The snapshot contract is validated server-side: `server/validation.mjs` whitelists the tenant shape (including the calendar scope and PTO entitlement), `entities[].tenantId`, `leaves[]` and `auditLog[].tenantId`, so a malformed snapshot is rejected before it can reach another browser.
+
+### Calendar scope master setting (single / multiple / all departments)
+
+Each tenant carries `calendarScope: { mode: 'single' | 'multiple' | 'all', departmentIds }`.
+
+- `single` — the calendar is implemented for one department. **The default is the IT department (RIT)**, which is the product’s primary use case.
+- `multiple` — an explicit list of departments.
+- `all` — every department in the tenant (Meridian’s configuration).
+
+`calendarDepartmentIds()` resolves the setting, always adding the signed-in person’s own department so nobody is locked out of their own calendar, and `scopeStateToDepartments()` cuts the tenant view down to those departments. Operational screens read the result through `useScopedState()`, so the command centre, calendar, activity register, roadmap, timesheets, stand-ups, projects, capitalisation, PTO and performance all follow the same master setting. Master setup edits it per tenant in **Tenants & calendar scope**; the AI guide’s live context reads the same numbers.
+
+**Honest boundary:** this is application-level isolation inside one trusted pilot workspace. The API stores a single JSONB snapshot protected by one shared password, so a holder of that password could still read the raw snapshot. Server-enforced per-tenant authentication/authorization and record-level tables are required before any sensitive multi-customer use (see §4 and §5).
+
+## 13. Leave, PTO and public holidays
+
+`src/lib/leave.ts` is the single source of truth for leave maths, used by the Leave & PTO tab, the calendar, the command centre, Employee 360, the dashboard card and the performance capacity.
+
+- **Request → approval.** An employee logs a tentative range (`submitLeave`, status `pending`). `approverIds()` walks the reporting line, then the department head, then the group executives; `canDecideLeave()` refuses self-approval and out-of-scope requests. Approving (`decideLeave`) is what turns the range into PTO on the calendar.
+- **Hours.** `leaveBreakdown()` walks every day of the range with the employee’s country calendar: weekly-off days and public holidays are removed, and `hours = working days × contracted weekly hours ÷ 5`. Public holidays inside the range are returned separately as `publicHolidayDays` / `publicHolidayHours`, badged **PH** on the calendar and reported on their own line — they are never counted as PTO.
+- **PTO bucket.** `ptoSummary()` / `ptoTotals()` compute entitlement (tenant policy, in working days), approved PTO, pending PTO, remaining PTO and PH excluded. Only `annual` draws down PTO; sick, unpaid, parental, study and other leave are tracked outside it.
+- **Capacity.** `employeeScore` and `departmentScore` subtract approved PTO hours (and PTO working days from the expected attendance days), so approved leave is reported as leave rather than as under-utilisation.
+- **Visibility and cover.** Approved PTO appears on the department calendar (chips + PH), the team leave calendar and Employee 360. `awayOnDate()` lists who is away; `nextResponsible()` returns the named delegate first, then the first available manager up the line, then the department head and the operations owner — which is how a colleague knows whom to ask when a resource is on leave.
+- Seed data includes approved, pending, PH-crossing, sick and unpaid rows in both tenants, and the same strict schema entries in `server/validation.mjs` persist the collection through the versioned snapshot.

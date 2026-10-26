@@ -15,8 +15,22 @@ const projectCategory = z.enum(['delivery', 'operations', 'security', 'data_anal
 // Deliberately allow only the demo's data model, not arbitrary JSON or OAuth tokens.
 // activeUserId is a browser preference, never shared with other devices.
 export const workspaceSchema = record({
+  // A workspace hosts one or more tenants. Every tenant-owned row is
+  // attributed through its entity / department / employee, which is what the
+  // client uses to keep the tenants isolated; the IDs are validated here so a
+  // snapshot can never contain a dangling reference by accident.
+  tenants: rows({
+    id, name: text, code: text, countryCode: text, timezone: text, currency: text,
+    industry: text.optional(), status: z.enum(['active', 'archived']),
+    calendarScope: record({
+      mode: z.enum(['single', 'multiple', 'all']),
+      departmentIds: z.array(id).max(500),
+    }),
+    ptoAnnualEntitlementDays: number.min(0).max(365),
+    createdAt: text.optional(),
+  }).min(1).optional(),
   entities: rows({
-    id, name: text, code: text, type: z.enum(['group', 'company', 'sub_company']),
+    id, tenantId: id.optional(), name: text, code: text, type: z.enum(['group', 'company', 'sub_company']),
     parentId: id.nullable(), countryCode: text, timezone: text, industry: text.optional(), currency: text.optional(),
     logoUrl: z.string().max(500_000).optional(), portalHeader: text.optional(), portalFooter: text.optional(),
     brandColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), backgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
@@ -67,6 +81,17 @@ export const workspaceSchema = record({
     id, activityId: id, provider, action: z.enum(['create', 'update', 'delete']),
     status: z.enum(['queued', 'synced', 'failed']), at: text, message: text,
   }),
+  leaves: rows({
+    id, employeeId: id, departmentId: id, entityId: id,
+    startDate: date, endDate: date,
+    hours: number.min(0).max(1000), workingDays: number.min(0).max(400),
+    publicHolidayDays: number.min(0).max(400), publicHolidayHours: number.min(0).max(1000),
+    type: z.enum(['annual', 'sick', 'unpaid', 'parental', 'study', 'other']),
+    reason: text, status: z.enum(['pending', 'approved', 'rejected', 'cancelled']),
+    delegateId: id.nullable(),
+    submittedAt: text, decidedById: id.nullable(), decidedAt: text.nullable(),
+    decisionNote: text, createdAt: text, updatedAt: text,
+  }).optional(),
   standups: rows({
     id, date, departmentId: id, employeeId: id,
     lastDayUpdate: text, progressUpdate: text, blockers: text,
@@ -88,7 +113,7 @@ export const workspaceSchema = record({
     holidayHorizonYears: z.number().int().min(1).max(20), performanceThreshold: number.min(0).max(100),
     weekStartsOn: z.union([z.literal(0), z.literal(1), z.literal(6)]),
   }),
-  auditLog: rows({ id, at: text, actorId: id, action: text, detail: text }),
+  auditLog: rows({ id, tenantId: id.optional(), at: text, actorId: id, action: text, detail: text }),
   projects: rows({
     id, code: text, name: text, description: text, entityId: id, departmentId: id,
     portfolio: z.enum(['capital', 'operational']), category: projectCategory,

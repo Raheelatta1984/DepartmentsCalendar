@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarCheck2, CalendarX2, Check, Plus, Send, Trash2, X } from 'lucide-react';
-import { emptyActivity, newId, useStore } from '../store';
+import { emptyActivity, newId, useScopedState, useStore } from '../store';
 import type { Activity, ActivityType, Priority, TaskStatus } from '../types';
 import { TYPE_LABELS } from '../lib/analytics';
 import { Badge, Button, Field, Input, Label, Modal, Select, Textarea, Toggle } from './ui';
@@ -26,7 +26,9 @@ export function ActivityModal({
   activity?: Activity | null;
   defaults?: Partial<Activity>;
 }) {
-  const { state, scope, upsertActivity, deleteActivity, pushToCalendars } = useStore();
+  const { scope, upsertActivity, deleteActivity, pushToCalendars } = useStore();
+  /* Resources are only assignable inside the tenant's calendar scope. */
+  const state = useScopedState();
   const [draft, setDraft] = useState<Activity>(() => emptyActivity(state, defaults));
   const [newSubtask, setNewSubtask] = useState('');
   const [error, setError] = useState('');
@@ -39,10 +41,13 @@ export function ActivityModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, activity?.id]);
 
-  const assignable = useMemo(
-    () => state.employees.filter((e) => scope.visibleEmployeeIds.includes(e.id) && e.status !== 'inactive'),
-    [state.employees, scope.visibleEmployeeIds],
-  );
+  const assignable = useMemo(() => {
+    const rows = state.employees.filter((e) => scope.visibleEmployeeIds.includes(e.id) && e.status !== 'inactive');
+    // Never silently re-assign an existing activity whose owner is no longer
+    // in the calendar scope.
+    const current = activity ? state.employees.find((e) => e.id === activity.assigneeId) : undefined;
+    return current && !rows.some((e) => e.id === current.id) ? [current, ...rows] : rows;
+  }, [state.employees, scope.visibleEmployeeIds, activity]);
   const assignee = state.employees.find((e) => e.id === draft.assigneeId) ?? assignable[0] ?? state.employees[0];
   const department = state.departments.find((d) => d.id === assignee?.departmentId);
   const entity = state.entities.find((e) => e.id === assignee?.entityId);

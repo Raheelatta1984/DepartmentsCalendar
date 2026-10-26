@@ -11,7 +11,7 @@ import {
   Timer,
   Wallet,
 } from 'lucide-react';
-import { useStore } from '../store';
+import { useScopedState, useStore } from '../store';
 import type { Project, ProjectPortfolio } from '../types';
 import {
   PROJECT_CATEGORY_LABELS,
@@ -51,7 +51,10 @@ const statusTone: Record<string, 'good' | 'warn' | 'neutral' | 'danger' | 'info'
 };
 
 export function ProjectsPage() {
-  const { state, loadRetailSample } = useStore();
+  const { loadRetailSample  } = useStore();
+  /* Operational rows come from the active tenant, cut down to the departments
+     the calendar is implemented for (master setting: one / several / all). */
+  const state = useScopedState();
   const toast = useToast();
   const [portfolio, setPortfolio] = useState<'all' | ProjectPortfolio>('all');
   const [category, setCategory] = useState('all');

@@ -16,11 +16,12 @@ import {
   startOfYear,
 } from 'date-fns';
 import { CalendarDays, ChevronLeft, ChevronRight, Filter, Globe2, Plus, Search, Users } from 'lucide-react';
-import { useStore } from '../store';
-import type { Activity, AppFilters, Department, Holiday } from '../types';
+import { useScopedState, useStore } from '../store';
+import type { Activity, AppFilters, Department, Holiday, LeaveRequest } from '../types';
 import { TYPE_LABELS, filterActivities } from '../lib/analytics';
-import { WEEKDAY_LABELS, buildDayMeta, fromISO, humanHours, isoWeek, monthName, quarterOf, toISO, type DayMeta } from '../lib/dates';
+import { WEEKDAY_LABELS, buildDayMeta, daysBetweenInclusive, fromISO, humanHours, isoWeek, monthName, quarterOf, toISO, type DayMeta } from '../lib/dates';
 import { Avatar, Badge, Button, Card, EmptyState, PageHeader, SectionHeader, Select, Tabs } from '../components/ui';
+import { nextResponsible, awayOnDate, leaveOnDate } from '../lib/leave';
 import { ActivityLine, StatusBadge, TypeIcon } from '../components/activity-ui';
 
 type Mode = 'year' | 'quarter' | 'month' | 'week' | 'day';
@@ -53,7 +54,10 @@ export function CalendarPage({
   onNewActivity: (defaults?: Record<string, unknown>) => void;
   onOpenEmployee: (id: string) => void;
 }) {
-  const { state, scope } = useStore();
+  const { scope  } = useStore();
+  /* Operational rows come from the active tenant, cut down to the departments
+     the calendar is implemented for (master setting: one / several / all). */
+  const state = useScopedState();
   /* The grain is also the shared period filter: Year → Quarter → Month →
      Week → Day, so the guide's live context and every other screen agree
      with the grid on show. The calendar opens on a month unless a coarser
@@ -165,6 +169,39 @@ export function CalendarPage({
       (t) => peopleIds.has(t.employeeId) && t.date >= startISO && t.date <= endISO,
     );
   }, [state.timeEntries, peopleIds, gridRange]);
+
+  /* ---- Leave / PTO -------------------------------------------------
+     Approved leave is PTO on this calendar for the employee, their line
+     manager and up to hire management; pending rows stay tentative.
+     Public holidays are rendered as PH and are never counted as PTO.   */
+  const leaveRows = useMemo(
+    () => (state.leaves ?? []).filter((leave) => peopleIds.has(leave.employeeId)),
+    [state.leaves, peopleIds],
+  );
+
+  const leaveForDay = useMemo(() => {
+    const map = new Map<string, LeaveRequest[]>();
+    leaveRows
+      .filter((leave) => leave.status === 'approved' || leave.status === 'pending')
+      .forEach((leave) => {
+        daysBetweenInclusive(leave.startDate, leave.endDate).forEach((date) => {
+          const iso = toISO(date);
+          const list = map.get(iso) ?? [];
+          list.push(leave);
+          map.set(iso, list);
+        });
+      });
+    return map;
+  }, [leaveRows]);
+
+  const approvedLeaveNames = (iso: string) =>
+    (leaveForDay.get(iso) ?? [])
+      .filter((leave) => leave.status === 'approved')
+      .map((leave) => empMap.get(leave.employeeId)?.name.split(' ')[0] ?? 'PTO');
+  const pendingLeaveNames = (iso: string) =>
+    (leaveForDay.get(iso) ?? [])
+      .filter((leave) => leave.status === 'pending')
+      .map((leave) => empMap.get(leave.employeeId)?.name.split(' ')[0] ?? 'tentative');
 
   const selectedActivities = (activityDays.get(selectedDay) ?? []).slice();
   const selectedEntries = state.timeEntries.filter((t) => t.date === selectedDay && peopleIds.has(t.employeeId));
@@ -373,6 +410,8 @@ export function CalendarPage({
                     holidayLabel={holidayLabel}
                     today={today}
                     plannedHoursOn={plannedHoursOn}
+                    approvedLeaveNames={approvedLeaveNames}
+                    pendingLeaveNames={pendingLeaveNames}
                   />
                 ))}
               </div>
@@ -406,6 +445,8 @@ export function CalendarPage({
                     holidayLabel={holidayLabel}
                     today={today}
                     plannedHoursOn={plannedHoursOn}
+                    approvedLeaveNames={approvedLeaveNames}
+                    pendingLeaveNames={pendingLeaveNames}
                   />
                 </Card>
               ))}
@@ -435,6 +476,8 @@ export function CalendarPage({
                   holidayLabel={holidayLabel}
                   today={today}
                   plannedHoursOn={plannedHoursOn}
+                  approvedLeaveNames={approvedLeaveNames}
+                  pendingLeaveNames={pendingLeaveNames}
                 />
               ))}
             </Card>
@@ -454,6 +497,11 @@ export function CalendarPage({
                           <div className="text-xs font-semibold text-slate-800">{format(d.date, 'dd MMM')}</div>
                           <div className="truncate text-[9px] text-rose-500" title={holidayLabel(holiday)}>{holiday ? holidayLabel(holiday) : d.isWeekend ? 'weekly off' : ''}</div>
                           <div className="mt-0.5 text-[9px] text-slate-400">{workloadByDay.get(d.iso) ?? 0}h logged</div>
+                          {approvedLeaveNames(d.iso).length ? (
+                            <div className="truncate text-[8px] font-semibold text-violet-600" title={approvedLeaveNames(d.iso).join(', ')}>
+                              PTO {approvedLeaveNames(d.iso).length}
+                            </div>
+                          ) : null}
                         </div>
                       );
                     })}
@@ -499,6 +547,11 @@ export function CalendarPage({
                                   selectedDay === d.iso ? 'ring-1 ring-inset ring-brand-300' : ''
                                 }`}
                               >
+                                {leaveOnDate({ leaves: leaveRows }, emp.id, d.iso) ? (
+                                  <div className="truncate rounded bg-violet-100 px-1 text-[8px] font-semibold text-violet-700" title="Approved PTO">
+                                    PTO
+                                  </div>
+                                ) : null}
                                 {visible.map((a) => (
                                   <button
                                     key={a.id}
@@ -610,7 +663,9 @@ export function CalendarPage({
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] text-slate-500">
             <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <span>Grain: <span className="font-semibold text-slate-700">{MODE_TABS.find((m) => m.id === mode)?.label}</span></span>
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-rose-200" /> public holiday</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-rose-200" /> public holiday (PH)</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-violet-300" /> approved PTO</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm border border-dashed border-amber-400 bg-amber-50" /> tentative leave</span>
               <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-slate-200" /> weekly off</span>
               <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-brand-500" /> today</span>
             </span>
@@ -686,6 +741,48 @@ export function CalendarPage({
                 </div>
               </div>
             ) : null}
+          </Card>
+
+
+          <Card>
+            <SectionHeader
+              title="On leave & next responsible"
+              subtitle="Approved PTO is visible so colleagues know who is away and who to ask instead"
+              action={<Badge tone="purple">{(leaveForDay.get(selectedDay) ?? []).filter((leave) => leave.status === 'approved').length} PTO</Badge>}
+            />
+            <div className="mt-2 space-y-1.5">
+              {(leaveForDay.get(selectedDay) ?? []).length === 0 ? (
+                <p className="text-[11px] text-slate-500">Nobody in this view is on leave on {format(fromISO(selectedDay), 'dd MMM')}.</p>
+              ) : (
+                (leaveForDay.get(selectedDay) ?? []).map((leave) => {
+                  const employee = empMap.get(leave.employeeId);
+                  const cover = employee ? nextResponsible(state, employee.id, selectedDay) : undefined;
+                  return (
+                    <div key={leave.id} className="rounded-lg border border-slate-200 px-2 py-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <Avatar name={employee?.name ?? ''} color={employee?.avatarColor} size={20} />
+                        <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-slate-800">{employee?.name ?? 'Employee'}</span>
+                        <Badge tone={leave.status === 'approved' ? 'purple' : 'warn'}>{leave.status === 'approved' ? 'PTO' : 'tentative'}</Badge>
+                      </div>
+                      <div className="mt-0.5 text-[10px] text-slate-500">
+                        {leave.hours}h PTO{leave.publicHolidayDays ? ` · ${leave.publicHolidayDays} PH excluded` : ''} · back {format(fromISO(leave.endDate), 'dd MMM')}
+                      </div>
+                      <div className="text-[10px] text-emerald-700">
+                        Ask: {cover?.employee.name ?? 'department head'} <span className="text-slate-400">({cover?.reason ?? 'no cover assigned'})</span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <button
+              onClick={() => {
+                window.location.hash = '#/leave';
+              }}
+              className="mt-2 text-[10px] font-medium text-brand-700 hover:underline"
+            >
+              Open Leave &amp; PTO to plan or approve a holiday →
+            </button>
           </Card>
 
           <Card>
@@ -786,6 +883,8 @@ function MonthGrid({
   holidayLabel,
   today,
   plannedHoursOn,
+  approvedLeaveNames,
+  pendingLeaveNames,
 }: {
   panel: MonthPanelData;
   variant: 'full' | 'dense' | 'compact';
@@ -801,6 +900,8 @@ function MonthGrid({
   holidayLabel: (holiday?: { name: string; countryCode: string }) => string;
   today: string;
   plannedHoursOn: (iso: string) => number;
+  approvedLeaveNames: (iso: string) => string[];
+  pendingLeaveNames: (iso: string) => string[];
 }) {
   const month = panel.month.getMonth();
   const compact = variant === 'compact';
@@ -870,6 +971,9 @@ function MonthGrid({
                         />
                       ))}
                     </span>
+                    {approvedLeaveNames(day.iso).length ? (
+                      <span className="absolute left-0.5 top-0.5 h-1 w-1 rounded-full bg-violet-500" title="Approved PTO" />
+                    ) : null}
                     {acts.length > 3 ? (
                       <span className="absolute right-0.5 top-0.5 rounded-full bg-slate-800/70 px-1 text-[7px] font-bold leading-[10px] text-white">
                         {acts.length}
@@ -908,11 +1012,28 @@ function MonthGrid({
                     </span>
                   </div>
                   {holiday ? (
-                    <div className="mb-1 truncate rounded bg-rose-50 px-1 py-0.5 text-[9px] font-medium text-rose-600" title={holidayLabel(holiday)}>
-                      {holidayLabel(holiday)}
+                    <div className="mb-1 flex items-center gap-1 truncate rounded bg-rose-50 px-1 py-0.5 text-[9px] font-medium text-rose-600" title={`PH · ${holidayLabel(holiday)}`}>
+                      <span className="rounded bg-rose-600 px-1 text-[8px] font-bold text-white">PH</span>
+                      <span className="truncate">{holidayLabel(holiday)}</span>
                     </div>
                   ) : day.isWeekend ? (
                     <div className="mb-1 truncate rounded bg-slate-100 px-1 py-0.5 text-[9px] text-slate-400">Weekly off</div>
+                  ) : null}
+                  {approvedLeaveNames(day.iso).length ? (
+                    <div
+                      className="mb-1 truncate rounded bg-violet-100 px-1 py-0.5 text-[9px] font-semibold text-violet-700"
+                      title={`Approved PTO — ${approvedLeaveNames(day.iso).join(', ')}`}
+                    >
+                      PTO · {approvedLeaveNames(day.iso).join(', ')}
+                    </div>
+                  ) : null}
+                  {pendingLeaveNames(day.iso).length ? (
+                    <div
+                      className="mb-1 truncate rounded border border-dashed border-amber-300 px-1 py-0.5 text-[9px] text-amber-700"
+                      title={`Tentative leave awaiting approval — ${pendingLeaveNames(day.iso).join(', ')}`}
+                    >
+                      ? PTO · {pendingLeaveNames(day.iso).join(', ')}
+                    </div>
                   ) : null}
                   <div className="space-y-0.5">
                     {visible.map((a) => {

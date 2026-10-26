@@ -62,7 +62,9 @@ function Probe() {
         setTimeout(() => {
           results.push(['generated holidays', added, 'total delta', latest.state.holidays.length - holBefore]);
           const escBefore = latest.state.escalations.length;
-          latest.upsertEscalation({ id: 'esc-smoke', departmentId: 'dept-marketing', period: 'week', periodStart: score.periodStart, periodEnd: score.periodEnd, score: 40, threshold: 70, utilization: 50, onTimeRate: 40, recipients: [], cc: [], createdAt: new Date().toISOString(), status: 'open', note: 'smoke' });
+          /* The store is tenant-scoped: raise the escalation against a department in
+   the active tenant, otherwise isolation correctly refuses to store it. */
+            latest.upsertEscalation({ id: 'esc-smoke', departmentId: emp.departmentId, period: 'week', periodStart: score.periodStart, periodEnd: score.periodEnd, score: 40, threshold: 70, utilization: 50, onTimeRate: 40, recipients: [], cc: [], createdAt: new Date().toISOString(), status: 'open', note: 'smoke' });
           setTimeout(() => {
             results.push(['escalation added', latest.state.escalations.length - escBefore]);
             latest.setActiveUser(emp.id);

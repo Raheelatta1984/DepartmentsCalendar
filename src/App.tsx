@@ -14,6 +14,7 @@ import { ActivitiesPage } from './pages/ActivitiesPage';
 import { RoadmapPage } from './pages/RoadmapPage';
 import { TimesheetPage } from './pages/TimesheetPage';
 import { StandupsPage } from './pages/StandupsPage';
+import { LeavePage } from './pages/LeavePage';
 import { PerformancePage } from './pages/PerformancePage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { CapitalisationPage } from './pages/CapitalisationPage';
@@ -25,7 +26,7 @@ import { WhatsNewPage } from './pages/WhatsNewPage';
 import { ThemeStudioPage } from './pages/ThemeStudioPage';
 import { fontStack, getEntityTheme } from './lib/portal-theme';
 
-const VIEWS: ViewKey[] = ['dashboard', 'calendar', 'activities', 'roadmap', 'timesheet', 'standups', 'projects', 'capitalisation', 'performance', 'integrations', 'admin', 'whats-new', 'theme-studio'];
+const VIEWS: ViewKey[] = ['dashboard', 'calendar', 'activities', 'roadmap', 'timesheet', 'standups', 'leave', 'projects', 'capitalisation', 'performance', 'integrations', 'admin', 'whats-new', 'theme-studio'];
 
 function viewFromHash(): ViewKey {
   const hash = window.location.hash.replace(/^#\/?/, '').split('?')[0];
@@ -33,7 +34,7 @@ function viewFromHash(): ViewKey {
 }
 
 export function App() {
-  const { state, scope, upsertActivity, workspace } = useStore();
+  const { state, scope, tenant, workspace } = useStore();
   const [view, setView] = useState<ViewKey>(viewFromHash);
 
   /* The dashboard opens on the person's own legal entity — the one their
@@ -178,6 +179,7 @@ export function App() {
             {view === 'roadmap' ? <RoadmapPage filters={filters} setFilters={setFilters} onOpenActivity={openActivity} /> : null}
             {view === 'timesheet' ? <TimesheetPage filters={filters} setFilters={setFilters} onNewActivity={() => newActivity()} /> : null}
             {view === 'standups' ? <StandupsPage /> : null}
+            {view === 'leave' ? <LeavePage filters={filters} /> : null}
             {view === 'projects' ? <ProjectsPage /> : null}
             {view === 'capitalisation' ? <CapitalisationPage /> : null}
             {view === 'performance' ? <PerformancePage filters={filters} setFilters={setFilters} onOpenEmployee={setEmployeeId} /> : null}
@@ -187,7 +189,10 @@ export function App() {
             {view === 'theme-studio' ? <ThemeStudioPage /> : null}
           </div>
           <footer className="mt-8 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 py-3 text-[10px] text-slate-400">
-            <span>{activeTheme.portalFooter || `Orbit · activity, workload & roadmap portal for ${state.settings.groupName}`} · {state.entities.length} entities · {state.departments.length} departments · {state.employees.length} people</span>
+            <span>
+              {activeTheme.portalFooter || `Orbit · activity, workload, PTO & roadmap portal for ${tenant?.name ?? state.settings.groupName}`} ·{' '}
+              {state.entities.length} entities · {state.departments.length} departments · {state.employees.length} people · tenant-scoped
+            </span>
             <span className="flex items-center gap-1">
               <Command className="h-3 w-3" /> K to search · {workspace.mode === 'shared' ? 'shared data stored in Neon' : 'demo data stored locally in your browser'}
             </span>

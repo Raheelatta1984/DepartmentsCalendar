@@ -20,7 +20,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { useStore, newId } from '../store';
+import { useScopedState, useStore, newId } from '../store';
 import type { CalendarProvider, SyncJob } from '../types';
 import { Avatar, Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, SearchInput, SectionHeader, Select, Tabs, Toggle } from '../components/ui';
 import { downloadICS } from '../lib/export';
@@ -46,7 +46,10 @@ const PROVIDER_META: Record<CalendarProvider, { name: string; vendor: string; co
 };
 
 export function IntegrationsPage() {
-  const { state, scope, connectCalendar, disconnectCalendar, pushToCalendars, resetDemo } = useStore();
+  const { scope, connectCalendar, disconnectCalendar, pushToCalendars, resetDemo  } = useStore();
+  /* Operational rows come from the active tenant, cut down to the departments
+     the calendar is implemented for (master setting: one / several / all). */
+  const state = useScopedState();
   const toast = useToast();
   const [connectDraft, setConnectDraft] = useState<{ employeeId: string; provider: CalendarProvider; email: string; twoWay: boolean } | null>(null);
   const [filterProvider, setFilterProvider] = useState<'all' | CalendarProvider>('all');

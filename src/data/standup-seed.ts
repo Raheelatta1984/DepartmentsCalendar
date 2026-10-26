@@ -16,7 +16,7 @@ import { toISO } from '../lib/dates';
 /* ------------------------------------------------------------------ */
 /* Deterministic daily stand-up seed                                   */
 /*                                                                     */
-/* Builds five working days of stand-up history for every active       */
+/* Builds four working days of stand-up history for every active       */
 /* member. Today is intentionally incomplete (some members still       */
 /* pending) so the board has a live submission story. Content reuses   */
 /* the member's own seeded activities wherever possible.               */
@@ -120,7 +120,7 @@ export interface StandupSeedInput {
   countries: CountryConfig[];
 }
 
-export function buildStandupSeed(input: StandupSeedInput, today = new Date()): StandupEntry[] {
+export function buildStandupSeed(input: StandupSeedInput, today = new Date(), historyDays = 4): StandupEntry[] {
   const rnd = mulberry32(20261022);
   const state: Pick<StoreState, 'holidays' | 'countries'> = {
     holidays: input.holidays,
@@ -135,7 +135,7 @@ export function buildStandupSeed(input: StandupSeedInput, today = new Date()): S
       const ownActivities = input.activities
         .filter((activity) => activity.assigneeId === employee.id)
         .sort((a, b) => b.startDate.localeCompare(a.startDate));
-      const days = recentWorkingDays(state, employee.countryCode, today, 5);
+      const days = recentWorkingDays(state, employee.countryCode, today, historyDays);
       // A stable, realistic mix: ~78% of people have checked in today.
       const checkedInToday = employeeIndex % 9 !== 4;
 

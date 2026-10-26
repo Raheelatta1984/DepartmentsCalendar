@@ -18,6 +18,8 @@ import type {
 } from '../types';
 import { COUNTRIES, buildHolidayDataset } from './countries';
 import { RETAIL_CAPITALISATION_POLICY, RETAIL_CIO_ID, RETAIL_COMPANY_ID, RETAIL_IT_DEPT_ID, retailSample } from './retail-seed';
+import { DEFAULT_TENANT_ID, HARBOURLINE_TENANT_ID, MERIDIAN_TENANT_ID, TENANTS } from './tenant-seed';
+import { buildLeaveSeed } from './leave-seed';
 import { buildApproval, capitalisationReport, monthKey, monthScope } from '../lib/capitalisation';
 import { toISO } from '../lib/dates';
 import { buildStandupSeed } from './standup-seed';
@@ -55,13 +57,18 @@ function slotFor(): { startTime: string; endTime: string } {
 /* ------------------------------------------------------------------ */
 /* Group structure                                                     */
 /* ------------------------------------------------------------------ */
+const MERIDIAN_ENTITY = (entity: Omit<Entity, 'tenantId'>): Entity => ({
+  ...entity,
+  tenantId: MERIDIAN_TENANT_ID,
+});
+
 export const ENTITIES: Entity[] = [
-  { id: 'ent-group', name: 'Meridian Group Holdings', code: 'MGH', type: 'group', parentId: null, countryCode: 'AE', timezone: 'Asia/Dubai', industry: 'Diversified holding' },
-  { id: 'ent-contracting', name: 'Meridian Contracting LLC', code: 'MCL', type: 'company', parentId: 'ent-group', countryCode: 'AE', timezone: 'Asia/Dubai', industry: 'Construction & contracting' },
-  { id: 'ent-facilities', name: 'Meridian Facilities Management LLC', code: 'MFM', type: 'company', parentId: 'ent-group', countryCode: 'AE', timezone: 'Asia/Dubai', industry: 'Integrated facilities management' },
-  { id: 'ent-tech', name: 'Meridian Technology FZ-LLC', code: 'MTF', type: 'company', parentId: 'ent-group', countryCode: 'AE', timezone: 'Asia/Dubai', industry: 'IT & digital services' },
-  { id: 'ent-qatar', name: 'Meridian Qatar W.L.L.', code: 'MQW', type: 'sub_company', parentId: 'ent-contracting', countryCode: 'QA', timezone: 'Asia/Qatar', industry: 'Construction & contracting' },
-  { id: 'ent-uk', name: 'Meridian Advisory Ltd', code: 'MAL', type: 'sub_company', parentId: 'ent-group', countryCode: 'GB', timezone: 'Europe/London', industry: 'Advisory & consulting' },
+  MERIDIAN_ENTITY({ id: 'ent-group', name: 'Meridian Group Holdings', code: 'MGH', type: 'group', parentId: null, countryCode: 'AE', timezone: 'Asia/Dubai', industry: 'Diversified holding' }),
+  MERIDIAN_ENTITY({ id: 'ent-contracting', name: 'Meridian Contracting LLC', code: 'MCL', type: 'company', parentId: 'ent-group', countryCode: 'AE', timezone: 'Asia/Dubai', industry: 'Construction & contracting' }),
+  MERIDIAN_ENTITY({ id: 'ent-facilities', name: 'Meridian Facilities Management LLC', code: 'MFM', type: 'company', parentId: 'ent-group', countryCode: 'AE', timezone: 'Asia/Dubai', industry: 'Integrated facilities management' }),
+  MERIDIAN_ENTITY({ id: 'ent-tech', name: 'Meridian Technology FZ-LLC', code: 'MTF', type: 'company', parentId: 'ent-group', countryCode: 'AE', timezone: 'Asia/Dubai', industry: 'IT & digital services' }),
+  MERIDIAN_ENTITY({ id: 'ent-qatar', name: 'Meridian Qatar W.L.L.', code: 'MQW', type: 'sub_company', parentId: 'ent-contracting', countryCode: 'QA', timezone: 'Asia/Qatar', industry: 'Construction & contracting' }),
+  MERIDIAN_ENTITY({ id: 'ent-uk', name: 'Meridian Advisory Ltd', code: 'MAL', type: 'sub_company', parentId: 'ent-group', countryCode: 'GB', timezone: 'Europe/London', industry: 'Advisory & consulting' }),
 ];
 
 interface DeptSpec {
@@ -446,7 +453,7 @@ EMPLOYEES.forEach((emp) => {
     if (rnd() < 0.12) continue; // leave / no logging
     const candidates = myActivities.filter((a) => a.startDate <= iso(day) && a.endDate >= addDays(day, -6).toISOString().slice(0, 10));
     const pool = candidates.length ? candidates : myActivities;
-    const entries = between(3, 4);
+    const entries = between(2, 3);
     let remaining = 9;
     for (let i = 0; i < entries && remaining > 0.5; i++) {
       const act = pick(pool);
@@ -597,7 +604,15 @@ export function createSeedState(): StoreState {
   const seededEmployees = [...EMPLOYEES, ...retail.employees];
   const seededDepartments = [...DEPARTMENTS, ...retail.departments];
   const seededActivities = [...ACTIVITIES, ...retail.activities];
+  const seededLeafEmployees = seededEmployees.filter((employee) => employee.status !== 'inactive');
+  const leaves = buildLeaveSeed({
+    employees: seededLeafEmployees,
+    departments: seededDepartments,
+    holidays: holidayRows,
+    countries: COUNTRIES,
+  });
   const base: StoreState = {
+    tenants: TENANTS,
     entities: [...ENTITIES, ...retail.entities],
     departments: seededDepartments,
     employees: seededEmployees,
@@ -627,10 +642,28 @@ export function createSeedState(): StoreState {
     }),
     connections: CONNECTIONS,
     syncJobs: SYNC_JOBS,
-    auditLog: AUDIT_LOG,
+    leaves,
+    auditLog: [
+      {
+        id: 'aud-hra-1',
+        tenantId: HARBOURLINE_TENANT_ID,
+        at: new Date(Date.now() - 86400000).toISOString(),
+        actorId: RETAIL_CIO_ID,
+        action: 'Calendar scope updated',
+        detail: 'Harbourline Retail Australia: calendar implemented for the IT department only (single-department mode).',
+      },
+      ...AUDIT_LOG.map((entry) => ({
+        ...entry,
+        // Attribute existing history to the tenant that owns the actor.
+        tenantId: entry.actorId.startsWith('rtl-') ? HARBOURLINE_TENANT_ID : MERIDIAN_TENANT_ID,
+      })),
+    ],
     settings: {
-      activeUserId: ceo.id,
-      groupName: 'Meridian Group Holdings',
+      // The portal opens on the IT-first tenant with the IT department head
+      // signed in; the calendar covers that single department.
+      activeUserId: RETAIL_CIO_ID,
+      activeTenantId: DEFAULT_TENANT_ID,
+      groupName: 'Harbourline Retail Australia',
       workingDayStart: '08:30',
       workingDayEnd: '17:30',
       holidayHorizonYears: 5,

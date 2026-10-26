@@ -9,6 +9,81 @@ export type Role =
 
 export type EntityType = 'group' | 'company' | 'sub_company';
 
+/* ------------------------------------------------------------------ */
+/* Tenants — the hard isolation boundary                               */
+/*                                                                     */
+/* A workspace hosts one or more tenants. A tenant owns its own entity  */
+/* tree (group → companies → sub-companies), its own departments,       */
+/* people, projects, activities, timesheets, stand-ups, holidays se-    */
+/* lection and leave records. Nothing is shared across tenants: the     */
+/* store and every screen only ever read the active tenant's rows.      */
+/* ------------------------------------------------------------------ */
+
+/** How the department calendar is rolled out for a tenant. */
+export type CalendarScopeMode = 'single' | 'multiple' | 'all';
+
+export interface CalendarScopeSettings {
+  /**
+   * single   = the calendar only ever covers one department
+   * multiple = the calendar covers an explicit list of departments
+   * all      = every department in the tenant
+   */
+  mode: CalendarScopeMode;
+  /** Departments in scope for `single` / `multiple`; ignored for `all`. */
+  departmentIds: string[];
+}
+
+export interface Tenant {
+  id: string;
+  name: string;
+  code: string;
+  /** Country/timezone defaults used when an entity does not override them. */
+  countryCode: string;
+  timezone: string;
+  currency: string;
+  industry?: string;
+  status: 'active' | 'archived';
+  /** Master setting: is this calendar implemented for one, several or all departments? */
+  calendarScope: CalendarScopeSettings;
+  /** Paid time off entitlement, in working days per year (public holidays excluded). */
+  ptoAnnualEntitlementDays: number;
+  createdAt?: string;
+}
+
+/* ------------------------------------------------------------------ */
+/* Leave / paid time off                                               */
+/* ------------------------------------------------------------------ */
+export type LeaveType = 'annual' | 'sick' | 'unpaid' | 'parental' | 'study' | 'other';
+/** annual = PTO; the other types never count toward the PTO balance. */
+export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+
+export interface LeaveRequest {
+  id: string;
+  employeeId: string;
+  departmentId: string;
+  entityId: string;
+  /** Calendar span requested by the employee (inclusive). */
+  startDate: string;
+  endDate: string;
+  /** PTO counts working hours only — public holidays and weekly-offs are excluded. */
+  hours: number;
+  workingDays: number;
+  /** Public holiday days/hours inside the span, excluded from PTO. */
+  publicHolidayDays: number;
+  publicHolidayHours: number;
+  type: LeaveType;
+  reason: string;
+  status: LeaveStatus;
+  /** Person who covers the work while the requester is away. */
+  delegateId: string | null;
+  submittedAt: string;
+  decidedById: string | null;
+  decidedAt: string | null;
+  decisionNote: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type ActivityType =
   | 'task'
   | 'follow_up'
@@ -135,6 +210,8 @@ export interface CapitalisationApproval {
 
 export interface Entity {
   id: string;
+  /** Tenant that owns this entity — the hard isolation boundary. */
+  tenantId: string;
   name: string;
   code: string;
   type: EntityType;
@@ -342,6 +419,8 @@ export interface SyncJob {
 
 export interface Settings {
   activeUserId: string;
+  /** Device-local tenant preference — never shared with other users. */
+  activeTenantId: string;
   groupName: string;
   workingDayStart: string;
   workingDayEnd: string;
@@ -351,6 +430,7 @@ export interface Settings {
 }
 
 export interface StoreState {
+  tenants: Tenant[];
   entities: Entity[];
   departments: Department[];
   employees: Employee[];
@@ -362,6 +442,7 @@ export interface StoreState {
   connections: CalendarConnection[];
   syncJobs: SyncJob[];
   standups: StandupEntry[];
+  leaves: LeaveRequest[];
   settings: Settings;
   auditLog: AuditEntry[];
   projects: Project[];
@@ -371,6 +452,8 @@ export interface StoreState {
 
 export interface AuditEntry {
   id: string;
+  /** Tenant the event belongs to; absent on legacy rows, which stay global. */
+  tenantId?: string;
   at: string;
   actorId: string;
   action: string;
@@ -427,6 +510,7 @@ export type ViewKey =
   | 'roadmap'
   | 'timesheet'
   | 'standups'
+  | 'leave'
   | 'projects'
   | 'capitalisation'
   | 'performance'

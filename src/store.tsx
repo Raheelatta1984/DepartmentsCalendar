@@ -4,12 +4,15 @@ import type {
   AuditEntry,
   CalendarConnection,
   CalendarProvider,
+  CalendarScopeSettings,
   Department,
   CapitalisationApproval,
   Employee,
   Entity,
   Escalation,
   Holiday,
+  LeaveRequest,
+  LeaveStatus,
   Project,
   Settings,
   StandupEntry,
@@ -17,6 +20,7 @@ import type {
   SupportRequest,
   SupportRequestStatus,
   SyncJob,
+  Tenant,
   TimeEntry,
 } from './types';
 import { createSeedState } from './data/seed';
@@ -24,19 +28,73 @@ import { RETAIL_CAPITALISATION_POLICY, withRetailSample } from './data/retail-se
 import { buildApproval, monthScope, capitalisationReport } from './lib/capitalisation';
 import { buildHolidayDataset } from './data/countries';
 import { getScope, type Scope } from './lib/permissions';
-import { fromSharedState, rememberPersona } from './lib/workspace-api';
+import {
+  FALLBACK_TENANT_ID,
+  buildTenantIndex,
+  calendarDepartmentIds as resolveCalendarDepartmentIds,
+  findTenant,
+  mergeTenantState,
+  normaliseCalendarScope,
+  removeTenant,
+  resolveTenantId,
+  scopeStateToDepartments,
+  scopeStateToTenant,
+  tenantDepartments,
+} from './lib/tenants';
+import { leaveBreakdown } from './lib/leave';
+import { DEFAULT_TENANT_ID, HARBOURLINE_TENANT_ID, MERIDIAN_TENANT_ID, TENANTS } from './data/tenant-seed';
+import { fromSharedState, rememberPersona, rememberTenant } from './lib/workspace-api';
 import { useWorkspacePersistence, type SharedConnection, type WorkspacePersistence } from './lib/useWorkspacePersistence';
 
 const STORAGE_KEY = 'orbit.portal.state.v1';
 
-/** Adds capitalisation/project defaults without touching any existing record. */
+/**
+ * Adds tenancy, leave, capitalisation and project defaults without touching
+ * any existing record. Older snapshots (and older browser caches) are
+ * attributed to a tenant by entity id so isolation is never ambiguous.
+ */
 export function normaliseState(state: StoreState): StoreState {
+  const tenants = Array.isArray(state.tenants) && state.tenants.length ? state.tenants : TENANTS;
+  const fallbackTenantId = tenants.some((tenant) => tenant.id === DEFAULT_TENANT_ID)
+    ? DEFAULT_TENANT_ID
+    : tenants[0].id;
+  const entities = (state.entities ?? []).map((entity) => ({
+    ...entity,
+    tenantId:
+      entity.tenantId ??
+      (entity.id.startsWith('ent-hra')
+        ? HARBOURLINE_TENANT_ID
+        : tenants.some((tenant) => tenant.id === MERIDIAN_TENANT_ID)
+          ? MERIDIAN_TENANT_ID
+          : fallbackTenantId),
+  }));
+  const activeTenantId = resolveTenantId(tenants, state.settings?.activeTenantId);
+  const tenant = tenants.find((row) => row.id === activeTenantId);
+  const tenantDeptIds = new Set(
+    (state.departments ?? [])
+      .filter((department) => entities.some((entity) => entity.id === department.entityId && entity.tenantId === activeTenantId))
+      .map((department) => department.id),
+  );
+  const activeUser =
+    state.employees?.find((employee) => employee.id === state.settings?.activeUserId && tenantDeptIds.has(employee.departmentId)) ??
+    state.employees?.find((employee) => employee.role === 'department_head' && employee.departmentId === tenant?.calendarScope.departmentIds[0]) ??
+    state.employees?.find((employee) => tenantDeptIds.has(employee.departmentId)) ??
+    state.employees?.[0];
+
   return {
     ...state,
+    tenants,
+    entities,
     projects: Array.isArray(state.projects) ? state.projects : [],
     capitalisation: state.capitalisation ?? RETAIL_CAPITALISATION_POLICY,
     capitalisationApprovals: Array.isArray(state.capitalisationApprovals) ? state.capitalisationApprovals : [],
     standups: Array.isArray(state.standups) ? state.standups : [],
+    leaves: Array.isArray(state.leaves) ? state.leaves : [],
+    settings: {
+      ...state.settings,
+      activeTenantId,
+      activeUserId: activeUser?.id ?? state.settings?.activeUserId ?? '',
+    },
   };
 }
 
@@ -49,6 +107,7 @@ function loadState(): StoreState {
     // heals older caches when the demo schema evolves
     if (!parsed.syncJobs || !parsed.connections || !parsed.escalations) return createSeedState();
     if (!parsed.projects || !parsed.capitalisation) return createSeedState();
+    if (!parsed.tenants) return createSeedState();
     return normaliseState(parsed);
   } catch {
     return createSeedState();
@@ -58,12 +117,35 @@ function loadState(): StoreState {
 const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 
 interface StoreContextValue {
+  /** The active tenant only — never another tenant's entities or people. */
   state: StoreState;
+  /** The active tenant cut down to the departments the calendar is implemented for. */
+  scopedState: StoreState;
+  /** All tenants in the workspace (register only — no rows of other tenants). */
+  tenants: Tenant[];
+  tenant: Tenant | undefined;
+  calendarScope: CalendarScopeSettings;
+  calendarDepartmentIds: string[];
   workspace: WorkspacePersistence;
   scope: Scope;
   save: (next: StoreState | ((prev: StoreState) => StoreState), audit?: Omit<AuditEntry, 'id' | 'at' | 'actorId'>) => void;
   setActiveUser: (id: string) => void;
+  setActiveTenant: (id: string) => void;
   updateSettings: (patch: Partial<Settings>) => void;
+  setCalendarScope: (scope: CalendarScopeSettings) => void;
+  upsertTenant: (tenant: Tenant) => void;
+  deleteTenant: (id: string) => void;
+  submitLeave: (input: {
+    employeeId: string;
+    startDate: string;
+    endDate: string;
+    type: LeaveRequest['type'];
+    reason: string;
+    delegateId: string | null;
+  }) => LeaveRequest | null;
+  decideLeave: (id: string, decision: Extract<LeaveStatus, 'approved' | 'rejected'>, note: string) => void;
+  cancelLeave: (id: string) => void;
+  deleteLeave: (id: string) => void;
   upsertActivity: (activity: Activity) => void;
   deleteActivity: (id: string) => void;
   updateActivityStatus: (id: string, status: Activity['status'], progress?: number) => void;
@@ -100,23 +182,53 @@ interface StoreContextValue {
 const StoreContext = createContext<StoreContextValue | null>(null);
 
 export function StoreProvider({ children, shared }: { children: React.ReactNode; shared?: SharedConnection }) {
-  const [state, setState] = useState<StoreState>(() =>
+  // `fullState` holds every tenant in the workspace. Screens never see it:
+  // they receive `state` (the active tenant) or `scopedState` (the tenant cut
+  // to the departments the calendar is implemented for).
+  const [fullState, setFullState] = useState<StoreState>(() =>
     normaliseState(shared ? fromSharedState(shared.snapshot.state) : loadState()),
   );
-  const workspace = useWorkspacePersistence(state, setState, shared);
+  const workspace = useWorkspacePersistence(fullState, setFullState, shared);
   const writeTimer = useRef<number | null>(null);
+
+  const tenants = useMemo(() => fullState.tenants ?? [], [fullState.tenants]);
+  const activeTenantId = resolveTenantId(tenants, fullState.settings.activeTenantId);
+  const tenant = findTenant(tenants, activeTenantId);
+
+  /* The hard isolation boundary: another tenant's rows are dropped here,
+     before any screen, hook, calculation or export can read them. */
+  const state = useMemo(() => scopeStateToTenant(fullState, activeTenantId), [fullState, activeTenantId]);
+
+  const calendarScope = useMemo<CalendarScopeSettings>(
+    () => tenant?.calendarScope ?? { mode: 'all', departmentIds: [] },
+    [tenant],
+  );
+  const activeUserId = state.settings.activeUserId;
+  const ownDepartmentId = state.employees.find((employee) => employee.id === activeUserId)?.departmentId;
+  const calendarDepartmentIds = useMemo(
+    () => resolveCalendarDepartmentIds(state, tenant, ownDepartmentId),
+    [state, tenant, ownDepartmentId],
+  );
+
+  /* Master setting in action: single / multiple / all departments. */
+  const scopedState = useMemo(
+    () => scopeStateToDepartments(state, calendarDepartmentIds),
+    [state, calendarDepartmentIds],
+  );
 
   useEffect(() => {
     if (shared) {
       // Shared company data is never cached in localStorage. Only this device's
-      // persona preference is local; it cannot change anyone else's view.
-      rememberPersona(state.settings.activeUserId);
+      // persona and tenant preferences are local; they change nobody else's view.
+      rememberPersona(fullState.settings.activeUserId);
+      rememberTenant(activeTenantId);
       return;
     }
     if (writeTimer.current) window.clearTimeout(writeTimer.current);
     writeTimer.current = window.setTimeout(() => {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        // The demo cache holds every tenant; screens only ever read one.
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(fullState));
       } catch {
         /* storage full — the session still works in memory */
       }
@@ -124,24 +236,35 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
     return () => {
       if (writeTimer.current) window.clearTimeout(writeTimer.current);
     };
-  }, [state, shared]);
+  }, [fullState, shared]);
 
-  const scope = useMemo(() => getScope(state, state.settings.activeUserId), [state]);
+  const scope = useMemo(() => getScope(scopedState, activeUserId), [scopedState, activeUserId]);
   const latestStateRef = useRef(state);
   latestStateRef.current = state;
 
+  /**
+   * Every edit is expressed against the active tenant and merged back into
+   * the full snapshot, so a save can only ever replace that tenant's rows.
+   */
   const save = useCallback<StoreContextValue['save']>((next, audit) => {
-    setState((prev) => {
-      const resolved = typeof next === 'function' ? next(prev) : next;
-      if (!audit) return resolved;
+    setFullState((prevFull) => {
+      const prevTenantId = resolveTenantId(prevFull.tenants, prevFull.settings.activeTenantId);
+      const prevScoped = scopeStateToTenant(prevFull, prevTenantId);
+      const resolved = typeof next === 'function' ? next(prevScoped) : next;
+      if (!audit) return mergeTenantState(prevFull, resolved, prevTenantId);
       const entry: AuditEntry = {
         id: uid('aud'),
+        tenantId: prevTenantId,
         at: new Date().toISOString(),
         actorId: resolved.settings.activeUserId,
         action: audit.action,
         detail: audit.detail,
       };
-      return { ...resolved, auditLog: [entry, ...resolved.auditLog].slice(0, 250) };
+      return mergeTenantState(
+        prevFull,
+        { ...resolved, auditLog: [entry, ...resolved.auditLog].slice(0, 250) },
+        prevTenantId,
+      );
     });
   }, []);
 
@@ -176,10 +299,87 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
   const value = useMemo<StoreContextValue>(() => {
     return {
       state,
+      scopedState,
+      tenants,
+      tenant,
+      calendarScope,
+      calendarDepartmentIds,
       workspace,
       scope,
       save,
-      setActiveUser: (id) => save((prev) => ({ ...prev, settings: { ...prev.settings, activeUserId: id } })),
+      setActiveUser: (id) =>
+        save((prev) => {
+          const employee = prev.employees.find((row) => row.id === id);
+          // Switching persona can never jump tenant: the person must belong
+          // to the tenant on screen.
+          if (!employee) return prev;
+          return { ...prev, settings: { ...prev.settings, activeUserId: id } };
+        }),
+      setActiveTenant: (id) =>
+        save(
+          (prev) => {
+            const target = prev.tenants.find((row) => row.id === id);
+            if (!target) return prev;
+            const targetState = scopeStateToTenant(prev, id);
+            const current = prev.employees.find((row) => row.id === prev.settings.activeUserId);
+            const currentDept = current ? prev.departments.find((department) => department.id === current.departmentId) : undefined;
+            const currentEntity = currentDept ? prev.entities.find((entity) => entity.id === currentDept.entityId) : undefined;
+            const keepPersona = currentEntity?.tenantId === id;
+            const fallback =
+              targetState.employees.find((employee) => employee.id === prev.settings.activeUserId) ??
+              targetState.employees.find((employee) => employee.departmentId === target.calendarScope.departmentIds[0]) ??
+              targetState.employees.find((employee) => employee.role === 'department_head') ??
+              targetState.employees.find((employee) => employee.role === 'ceo') ??
+              targetState.employees[0];
+            return {
+              ...prev,
+              settings: {
+                ...prev.settings,
+                activeTenantId: id,
+                activeUserId: keepPersona ? prev.settings.activeUserId : fallback?.id ?? prev.settings.activeUserId,
+              },
+            };
+          },
+          { action: 'Tenant switched', detail: id },
+        ),
+      setCalendarScope: (nextScope) =>
+        save(
+          (prev) => {
+            const tenantRow = prev.tenants.find((row) => row.id === prev.settings.activeTenantId);
+            if (!tenantRow) return prev;
+            const tenantDeptIds = tenantDepartments(prev, tenantRow.id).map((department) => department.id);
+            const calendarScopeNext = normaliseCalendarScope(nextScope, tenantDeptIds);
+            return {
+              ...prev,
+              tenants: prev.tenants.map((row) =>
+                row.id === tenantRow.id ? { ...row, calendarScope: calendarScopeNext } : row,
+              ),
+            };
+          },
+          { action: 'Calendar scope updated', detail: `${nextScope.mode} · ${nextScope.departmentIds.length} departments` },
+        ),
+      upsertTenant: (nextTenant) =>
+        save(
+          (prev) => {
+            const exists = prev.tenants.some((row) => row.id === nextTenant.id);
+            return {
+              ...prev,
+              tenants: exists
+                ? prev.tenants.map((row) => (row.id === nextTenant.id ? nextTenant : row))
+                : [...prev.tenants, nextTenant],
+            };
+          },
+          { action: 'Tenant saved', detail: `${nextTenant.code} · ${nextTenant.name}` },
+        ),
+      deleteTenant: (id) =>
+        save(
+          (prev) => {
+            // A workspace always keeps at least one tenant.
+            if (prev.tenants.length <= 1) return prev;
+            return removeTenant(prev, id);
+          },
+          { action: 'Tenant removed', detail: id },
+        ),
       updateSettings: (patch) =>
         save(
           (prev) => ({ ...prev, settings: { ...prev.settings, ...patch } }),
@@ -482,6 +682,79 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
             a.id === activityId ? { ...a, sync: { ...a.sync, [provider]: enabled } } : a,
           ),
         })),
+      submitLeave: (input) => {
+        const snapshot = normaliseState(latestStateRef.current);
+        const employee = snapshot.employees.find((row) => row.id === input.employeeId);
+        if (!employee) return null;
+        const breakdown = leaveBreakdown(snapshot, employee, input.startDate, input.endDate);
+        const now = new Date().toISOString();
+        const leave: LeaveRequest = {
+          id: uid('lv'),
+          employeeId: employee.id,
+          departmentId: employee.departmentId,
+          entityId: employee.entityId,
+          startDate: input.startDate,
+          endDate: input.endDate,
+          hours: breakdown.hours,
+          workingDays: breakdown.workingDays,
+          publicHolidayDays: breakdown.publicHolidayDays,
+          publicHolidayHours: breakdown.publicHolidayHours,
+          type: input.type,
+          reason: input.reason,
+          status: 'pending',
+          delegateId: input.delegateId,
+          submittedAt: now,
+          decidedById: null,
+          decidedAt: null,
+          decisionNote: '',
+          createdAt: now,
+          updatedAt: now,
+        };
+        save(
+          (prev) => ({ ...prev, leaves: [leave, ...(prev.leaves ?? [])] }),
+          {
+            action: 'Leave requested',
+            detail: `${input.startDate} → ${input.endDate} · ${breakdown.hours}h PTO · ${breakdown.publicHolidayDays} PH excluded`,
+          },
+        );
+        return leave;
+      },
+      decideLeave: (id, decision, note) =>
+        save(
+          (prev) => ({
+            ...prev,
+            leaves: (prev.leaves ?? []).map((leave) =>
+              leave.id === id
+                ? {
+                    ...leave,
+                    status: decision,
+                    decidedById: prev.settings.activeUserId,
+                    decidedAt: new Date().toISOString(),
+                    decisionNote: note,
+                    updatedAt: new Date().toISOString(),
+                  }
+                : leave,
+            ),
+          }),
+          { action: `Leave ${decision}`, detail: id },
+        ),
+      cancelLeave: (id) =>
+        save(
+          (prev) => ({
+            ...prev,
+            leaves: (prev.leaves ?? []).map((leave) =>
+              leave.id === id
+                ? { ...leave, status: 'cancelled', updatedAt: new Date().toISOString() }
+                : leave,
+            ),
+          }),
+          { action: 'Leave cancelled', detail: id },
+        ),
+      deleteLeave: (id) =>
+        save(
+          (prev) => ({ ...prev, leaves: (prev.leaves ?? []).filter((leave) => leave.id !== id) }),
+          { action: 'Leave record deleted', detail: id },
+        ),
       upsertProject: (project) =>
         save(
           (prev) => ({
@@ -546,10 +819,22 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
       resetDemo: () => {
         if (shared) return; // never replace the shared database with demo data
         localStorage.removeItem(STORAGE_KEY);
-        setState(createSeedState());
+        setFullState(createSeedState());
       },
     };
-  }, [state, scope, save, queueSync, workspace, shared]);
+  }, [
+    state,
+    scopedState,
+    tenants,
+    tenant,
+    calendarScope,
+    calendarDepartmentIds,
+    workspace,
+    scope,
+    save,
+    queueSync,
+    shared,
+  ]);
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
@@ -562,6 +847,15 @@ export function useStore() {
 
 export function useScope() {
   return useStore().scope;
+}
+
+/**
+ * The active tenant cut down to the departments the calendar is implemented
+ * for (single / multiple / all). Operational screens read this so a
+ * single-department roll-out never shows another department's resources.
+ */
+export function useScopedState() {
+  return useStore().scopedState;
 }
 
 export const newId = uid;
@@ -596,6 +890,7 @@ export function emptyActivity(state: StoreState, defaults: Partial<Activity> = {
 
 export function emptyEmployee(state: StoreState): Employee {
   const dept = state.departments[0];
+  const tenant = state.tenants.find((row) => row.id === state.settings.activeTenantId);
   return {
     id: uid('emp'),
     name: '',
@@ -605,8 +900,8 @@ export function emptyEmployee(state: StoreState): Employee {
     departmentId: dept?.id ?? '',
     role: 'employee',
     managerId: null,
-    countryCode: 'AE',
-    weeklyHours: 45,
+    countryCode: tenant?.countryCode ?? 'AE',
+    weeklyHours: 38,
     joinDate: new Date().toISOString().slice(0, 10),
     status: 'active',
     avatarColor: '#3b82f6',

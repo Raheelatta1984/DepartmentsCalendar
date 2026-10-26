@@ -13,7 +13,7 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-react';
-import { useStore } from '../store';
+import { useScopedState, useStore } from '../store';
 import type { AppFilters, TaskStatus } from '../types';
 import { TYPE_LABELS, filterActivities, inRange } from '../lib/analytics';
 import { periodLabel, periodRange, toISO, fromISO, humanHours, shortDate } from '../lib/dates';
@@ -35,7 +35,10 @@ export function ActivitiesPage({
   onOpenActivity: (id: string) => void;
   onNewActivity: () => void;
 }) {
-  const { state, scope, updateActivityStatus, pushToCalendars } = useStore();
+  const { scope, updateActivityStatus, pushToCalendars  } = useStore();
+  /* Operational rows come from the active tenant, cut down to the departments
+     the calendar is implemented for (master setting: one / several / all). */
+  const state = useScopedState();
   const toast = useToast();
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<'all' | TaskStatus>('all');
