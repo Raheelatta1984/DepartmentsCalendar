@@ -116,7 +116,7 @@ For important data, also arrange provider/database backups and test a restore. A
 | --- | --- |
 | Amber **Browser-only demo** banner | Check `DATABASE_URL` is set for the correct Vercel environment, then redeploy. Static-only hosts cannot provide the shared API. |
 | **Workspace setup is incomplete** | Check the URL is Neon PostgreSQL with `sslmode=require`, password is ≥16 characters and session secret ≥32. Redeploy after fixes. |
-| **Database temporarily unavailable** | Check Neon project status, quotas and role/table permissions. A wake-up delay is possible; retry. Existing unsaved edits are retained. |
+| **Database temporarily unavailable** | A sleeping Neon instance wakes on the first request, so the app retries by itself (2 s → 30 s backoff) and the screen counts down to the next attempt. Use **Refresh now** to try immediately or **Reload page** for a clean boot; a successful boot also creates the schema and seeds the pilot data if the database is empty. Only investigate project status, quotas and role/table permissions if the message persists with a non-retryable setup error. Existing unsaved edits are retained. |
 | **Cross-origin requests** error | Remove or correct `PUBLIC_ORIGIN`; use one consistent domain rather than mixing preview and production URLs. |
 | **Session expired** | Export unsaved edits, then sign out and sign back in. A secret rotation invalidates all old sessions. |
 | **Newer changes on another device** | Export a backup, load latest, then reapply changes. There is intentionally no force-overwrite button. |

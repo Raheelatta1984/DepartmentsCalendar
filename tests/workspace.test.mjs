@@ -161,6 +161,7 @@ test('Vercel pre-parsed bodies work; database errors never leak credentials', as
   const incomplete = await invoke(createHandler({ env: { DATABASE_URL: env.DATABASE_URL } }), '/api/config', 'GET');
   assert.equal(incomplete.status, 503);
   assert.doesNotMatch(incomplete.body, /private-db-password/);
+  assert.equal(JSON.parse(incomplete.body).retryable, false, 'a broken setup must not be retried automatically');
 });
 
 test('API method guards and sign out behave correctly', async () => {

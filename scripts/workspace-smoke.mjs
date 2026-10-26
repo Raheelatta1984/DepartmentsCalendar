@@ -149,6 +149,48 @@ assert.equal(retrying.dirty, false);
 retrying.dispose();
 console.log('PASS: offline saves and failed refreshes retain data and can be retried');
 
+/* Auto-refresh: "The shared database is temporarily unavailable" usually means a
+   suspended Neon instance that wakes on the first request. The sync engine must
+   retry that by itself - keeping queued edits - while never retrying a verdict
+   that a retry cannot fix (bad setup, cross-origin, expired session). */
+let autoWrites = 0;
+let autoInfo;
+const auto = new WorkspaceSync({ state: initial, version: 1 }, (value) => { autoInfo = value; }, () => assert.fail('an automatic retry must not reload the UI'), {
+  read: async () => assert.fail('unexpected read'),
+  write: async () => {
+    autoWrites++;
+    if (autoWrites === 1) throw new ApiError(503, 'The shared database is temporarily unavailable. Please retry.', { retryable: true, retryAfterSeconds: 1 });
+    return { version: 2 };
+  },
+}, 60_000, [1_000]);
+auto.update(change('Auto recovered'));
+await auto.flush();
+assert.equal(autoInfo.status, 'error');
+assert.ok(autoInfo.retryAt > Date.now() - 5, 'a retryable failure schedules the next automatic attempt');
+assert.equal(auto.dirty, true, 'the queued edit survives the failed attempt');
+await sleep(Math.max(0, autoInfo.retryAt - Date.now()) + 100);
+assert.equal(autoWrites, 2, 'the automatic retry re-sent the queued edit without a click');
+assert.equal(autoInfo.status, 'saved');
+assert.equal(autoInfo.retryAt, undefined, 'a successful retry clears the schedule');
+assert.equal(auto.dirty, false);
+auto.dispose();
+console.log('PASS: a transient database outage retries itself and still saves queued edits');
+
+let hardFailures = 0;
+let hardInfo;
+const hard = new WorkspaceSync({ state: initial, version: 1 }, (value) => { hardInfo = value; }, () => {}, {
+  read: async () => assert.fail('unexpected read'),
+  write: async () => { hardFailures++; throw new ApiError(403, 'Cross-origin requests are not allowed.', { retryable: false }); },
+}, 60_000, [50]);
+hard.update(change('Never retried'));
+await hard.flush();
+assert.equal(hardInfo.status, 'error');
+assert.equal(hardInfo.retryAt, undefined, 'a non-retryable failure is shown to the user, not retried on a timer');
+await sleep(150);
+assert.equal(hardFailures, 1, 'a non-retryable failure is never sent again automatically');
+hard.dispose();
+console.log('PASS: non-retryable failures never auto-retry');
+
 const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost:5173/' });
 globalThis.window = dom.window;
 globalThis.document = dom.window.document;
@@ -215,10 +257,35 @@ let close = await renderGateway(async () => Response.json({ mode: 'shared', auth
 assert.equal(document.querySelector('input')?.type, 'password');
 assert.equal(document.querySelector('[data-testid="gateway-content"]'), null);
 await close();
-close = await renderGateway(async () => Response.json({ error: 'setup incomplete' }, { status: 503 }));
+close = await renderGateway(async () => Response.json({ error: 'setup incomplete', retryable: false }, { status: 503 }));
 assert.match(document.body.textContent, /Workspace unavailable/);
+assert.match(document.body.textContent, /Try again/);
+assert.doesNotMatch(document.body.textContent, /Refreshing automatically/, 'a broken setup is not retried on a timer');
 assert.equal(document.querySelector('[data-testid="gateway-content"]'), null);
 await close();
+// A transient outage - the sleeping-database wake-up - recovers on its own.
+let flakyReads = 0;
+const flakyFetcher = async (path) => {
+  if (path === '/api/config') return Response.json({ mode: 'shared', authenticated: true });
+  flakyReads++;
+  if (flakyReads === 1) {
+    return Response.json({
+      error: 'The shared database is temporarily unavailable. Your unsaved changes have not been discarded. Please retry.',
+      retryable: true,
+      retryAfterSeconds: 1,
+    }, { status: 503 });
+  }
+  return Response.json({ state: initial, version: 1 });
+};
+close = await renderGateway(flakyFetcher);
+assert.match(document.body.textContent, /temporarily unavailable/);
+assert.match(document.body.textContent, /Refreshing automatically/, 'the outage screen announces the automatic refresh');
+assert.equal(document.querySelector('[data-testid="gateway-content"]'), null);
+await act(async () => sleep(1_400));
+assert.ok(document.querySelector('[data-testid="gateway-content"]'), 'the gateway opens itself once the database answers');
+assert.equal(flakyReads, 2);
+await close();
+console.log('PASS: a transient outage auto-refreshes the gateway, a broken setup does not');
 close = await renderGateway(async () => Response.json({ mode: 'demo', authenticated: false }));
 assert.match(document.querySelector('[data-testid="gateway-content"]').textContent, /^demo:/);
 await close();

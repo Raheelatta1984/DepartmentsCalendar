@@ -176,9 +176,32 @@ test('invalid sessions, unknown routes and database outages are negative-cached'
   const outage = await invoke(broken, '/api/workspace', 'GET', { headers: { cookie } });
   assert.equal(outage.status, 503);
   assert.equal(outage.headers['Retry-After'], '5');
+  assert.equal(outage.body.retryable, true, 'the browser must know a database outage is worth retrying');
+  assert.equal(outage.body.retryAfterSeconds, 5);
+  assert.doesNotMatch(outage.body.error, /postgresql|private-db-password/);
   const tripped = await invoke(broken, '/api/workspace', 'GET', { headers: { cookie } });
   assert.equal(tripped.status, 503, 'circuit stays open without a new connection attempt');
   assert.ok(Number(tripped.headers['Retry-After']) >= 1);
+  assert.equal(tripped.body.retryable, true);
+});
+
+test('the breaker reopens for business once a database call succeeds again', async () => {
+  let down = true;
+  const guard = createRequestGuard({ env });
+  const repository = {
+    async initialize() { if (down) throw new Error('connect ETIMEDOUT'); },
+    async read() { return { state, version: 1, updated_at: '2026-10-24T00:00:00.000Z' }; },
+  };
+  const handler = createHandler({ env, repository, guard, logger: { error() {} } });
+  const cookie = sessionCookie(config).split(';')[0];
+  assert.equal((await invoke(handler, '/api/workspace', 'GET', { headers: { cookie } })).status, 503);
+  // The breaker is short-lived, so an automatic browser refresh lands here after
+  // it expires: the database has woken up and the same request now succeeds.
+  guard.forgetDatabaseDown();
+  down = false;
+  const recovered = await invoke(handler, '/api/workspace', 'GET', { headers: { cookie } });
+  assert.equal(recovered.status, 200, 'a recovered database serves the workspace again');
+  assert.equal(guard.databaseDownUntil(), undefined, 'a successful call clears the outage memory');
 });
 
 test('REQUEST_GUARD_DISABLED=1 turns rate limiting off', async () => {

@@ -5,7 +5,9 @@ import { createRequestGuard, etagFor } from './request-guard.mjs';
 import { loginSchema, saveSchema } from './validation.mjs';
 
 export const MAX_BODY_BYTES = 3 * 1024 * 1024;
-const fail = (status, message) => Object.assign(new Error(message), { status });
+// `extra` carries the retry contract the browser uses to decide between an
+// automatic refresh and a message that needs a human: { retryable, retryAfter }.
+const fail = (status, message, extra) => Object.assign(new Error(message), { status }, extra);
 
 function send(response, status, body) {
   response.statusCode = status;
@@ -70,9 +72,12 @@ export function createHandler({ env = process.env, repository, logger = console,
     // Circuit breaker: while Neon is known to be down, fail fast instead of
     // queueing more connection attempts behind a dead endpoint.
     const downUntil = guard.databaseDownUntil();
-    if (downUntil) throw Object.assign(fail(503, 'The shared database is temporarily unavailable. Your unsaved changes have not been discarded. Please retry.'), { retryAfter: Math.ceil((downUntil - Date.now()) / 1000), circuitOpen: true });
+    if (downUntil) throw fail(503, 'The shared database is temporarily unavailable. Your unsaved changes have not been discarded. Please retry.', { retryAfter: Math.ceil((downUntil - Date.now()) / 1000), circuitOpen: true, retryable: true });
     database ??= createNeonRepository(config.databaseUrl);
     await database.initialize();
+    // Reaching the database closes the breaker, so the next request is a real
+    // attempt instead of another fast failure.
+    guard.forgetDatabaseDown();
     return database;
   };
 
@@ -81,7 +86,7 @@ export function createHandler({ env = process.env, repository, logger = console,
     response.setHeader('X-Content-Type-Options', 'nosniff');
     response.setHeader('Referrer-Policy', 'same-origin');
     try {
-      if (!config) throw fail(503, 'Workspace setup is incomplete. Check DATABASE_URL, WORKSPACE_PASSWORD and SESSION_SECRET in the server environment.');
+      if (!config) throw fail(503, 'Workspace setup is incomplete. Check DATABASE_URL, WORKSPACE_PASSWORD and SESSION_SECRET in the server environment.', { retryable: false });
       const path = new URL(request.url, 'http://api.internal').pathname.replace(/\/$/, '');
       const clientKey = rateLimitKey(request, config);
 
@@ -92,7 +97,7 @@ export function createHandler({ env = process.env, repository, logger = console,
         if (!known) guard.rememberUnknownRoute(path);
         const verdict = guard.rateLimit(clientKey, 'unknown');
         setRateLimitHeaders(response, verdict);
-        if (!verdict.allowed) { response.setHeader('Retry-After', String(verdict.retryAfterSeconds)); throw fail(429, 'Too many requests.'); }
+        if (!verdict.allowed) { response.setHeader('Retry-After', String(verdict.retryAfterSeconds)); throw fail(429, 'Too many requests.', { retryAfter: verdict.retryAfterSeconds, retryable: true }); }
         throw fail(404, 'API endpoint not found.');
       }
       const routeClass = route[request.method];
@@ -106,13 +111,13 @@ export function createHandler({ env = process.env, repository, logger = console,
       setRateLimitHeaders(response, verdict);
       if (!verdict.allowed) {
         response.setHeader('Retry-After', String(verdict.retryAfterSeconds));
-        throw fail(429, `Too many requests. Try again in ${verdict.retryAfterSeconds} second${verdict.retryAfterSeconds === 1 ? '' : 's'}.`);
+        throw fail(429, `Too many requests. Try again in ${verdict.retryAfterSeconds} second${verdict.retryAfterSeconds === 1 ? '' : 's'}.`, { retryAfter: verdict.retryAfterSeconds, retryable: true });
       }
 
       if (routeClass === 'config') {
         return send(response, 200, { mode: config.mode, authenticated: isAuthenticated(request) });
       }
-      if (config.mode !== 'shared') throw fail(503, 'Shared storage is not configured. Add Neon and the workspace secrets in Vercel.');
+      if (config.mode !== 'shared') throw fail(503, 'Shared storage is not configured. Add Neon and the workspace secrets in Vercel.', { retryable: false });
       if (request.method !== 'GET') checkOrigin(request, config);
 
       if (routeClass === 'session:logout') {
@@ -129,7 +134,7 @@ export function createHandler({ env = process.env, repository, logger = console,
         const blockedUntil = guard.isLoginBlocked(clientKey);
         if (blockedUntil) {
           response.setHeader('Retry-After', String(Math.max(1, Math.ceil((blockedUntil - Date.now()) / 1000))));
-          throw fail(429, 'Too many sign-in attempts. Try again in 15 minutes.');
+          throw fail(429, 'Too many sign-in attempts. Try again in 15 minutes.', { retryAfter: 900, retryable: false });
         }
 
         const correct = passwordsMatch(parsed.data.password, config.password);
@@ -143,7 +148,7 @@ export function createHandler({ env = process.env, repository, logger = console,
         if (!await db.consumeLoginAttempt(clientKey)) {
           guard.rememberLoginBlocked(clientKey);
           response.setHeader('Retry-After', '900');
-          throw fail(429, 'Too many sign-in attempts. Try again in 15 minutes.');
+          throw fail(429, 'Too many sign-in attempts. Try again in 15 minutes.', { retryAfter: 900, retryable: false });
         }
         if (!correct) { guard.rememberRejectedPassword(guess); throw fail(401, 'Incorrect workspace password.'); }
         response.setHeader('Set-Cookie', sessionCookie(config));
@@ -180,15 +185,31 @@ export function createHandler({ env = process.env, repository, logger = console,
       return send(response, 200, saved);
     } catch (error) {
       const status = Number.isInteger(error.status) ? error.status : 503;
+      let retryAfterSeconds = 0;
       if (status === 503 && !error.status) {
+        // An unhandled database failure: assume transient (a sleeping Neon
+        // instance or a dropped connection) and ask the browser to retry.
         guard.rememberDatabaseDown();
         guard.invalidateWorkspace();
         logger.error('Neon workspace request failed; check database availability and server environment.');
-        response.setHeader('Retry-After', String(Math.ceil(guard.config.ttls.databaseDownMs / 1000)));
+        retryAfterSeconds = Math.ceil(guard.config.ttls.databaseDownMs / 1000);
+        response.setHeader('Retry-After', String(retryAfterSeconds));
       } else if (error.circuitOpen) {
-        response.setHeader('Retry-After', String(Math.max(1, error.retryAfter)));
+        retryAfterSeconds = Math.max(1, error.retryAfter);
+        response.setHeader('Retry-After', String(retryAfterSeconds));
+      } else if (status === 429) {
+        retryAfterSeconds = Math.max(1, Number(error.retryAfter) || 1);
       }
-      return send(response, status, { error: error.status ? error.message : 'The shared database is temporarily unavailable. Your unsaved changes have not been discarded. Please retry.' });
+      // Tell the browser whether the same request can succeed on its own. Setup
+      // errors, bad sessions, conflicts and validation failures cannot.
+      const retryable = typeof error.retryable === 'boolean'
+        ? error.retryable
+        : status === 429 || status === 502 || status === 503 || status === 504;
+      return send(response, status, {
+        error: error.status ? error.message : 'The shared database is temporarily unavailable. Your unsaved changes have not been discarded. Please retry.',
+        retryable,
+        ...(retryable && retryAfterSeconds > 0 ? { retryAfterSeconds } : {}),
+      });
     }
 
     /**
