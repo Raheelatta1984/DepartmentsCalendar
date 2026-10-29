@@ -1,6 +1,7 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* Design tokens still live in tailwind.config.js (the v4 JS-config opt-in). */
+@config "../tailwind.config.js";
 
 @layer base {
   html {
