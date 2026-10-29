@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { createServer as createViteServer } from 'vite';
 import handler from './app.mjs';
 import { createInfrastructureFromEnv } from './infrastructure.mjs';
+import { applyHeaders, pageSecurityHeaders } from './security-headers.mjs';
 
 // Initialize infrastructure on startup
 let infrastructureInitialized = false;
@@ -28,8 +29,15 @@ async function initializeInfrastructure() {
 initializeInfrastructure();
 
 // One origin for the browser and API, including Arena's HTTPS preview proxy.
+// The policy is reported rather than enforced locally: the Vite dev server
+// injects the React Fast Refresh preamble as an inline module script, which a
+// strict script-src would block. `vite preview` and the Vercel deployment
+// (vercel.json) enforce the same policy.
+const pageHeaders = pageSecurityHeaders({ enforceCsp: false });
+
 const server = createServer((request, response) => {
   if (request.url?.startsWith('/api/')) return void handler(request, response);
+  applyHeaders(response, pageHeaders);
   vite.middlewares(request, response);
 });
 

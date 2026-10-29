@@ -19,12 +19,29 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # Actions are pinned to full commit SHAs: a moved tag is a supply-chain
+      # attack on everything below it. Dependabot keeps the pins current.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       # Tests use embedded PostgreSQL, never production Neon credentials.
       - run: npm run check
+      # Unchanged gate: `npm audit` fails on High/Critical (and anything lower)
+      # in what actually ships. Accepted exceptions belong in the security
+      # review document, not in a silenced exit code.
       - run: npm audit --omit=dev
+      # Defence in depth behind tests/security-headers.test.mjs: a credential
+      # written to web storage is readable by any injected script.
+      - name: No credentials in browser-readable storage
+        run: |
+          matches=$(grep -rniE \
+            '(localStorage|sessionStorage)\.(setItem|getItem)[[:space:]]*\([^,)]{0,40}(token|jwt|auth|secret|api[_-]?key|credential|refresh|id_token|access)' \
+            src public index.html 2>/dev/null || true)
+          if [ -n "$matches" ]; then
+            echo "$matches"
+            echo "::error::Credentials must not be stored where JavaScript can read them."
+            exit 1
+          fi
