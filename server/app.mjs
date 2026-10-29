@@ -3,6 +3,7 @@ import { authenticated, clearSessionCookie, passwordsMatch, rateLimitKey, readCo
 import { classifyDatabaseError } from './database-errors.mjs';
 import { createNeonRepository } from './repository.mjs';
 import { createRequestGuard, etagFor } from './request-guard.mjs';
+import { applyHeaders, apiSecurityHeaders } from './security-headers.mjs';
 import { loginSchema, saveSchema } from './validation.mjs';
 
 export const MAX_BODY_BYTES = 3 * 1024 * 1024;
@@ -107,9 +108,12 @@ export function createHandler({ env = process.env, repository, logger = console,
   };
 
   return async (request, response) => {
+    // Every response — including errors and 404s — carries the shared security
+    // header set. Sessions are HttpOnly cookies, so these headers (no framing,
+    // no MIME sniffing, no cross-origin reads) are what keeps an XSS bug from
+    // being able to act on that cookie in the first place.
     response.setHeader('Cache-Control', 'no-store');
-    response.setHeader('X-Content-Type-Options', 'nosniff');
-    response.setHeader('Referrer-Policy', 'same-origin');
+    applyHeaders(response, apiSecurityHeaders({ https: config?.secureCookies === true }));
     try {
       if (!config) throw fail(503, 'Workspace setup is incomplete. Check DATABASE_URL, WORKSPACE_PASSWORD and SESSION_SECRET in the server environment.', { retryable: false });
       const path = new URL(request.url, 'http://api.internal').pathname.replace(/\/$/, '');
