@@ -35,10 +35,12 @@ export default defineConfig({
     // Split the vendor libraries so the app shell caches independently of data.
     rollupOptions: {
       output: {
-        manualChunks: {
-          react: ['react', 'react-dom'],
-          dates: ['date-fns'],
-          icons: ['lucide-react'],
+        // Vite 8 (Rolldown) only accepts the function form of manualChunks.
+        manualChunks(id: string) {
+          if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) return 'react';
+          if (id.includes('node_modules/date-fns/')) return 'dates';
+          if (id.includes('node_modules/lucide-react/')) return 'icons';
+          return undefined;
         },
       },
     },
