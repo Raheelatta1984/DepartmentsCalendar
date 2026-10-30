@@ -350,3 +350,10 @@ Each tenant carries `calendarScope: { mode: 'single' | 'multiple' | 'all', depar
 - **Capacity.** `employeeScore` and `departmentScore` subtract approved PTO hours (and PTO working days from the expected attendance days), so approved leave is reported as leave rather than as under-utilisation.
 - **Visibility and cover.** Approved PTO appears on the department calendar (chips + PH), the team leave calendar and Employee 360. `awayOnDate()` lists who is away; `nextResponsible()` returns the named delegate first, then the first available manager up the line, then the department head and the operations owner — which is how a colleague knows whom to ask when a resource is on leave.
 - Seed data includes approved, pending, PH-crossing, sick and unpaid rows in both tenants, and the same strict schema entries in `server/validation.mjs` persist the collection through the versioned snapshot.
+
+
+## 14. DevOps delivery and cross-department effort
+
+The additive `deliveryStreams`, `workItems` and `devopsImports` collections connect an epic → feature → ticket hierarchy to the existing activity/timesheet model. Streams nest within a delivery-enabled department and have a lead; resources have a home stream. Activities may link to a backlog item, and actual effort continues to come only from timesheets. `src/lib/delivery.ts` owns import validation, idempotent external identity, working-day plan allocation and the seven non-double-counting report groupings. `src/lib/capitalisation.ts` recognises delivery-linked eligible work without requiring a duplicate synthetic project task.
+
+CSV/JSON imports are previewed locally and committed atomically through the existing compare-and-swap snapshot. The optional `POST /api/devops` endpoint performs a bounded, read-only Azure DevOps metadata lookup using a server-only PAT; it is not a background sync connector. The same tenant/calendar scope applies to delivery rows and reports. Role/stream-lead checks remain pilot UI controls under the shared-password access boundary. Full operating instructions and the production migration path are in [`DEVOPS_DELIVERY.md`](DEVOPS_DELIVERY.md).

@@ -4,6 +4,7 @@ import { newId, useStore } from '../store';
 import type { TimeEntry } from '../types';
 import { TYPE_LABELS, capacityHoursFor } from '../lib/analytics';
 import { workingDays } from '../lib/dates';
+import { workItemPath } from '../lib/delivery';
 import { Badge, Button, Field, Input, Modal, Select, Textarea, Toggle } from './ui';
 
 export function TimeEntryModal({
@@ -185,6 +186,8 @@ export function TimeEntryModal({
             ))}
           </Select>
         </Field>
+
+        {activity?.workItemId ? <div className="flex flex-wrap items-center gap-1 rounded-lg border border-indigo-100 bg-indigo-50/50 p-2 text-[10px] text-indigo-700"><span className="font-semibold">Effort rolls up to</span>{workItemPath(state.workItems, activity.workItemId).map((i) => <Badge key={i.id} tone="info">{i.kind} · {i.title}</Badge>)}</div> : null}
 
         {activity?.projectId ? (
           <div

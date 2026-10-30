@@ -38,13 +38,28 @@ export const workspaceSchema = record({
   }).min(1),
   departments: rows({
     id, entityId: id, name: text, code: text, headId: id.nullable(), opsOwnerId: id.nullable(),
-    costCenter: text, color: text,
+    costCenter: text, color: text, devopsEnabled: z.boolean().optional(),
   }).min(1),
+  deliveryStreams: rows({
+    id, departmentId: id, parentId: id.nullable(), name: text, code: text, leadId: id.nullable(), color: text,
+  }).optional(),
+  workItems: rows({
+    id, kind: z.enum(['epic', 'feature', 'ticket']), title: text, description: text, parentId: id.nullable(),
+    departmentId: id, streamId: id.nullable(), projectId: id.nullable(), assigneeId: id.nullable(),
+    funding: z.enum(['capex', 'opex', 'unclassified']), phase: taskPhase,
+    status: z.enum(['not_started', 'in_progress', 'blocked', 'completed', 'cancelled']),
+    priority: z.enum(['critical', 'high', 'medium', 'low']), estimateHours: number.min(0).max(100_000),
+    source: z.enum(['manual', 'azure_devops', 'csv', 'json']), externalId: text, externalUrl: z.string().max(2048).refine((v) => !v || /^https:\/\/(dev\.azure\.com\/|[a-z0-9-]+\.visualstudio\.com\/)/i.test(v), 'Only Azure DevOps HTTPS links are allowed'),
+    organization: text, devopsProject: text, createdAt: text, updatedAt: text,
+  }).optional(),
+  devopsImports: rows({ id, departmentId: id, actorId: id, at: text, filename: text,
+    created: number.int().min(0), updated: number.int().min(0), unchanged: number.int().min(0),
+  }).optional(),
   employees: rows({
     id, name: text, email: text, code: text, entityId: id, departmentId: id,
     role: z.enum(['ceo', 'head_operations', 'department_head', 'unit_head', 'manager', 'supervisor', 'employee']),
     managerId: id.nullable(), countryCode: text, weeklyHours: number.min(1).max(80), joinDate: date,
-    status: z.enum(['active', 'on_leave', 'inactive']), avatarColor: text, costRateAUD: number.min(0).max(10_000).optional(),
+    status: z.enum(['active', 'on_leave', 'inactive']), avatarColor: text, costRateAUD: number.min(0).max(10_000).optional(), streamId: id.optional(),
   }).min(1),
   activities: rows({
     id, title: text, description: text,
@@ -57,6 +72,7 @@ export const workspaceSchema = record({
     location: text.optional(), subtasks: rows({ id, title: text, done: z.boolean(), plannedHours: number.min(0) }),
     sync: record({ outlook: z.boolean(), google: z.boolean() }), createdAt: text,
     projectId: id.optional(), projectTaskId: id.optional(), capitalisable: z.boolean().optional(), projectPhase: taskPhase.optional(),
+    workItemId: id.optional(), streamId: id.optional(),
   }),
   timeEntries: rows({
     id, employeeId: id, activityId: id, date, hours: number.min(0).max(24), note: text,
@@ -143,6 +159,49 @@ export const workspaceSchema = record({
     submittedById: id.nullable(), submittedAt: text.nullable(), decidedById: id.nullable(), decidedAt: text.nullable(), note: text,
   }).optional(),
 }).superRefine((state, ctx) => {
+  // Additive delivery collections must preserve the same tenant/department
+  // boundary as activities. Validate references and acyclic hierarchy here,
+  // not just in the import preview (the workspace API accepts whole snapshots).
+  const entityTenant = new Map(state.entities.map((e) => [e.id, e.tenantId]));
+  const departments = new Map(state.departments.map((d) => [d.id, d]));
+  const employees = new Map(state.employees.map((e) => [e.id, e]));
+  const projects = new Map((state.projects ?? []).map((p) => [p.id, p]));
+  const streams = new Map((state.deliveryStreams ?? []).map((s) => [s.id, s]));
+  const items = new Map((state.workItems ?? []).map((i) => [i.id, i]));
+  const sameDepartment = (a, b) => a && b && entityTenant.get(departments.get(a)?.entityId) === entityTenant.get(departments.get(b)?.entityId);
+  for (const [index, stream] of (state.deliveryStreams ?? []).entries()) {
+    const path = ['deliveryStreams', index];
+    const dept = departments.get(stream.departmentId);
+    if (!dept) ctx.addIssue({ code: 'custom', path, message: 'Stream department must exist' });
+    if (stream.parentId && (!streams.has(stream.parentId) || streams.get(stream.parentId).departmentId !== stream.departmentId)) ctx.addIssue({ code: 'custom', path, message: 'Invalid parent stream' });
+    if (stream.leadId && employees.get(stream.leadId)?.departmentId !== stream.departmentId) ctx.addIssue({ code: 'custom', path, message: 'Invalid stream lead' });
+    const seen = new Set([stream.id]); let parent = stream.parentId;
+    while (parent) {
+      if (seen.has(parent)) { ctx.addIssue({ code: 'custom', path, message: 'Stream hierarchy contains a cycle' }); break; }
+      seen.add(parent); parent = streams.get(parent)?.parentId;
+    }
+  }
+  for (const [index, item] of (state.workItems ?? []).entries()) {
+    const path = ['workItems', index]; const parent = items.get(item.parentId);
+    if (!departments.has(item.departmentId)) ctx.addIssue({ code: 'custom', path, message: 'Work-item department must exist' });
+    if (item.streamId && streams.get(item.streamId)?.departmentId !== item.departmentId) ctx.addIssue({ code: 'custom', path, message: 'Invalid work-item stream' });
+    if (item.projectId && (projects.get(item.projectId)?.departmentId !== item.departmentId || !sameDepartment(item.departmentId, projects.get(item.projectId)?.departmentId))) ctx.addIssue({ code: 'custom', path, message: 'Invalid work-item project' });
+    if (item.assigneeId && !sameDepartment(item.departmentId, employees.get(item.assigneeId)?.departmentId)) ctx.addIssue({ code: 'custom', path, message: 'Invalid work-item assignee' });
+    if (item.kind === 'epic' ? item.parentId : !parent || parent.kind !== (item.kind === 'feature' ? 'epic' : 'feature') || parent.departmentId !== item.departmentId || parent.projectId !== item.projectId || parent.funding !== item.funding) ctx.addIssue({ code: 'custom', path, message: 'Invalid delivery hierarchy' });
+    if (item.funding === 'capex' && projects.get(item.projectId)?.portfolio !== 'capital') ctx.addIssue({ code: 'custom', path, message: 'Capex requires a capital project' });
+    const seen = new Set([item.id]); let ancestor = item.parentId;
+    while (ancestor) {
+      if (seen.has(ancestor)) { ctx.addIssue({ code: 'custom', path, message: 'Work-item hierarchy contains a cycle' }); break; }
+      seen.add(ancestor); ancestor = items.get(ancestor)?.parentId;
+    }
+  }
+  for (const [index, employee] of state.employees.entries()) {
+    if (employee.streamId && streams.get(employee.streamId)?.departmentId !== employee.departmentId) ctx.addIssue({ code: 'custom', path: ['employees', index], message: 'Invalid home stream' });
+  }
+  for (const [index, activity] of state.activities.entries()) {
+    if (activity.workItemId && (!items.has(activity.workItemId) || !sameDepartment(activity.departmentId, items.get(activity.workItemId)?.departmentId))) ctx.addIssue({ code: 'custom', path: ['activities', index], message: 'Invalid delivery activity link' });
+    if (activity.streamId && streams.get(activity.streamId)?.departmentId !== activity.departmentId) ctx.addIssue({ code: 'custom', path: ['activities', index], message: 'Invalid activity stream' });
+  }
   for (const [key, value] of Object.entries(state)) {
     if (!Array.isArray(value)) continue;
     const ids = value.map((row) => row.id ?? row.code);

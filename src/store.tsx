@@ -6,6 +6,9 @@ import type {
   CalendarProvider,
   CalendarScopeSettings,
   Department,
+  DeliveryStream,
+  WorkItem,
+  WorkItemImportPreview,
   CapitalisationApproval,
   Employee,
   Entity,
@@ -42,6 +45,7 @@ import {
   tenantDepartments,
 } from './lib/tenants';
 import { leaveBreakdown } from './lib/leave';
+import { externalKey, linkActivity, validateWorkItem, validStreamParent, workItemDescendants } from './lib/delivery';
 import { DEFAULT_TENANT_ID, HARBOURLINE_TENANT_ID, MERIDIAN_TENANT_ID, TENANTS } from './data/tenant-seed';
 import { fromSharedState, rememberPersona, rememberTenant } from './lib/workspace-api';
 import { useWorkspacePersistence, type SharedConnection, type WorkspacePersistence } from './lib/useWorkspacePersistence';
@@ -85,6 +89,13 @@ export function normaliseState(state: StoreState): StoreState {
     ...state,
     tenants,
     entities,
+    deliveryStreams: Array.isArray(state.deliveryStreams) ? state.deliveryStreams : [],
+    workItems: Array.isArray(state.workItems) ? state.workItems : [],
+    devopsImports: Array.isArray(state.devopsImports) ? state.devopsImports : [],
+    departments: (state.departments ?? []).map((department) => ({
+      ...department,
+      devopsEnabled: department.devopsEnabled ?? ['RIT', 'ITS'].includes(department.code),
+    })),
     projects: Array.isArray(state.projects) ? state.projects : [],
     capitalisation: state.capitalisation ?? RETAIL_CAPITALISATION_POLICY,
     capitalisationApprovals: Array.isArray(state.capitalisationApprovals) ? state.capitalisationApprovals : [],
@@ -173,6 +184,10 @@ interface StoreContextValue {
   pushToCalendars: (activityId: string, providers?: CalendarProvider[]) => void;
   setActivitySync: (activityId: string, provider: CalendarProvider, enabled: boolean) => void;
   upsertProject: (project: Project) => void;
+  upsertStream: (stream: DeliveryStream) => string | null;
+  deleteStream: (id: string) => string | null;
+  upsertWorkItem: (item: WorkItem) => string | null;
+  importWorkItems: (preview: WorkItemImportPreview, filename: string) => string | null;
   submitCapitalisation: (entityId: string, departmentId: string, month: string) => CapitalisationApproval;
   decideCapitalisation: (id: string, status: 'approved' | 'rejected', note: string) => void;
   loadRetailSample: () => void;
@@ -241,6 +256,8 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
   const scope = useMemo(() => getScope(scopedState, activeUserId), [scopedState, activeUserId]);
   const latestStateRef = useRef(state);
   latestStateRef.current = state;
+  const latestFullStateRef = useRef(fullState);
+  latestFullStateRef.current = fullState;
 
   /**
    * Every edit is expressed against the active tenant and merged back into
@@ -385,9 +402,10 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
           (prev) => ({ ...prev, settings: { ...prev.settings, ...patch } }),
           { action: 'Settings updated', detail: Object.entries(patch).map(([k, v]) => `${k}=${v}`).join(', ') },
         ),
-      upsertActivity: (activity) =>
+      upsertActivity: (inputActivity) =>
         save(
           (prev) => {
+            const activity = inputActivity.workItemId ? linkActivity(prev, inputActivity, inputActivity.workItemId) : inputActivity;
             const exists = prev.activities.some((a) => a.id === activity.id);
             const activities = exists
               ? prev.activities.map((a) => (a.id === activity.id ? activity : a))
@@ -473,6 +491,9 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
           (prev) => ({
             ...prev,
             employees: prev.employees.filter((e) => e.id !== id),
+            deliveryStreams: prev.deliveryStreams.map((s) => s.leadId === id ? { ...s, leadId: null } : s),
+            workItems: prev.workItems.map((i) => i.assigneeId === id ? { ...i, assigneeId: null } : i),
+            departments: prev.departments.map((d) => ({ ...d, headId: d.headId === id ? null : d.headId, opsOwnerId: d.opsOwnerId === id ? null : d.opsOwnerId })),
             settings:
               prev.settings.activeUserId === id ? { ...prev.settings, activeUserId: prev.employees[0]?.id ?? id } : prev.settings,
           }),
@@ -493,6 +514,9 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
           (prev) => ({
             ...prev,
             departments: prev.departments.filter((d) => d.id !== id),
+            deliveryStreams: prev.deliveryStreams.filter((s) => s.departmentId !== id),
+            workItems: prev.workItems.filter((i) => i.departmentId !== id),
+            devopsImports: prev.devopsImports.filter((i) => i.departmentId !== id),
             activities: prev.activities.filter((a) => a.departmentId !== id),
           }),
           { action: 'Department removed', detail: id },
@@ -755,6 +779,70 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
           (prev) => ({ ...prev, leaves: (prev.leaves ?? []).filter((leave) => leave.id !== id) }),
           { action: 'Leave record deleted', detail: id },
         ),
+      upsertStream: (stream) => {
+        const current = latestStateRef.current;
+        if (!scope.canManageMaster) return 'Only department leadership can configure streams in this pilot.';
+        if (!stream.name.trim() || !stream.code.trim()) return 'Stream name and code are required.';
+        if (!current.departments.find((d) => d.id === stream.departmentId)?.devopsEnabled) return 'Enable DevOps delivery on the department first.';
+        if (!validStreamParent(current.deliveryStreams, stream.id, stream.parentId, stream.departmentId)) return 'A parent stream must be in the same department and cannot create a cycle.';
+        if (current.deliveryStreams.some((s) => s.id !== stream.id && s.departmentId === stream.departmentId && s.code.toLowerCase() === stream.code.toLowerCase())) return 'Stream code must be unique in its department.';
+        if (current.deliveryStreams.some((s) => s.parentId === stream.id && s.departmentId !== stream.departmentId)) return 'Move child streams to this department first.';
+        const lead = current.employees.find((e) => e.id === stream.leadId);
+        if (stream.leadId && lead?.departmentId !== stream.departmentId) return 'The stream lead must belong to the owning department.';
+        save((prev) => ({ ...prev, deliveryStreams: prev.deliveryStreams.some((s) => s.id === stream.id) ? prev.deliveryStreams.map((s) => s.id === stream.id ? stream : s) : [...prev.deliveryStreams, stream] }), { action: 'Delivery stream saved', detail: `${stream.code} · ${stream.name}` });
+        return null;
+      },
+      deleteStream: (id) => {
+        const current = latestStateRef.current;
+        if (!scope.canManageMaster) return 'Only department leadership can delete streams.';
+        if (current.deliveryStreams.some((s) => s.parentId === id) || current.workItems.some((i) => i.streamId === id) || current.employees.some((e) => e.streamId === id) || current.activities.some((a) => a.streamId === id)) return 'This stream has children, people or linked work. Reassign them before deleting it.';
+        save((prev) => ({ ...prev, deliveryStreams: prev.deliveryStreams.filter((s) => s.id !== id) }), { action: 'Delivery stream deleted', detail: id });
+        return null;
+      },
+      upsertWorkItem: (item) => {
+        const current = latestStateRef.current;
+        const leading = current.deliveryStreams.some((s) => s.leadId === current.settings.activeUserId && s.departmentId === item.departmentId);
+        if (!scope.canManageMaster && !leading) return 'Only department leadership or a stream lead can maintain the backlog.';
+        if (!current.departments.find((d) => d.id === item.departmentId)?.devopsEnabled) return 'This department is not enabled for DevOps delivery.';
+        if (item.streamId && !current.deliveryStreams.some((s) => s.id === item.streamId && s.departmentId === item.departmentId)) return 'Select a stream in the owning department.';
+        if (item.projectId && !current.projects.some((p) => p.id === item.projectId && p.departmentId === item.departmentId)) return 'Select a project owned by the same department.';
+        if (item.assigneeId && !current.employees.some((e) => e.id === item.assigneeId)) return 'Select a resource in this tenant.';
+        if (current.workItems.some((i) => i.parentId === item.id && i.kind !== item.kind)) {
+          if ((item.kind === 'epic' && current.workItems.some((i) => i.parentId === item.id && i.kind !== 'feature')) || (item.kind === 'feature' && current.workItems.some((i) => i.parentId === item.id && i.kind !== 'ticket')) || item.kind === 'ticket') return 'This item has dependent children; its type cannot be changed.';
+        }
+        const next = { ...item, title: item.title.trim(), updatedAt: new Date().toISOString() };
+        if (next.externalUrl && !/^https:\/\/(dev\.azure\.com\/|[a-z0-9-]+\.visualstudio\.com\/)/i.test(next.externalUrl)) return 'Use an Azure DevOps HTTPS work-item URL, or leave the URL blank.';
+        if (next.externalId && current.workItems.some((i) => i.id !== next.id && externalKey(i) === externalKey(next))) return 'That Azure DevOps ID already exists. Edit or re-import the existing item.';
+        const descendants = workItemDescendants(current.workItems, next.id);
+        const nextItems = current.workItems.map((i) => descendants.has(i.id) ? { ...i, projectId: next.projectId, funding: next.funding, updatedAt: next.updatedAt } : i);
+        const error = validateWorkItem(nextItems, next);
+        if (error) return error;
+        const changedIds = new Set(nextItems.filter((i) => descendants.has(i.id)).map((i) => i.id));
+        save((prev) => ({ ...prev,
+          workItems: prev.workItems.some((i) => i.id === item.id) ? prev.workItems.map((i) => nextItems.find((n) => n.id === i.id) ?? i) : [next, ...prev.workItems],
+          activities: prev.activities.map((a) => a.workItemId && changedIds.has(a.workItemId) ? linkActivity({ ...prev, workItems: nextItems }, a, a.workItemId) : a),
+        }), { action: 'Delivery work item saved', detail: `${item.kind} · ${item.externalId || item.id} · ${item.title}` });
+        return null;
+      },
+      importWorkItems: (preview, filename) => {
+        if (!scope.canManageMaster) return 'Only department leadership can import backlog data in this pilot.';
+        if (preview.errors.length || !preview.items.length) return 'Resolve the preview errors before importing.';
+        if (new TextEncoder().encode(JSON.stringify(latestFullStateRef.current)).length + new TextEncoder().encode(JSON.stringify(preview.items)).length > 3 * 1024 * 1024) return 'This batch would exceed the 3 MB shared-workspace limit. Import a smaller batch or move to record-level storage.';
+        const current = latestStateRef.current;
+        const merged = new Map(current.workItems.map((i) => [i.id, i]));
+        preview.items.forEach((i) => merged.set(i.id, i));
+        for (const item of preview.items) {
+          if (!current.departments.find((d) => d.id === item.departmentId)?.devopsEnabled) return 'The import contains a department that is not enabled.';
+          const error = validateWorkItem(Array.from(merged.values()), item);
+          if (error) return `${item.externalId}: ${error}. Refresh the preview and try again.`;
+        }
+        const batch = { id: uid('imp'), departmentId: preview.items[0].departmentId, actorId: current.settings.activeUserId, at: new Date().toISOString(), filename, created: preview.created, updated: preview.updated, unchanged: preview.unchanged };
+        save((prev) => ({ ...prev,
+          workItems: [...preview.items.filter((i) => !prev.workItems.some((old) => old.id === i.id)), ...prev.workItems.map((old) => preview.items.find((i) => i.id === old.id) ?? old)],
+          devopsImports: [batch, ...prev.devopsImports].slice(0, 100),
+        }), { action: 'DevOps backlog imported', detail: `${filename} · ${preview.created} created · ${preview.updated} updated · ${preview.unchanged} unchanged` });
+        return null;
+      },
       upsertProject: (project) =>
         save(
           (prev) => ({

@@ -208,6 +208,99 @@ export interface CapitalisationApproval {
   note: string;
 }
 
+/* ------------------------------------------------------------------ */
+/* Delivery backlog: epic → feature → ticket, independent of estimates */
+/* ------------------------------------------------------------------ */
+export type WorkItemKind = 'epic' | 'feature' | 'ticket';
+export type FundingClass = 'capex' | 'opex' | 'unclassified';
+export type WorkItemSource = 'manual' | 'azure_devops' | 'csv' | 'json';
+
+export interface DeliveryStream {
+  id: string;
+  departmentId: string;
+  parentId: string | null;
+  name: string;
+  code: string;
+  leadId: string | null;
+  color: string;
+}
+
+export interface WorkItem {
+  id: string;
+  kind: WorkItemKind;
+  title: string;
+  description: string;
+  /** Epics have no parent; features belong to epics; tickets to features. */
+  parentId: string | null;
+  departmentId: string;
+  streamId: string | null;
+  projectId: string | null;
+  assigneeId: string | null;
+  funding: FundingClass;
+  phase: TaskPhase;
+  status: TaskStatus;
+  priority: Priority;
+  /** Own backlog estimate. Calendar plans and actuals are derived separately. */
+  estimateHours: number;
+  source: WorkItemSource;
+  externalId: string;
+  externalUrl: string;
+  organization: string;
+  devopsProject: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DevopsImportBatch {
+  id: string;
+  departmentId: string;
+  actorId: string;
+  at: string;
+  filename: string;
+  created: number;
+  updated: number;
+  unchanged: number;
+}
+
+/** Canonical import row; aliases for Azure DevOps flat-query exports are mapped by the parser. */
+export interface WorkItemImportRow {
+  source?: WorkItemSource;
+  externalId: string;
+  kind: WorkItemKind;
+  title: string;
+  parentExternalId: string;
+  description: string;
+  departmentCode: string;
+  projectCode: string;
+  streamCode: string;
+  assigneeEmail: string;
+  funding: FundingClass;
+  phase: TaskPhase;
+  status: TaskStatus;
+  estimateHours: number | null;
+  externalUrl: string;
+  organization: string;
+  devopsProject: string;
+}
+
+export interface WorkItemImportDefaults {
+  funding?: FundingClass;
+  departmentId: string;
+  projectId: string;
+  streamId: string;
+  organization: string;
+  devopsProject: string;
+}
+
+export interface WorkItemImportPreview {
+  items: WorkItem[];
+  created: number;
+  updated: number;
+  unchanged: number;
+  errors: string[];
+  warnings: string[];
+}
+
 export interface Entity {
   id: string;
   /** Tenant that owns this entity — the hard isolation boundary. */
@@ -240,6 +333,8 @@ export interface Department {
   opsOwnerId: string | null;
   costCenter: string;
   color: string;
+  /** Opt-in delivery workspace; defaults to the seeded IT departments only. */
+  devopsEnabled?: boolean;
 }
 
 export interface Employee {
@@ -258,6 +353,8 @@ export interface Employee {
   avatarColor: string;
   /** Fully-loaded hourly cost used by the capitalisation report. */
   costRateAUD?: number;
+  /** Home stream inside the employee's department. */
+  streamId?: string;
 }
 
 export interface Subtask {
@@ -295,6 +392,10 @@ export interface Activity {
   /** AASB 138 eligible development effort; operational/BAU tasks are never capitalised. */
   capitalisable?: boolean;
   projectPhase?: TaskPhase;
+  /** Delivery backlog item against which this calendar effort is planned. */
+  workItemId?: string;
+  /** Executing stream; the resource keeps their own home department/stream. */
+  streamId?: string;
 }
 
 export interface TimeEntry {
@@ -433,6 +534,9 @@ export interface StoreState {
   tenants: Tenant[];
   entities: Entity[];
   departments: Department[];
+  deliveryStreams: DeliveryStream[];
+  workItems: WorkItem[];
+  devopsImports: DevopsImportBatch[];
   employees: Employee[];
   activities: Activity[];
   timeEntries: TimeEntry[];
@@ -512,6 +616,8 @@ export type ViewKey =
   | 'standups'
   | 'leave'
   | 'projects'
+  | 'delivery'
+  | 'effort-reports'
   | 'capitalisation'
   | 'performance'
   | 'admin'

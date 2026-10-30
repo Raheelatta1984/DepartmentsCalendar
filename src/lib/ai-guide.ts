@@ -100,6 +100,18 @@ const grainSubTabs = (label: string): GuideRule[] => [
 ];
 
 export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
+  delivery: {
+    title: 'DevOps delivery', subtitle: 'One backlog, connected to real calendar effort',
+    blurb: 'Epics contain features, features contain tickets. Streams organise the department; project and funding links connect delivery to the existing capex workflow.',
+    tips: ['Enable the department in Master setup, then create nested streams and assign a lead.', 'Import a CSV/JSON index or fetch an Azure DevOps work-item link. Review before committing.', 'Open a ticket and schedule an activity. Log actual time against that activity in Timesheets.'],
+    watch: 'Backlog estimates, calendar plans and logged hours are different measures. A capex tag is not accounting approval.', sections: [], subTabs: [],
+  },
+  'effort-reports': {
+    title: 'Delivery effort reports', subtitle: 'Plan, actuals and funding — without double counting',
+    blurb: 'Report the same time entries by epic, feature, ticket, resource, department, stream or funding class. Ancestor rollups include descendant effort exactly once.',
+    tips: ['Choose a date range and narrow by resource, department, stream or backlog item.', 'Switch the grouping to see cross-department contributions to an epic.', 'Export the grouped summary or the underlying activity-level ledger for reconciliation.'],
+    watch: 'Planned hours are prorated across working days. Capex-tagged hours and policy-eligible capitalised hours are shown separately.', sections: [], subTabs: [],
+  },
   dashboard: {
     title: 'Command centre',
     subtitle: 'The whole book on one screen, computed live',

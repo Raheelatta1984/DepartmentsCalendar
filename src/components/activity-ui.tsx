@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import type { Activity, ActivityType, Priority, TaskStatus } from '../types';
 import { Badge } from './ui';
+import { useStore } from '../store';
 import { TYPE_LABELS } from '../lib/analytics';
 import { shortDate } from '../lib/dates';
 
@@ -138,6 +139,8 @@ export function ActivityLine({
   showDate?: boolean;
   compact?: boolean;
 }) {
+  const { state } = useStore();
+  const workItem = state.workItems.find((i) => i.id === activity.workItemId);
   const overdue = activity.status !== 'completed' && activity.status !== 'cancelled' && activity.endDate < new Date().toISOString().slice(0, 10);
   return (
     <button
@@ -173,6 +176,7 @@ export function ActivityLine({
             </span>
           ) : null}
           <span>{activity.plannedHours}h planned</span>
+          {workItem ? <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-medium text-indigo-700">{workItem.kind}{workItem.externalId ? ` #${workItem.externalId}` : ''} · {workItem.title}</span> : null}
           {employeeName ? <span>· {employeeName}</span> : null}
           {departmentCode ? <span>· {departmentCode}</span> : null}
         </span>

@@ -32,6 +32,7 @@ import {
 import { fromISO, horizonYears, toISO } from '../lib/dates';
 import { Avatar, Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, SearchInput, SectionHeader, Select, Tabs, Toggle } from '../components/ui';
 import { useToast } from '../components/toast';
+import { streamPath } from '../lib/delivery';
 
 type Tab = 'tenants' | 'entities' | 'departments' | 'employees' | 'holidays' | 'settings' | 'audit';
 
@@ -1219,6 +1220,7 @@ score            = 40% utilizationScore + 35% onTimeRate + 25% completionRate`}<
                 ))}
               </Select>
             </Field>
+            <div className="sm:col-span-2 rounded-lg border border-indigo-100 bg-indigo-50/50 p-3"><Toggle checked={deptDraft.devopsEnabled ?? false} onChange={(v) => setDeptDraft({ ...deptDraft, devopsEnabled: v })} label="Enable DevOps delivery workspace" description="Adds epics, features, tickets, nested streams and effort reporting for this department. Off by default for non-IT departments." /></div>
             <Field label="Cost centre">
               <Input value={deptDraft.costCenter} onChange={(e) => setDeptDraft({ ...deptDraft, costCenter: e.target.value })} />
             </Field>
@@ -1287,12 +1289,18 @@ score            = 40% utilizationScore + 35% onTimeRate + 25% completionRate`}<
                 value={empDraft.departmentId}
                 onChange={(e) => {
                   const dept = deptMap.get(e.target.value);
-                  setEmpDraft({ ...empDraft, departmentId: e.target.value, entityId: dept?.entityId ?? empDraft.entityId });
+                  setEmpDraft({ ...empDraft, departmentId: e.target.value, entityId: dept?.entityId ?? empDraft.entityId, streamId: undefined });
                 }}
               >
                 {state.departments.map((d) => (
                   <option key={d.id} value={d.id}>{d.name}</option>
                 ))}
+              </Select>
+            </Field>
+            <Field label="Home delivery stream" hint="optional · used for resource effort attribution">
+              <Select value={empDraft.streamId ?? ''} onChange={(e) => setEmpDraft({ ...empDraft, streamId: e.target.value || undefined })}>
+                <option value="">Unassigned</option>
+                {state.deliveryStreams.filter((s) => s.departmentId === empDraft.departmentId).map((s) => <option key={s.id} value={s.id}>{streamPath(state.deliveryStreams, s.id).map((x) => x.name).join(' / ')}</option>)}
               </Select>
             </Field>
             <Field label="Legal entity">
