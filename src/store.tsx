@@ -45,7 +45,8 @@ import {
   tenantDepartments,
 } from './lib/tenants';
 import { leaveBreakdown } from './lib/leave';
-import { externalKey, linkActivity, validateWorkItem, validStreamParent, workItemDescendants } from './lib/delivery';
+import { externalKey, linkActivity, linkWorkItemsToParent, normaliseAcceptanceCriteria, validateWorkItem, validStreamParent, workItemDescendants } from './lib/delivery';
+import { devopsSampleWorkItems } from './data/delivery-seed';
 import { DEFAULT_TENANT_ID, HARBOURLINE_TENANT_ID, MERIDIAN_TENANT_ID, TENANTS } from './data/tenant-seed';
 import { fromSharedState, rememberPersona, rememberTenant } from './lib/workspace-api';
 import { useWorkspacePersistence, type SharedConnection, type WorkspacePersistence } from './lib/useWorkspacePersistence';
@@ -90,7 +91,12 @@ export function normaliseState(state: StoreState): StoreState {
     tenants,
     entities,
     deliveryStreams: Array.isArray(state.deliveryStreams) ? state.deliveryStreams : [],
-    workItems: Array.isArray(state.workItems) ? state.workItems : [],
+    // Older caches and shared snapshots predate acceptance criteria; heal them
+    // to an empty string so every work item has one predictable shape.
+    workItems: (Array.isArray(state.workItems) ? state.workItems : []).map((item) => ({
+      ...item,
+      acceptanceCriteria: item.acceptanceCriteria ?? '',
+    })),
     devopsImports: Array.isArray(state.devopsImports) ? state.devopsImports : [],
     departments: (state.departments ?? []).map((department) => ({
       ...department,
@@ -187,6 +193,8 @@ interface StoreContextValue {
   upsertStream: (stream: DeliveryStream) => string | null;
   deleteStream: (id: string) => string | null;
   upsertWorkItem: (item: WorkItem) => string | null;
+  linkWorkItems: (parentId: string, childIds: string[]) => string | null;
+  loadDevopsSample: (departmentId?: string) => string | null;
   importWorkItems: (preview: WorkItemImportPreview, filename: string) => string | null;
   submitCapitalisation: (entityId: string, departmentId: string, month: string) => CapitalisationApproval;
   decideCapitalisation: (id: string, status: 'approved' | 'rejected', note: string) => void;
@@ -810,7 +818,7 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
         if (current.workItems.some((i) => i.parentId === item.id && i.kind !== item.kind)) {
           if ((item.kind === 'epic' && current.workItems.some((i) => i.parentId === item.id && i.kind !== 'feature')) || (item.kind === 'feature' && current.workItems.some((i) => i.parentId === item.id && i.kind !== 'ticket')) || item.kind === 'ticket') return 'This item has dependent children; its type cannot be changed.';
         }
-        const next = { ...item, title: item.title.trim(), updatedAt: new Date().toISOString() };
+        const next = { ...item, title: item.title.trim(), acceptanceCriteria: normaliseAcceptanceCriteria(item.acceptanceCriteria), updatedAt: new Date().toISOString() };
         if (next.externalUrl && !/^https:\/\/(dev\.azure\.com\/|[a-z0-9-]+\.visualstudio\.com\/)/i.test(next.externalUrl)) return 'Use an Azure DevOps HTTPS work-item URL, or leave the URL blank.';
         if (next.externalId && current.workItems.some((i) => i.id !== next.id && externalKey(i) === externalKey(next))) return 'That Azure DevOps ID already exists. Edit or re-import the existing item.';
         const descendants = workItemDescendants(current.workItems, next.id);
@@ -822,6 +830,46 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
           workItems: prev.workItems.some((i) => i.id === item.id) ? prev.workItems.map((i) => nextItems.find((n) => n.id === i.id) ?? i) : [next, ...prev.workItems],
           activities: prev.activities.map((a) => a.workItemId && changedIds.has(a.workItemId) ? linkActivity({ ...prev, workItems: nextItems }, a, a.workItemId) : a),
         }), { action: 'Delivery work item saved', detail: `${item.kind} · ${item.externalId || item.id} · ${item.title}` });
+        return null;
+      },
+      linkWorkItems: (parentId, childIds) => {
+        const current = latestStateRef.current;
+        const parent = current.workItems.find((i) => i.id === parentId);
+        if (!parent) return 'Select the epic or feature to link work items to.';
+        if (!current.departments.find((d) => d.id === parent.departmentId)?.devopsEnabled) return 'This department is not enabled for DevOps delivery.';
+        const leading = current.deliveryStreams.some((s) => s.leadId === current.settings.activeUserId && s.departmentId === parent.departmentId);
+        if (!scope.canManageMaster && !leading) return 'Only department leadership or a stream lead can link the backlog.';
+        const result = linkWorkItemsToParent(current.workItems, parentId, childIds);
+        if (result.error) return result.error;
+        const linked = result.items.filter((i) => childIds.includes(i.id) && i.parentId === parentId);
+        if (!linked.length) return 'Select at least one work item to link.';
+        save((prev) => ({ ...prev, workItems: result.items }), {
+          action: 'Backlog work items linked',
+          detail: `${linked.length} item${linked.length === 1 ? '' : 's'} linked to ${parent.kind} · ${parent.title}`,
+        });
+        return null;
+      },
+      loadDevopsSample: (departmentId) => {
+        const current = latestStateRef.current;
+        const department = departmentId
+          ? current.departments.find((d) => d.id === departmentId)
+          : current.departments.find((d) => d.code === 'RIT') ?? current.departments.find((d) => d.devopsEnabled);
+        if (!department?.devopsEnabled) return 'Enable DevOps delivery on a department first.';
+        const leading = current.deliveryStreams.some((s) => s.leadId === current.settings.activeUserId && s.departmentId === department.id);
+        if (!scope.canManageMaster && !leading) return 'Only department leadership or a stream lead can load the sample backlog.';
+        const generated = devopsSampleWorkItems(current, department.id);
+        if (!generated.length) return 'The sample backlog could not be created for this department.';
+        const missing = generated.filter((item) => !current.workItems.some((old) => old.id === item.id));
+        if (!missing.length) return 'The sample DevOps epic is already loaded.';
+        const merged = [...missing, ...current.workItems];
+        for (const item of missing) {
+          const error = validateWorkItem(merged, item);
+          if (error) return `${item.title}: ${error}`;
+        }
+        save((prev) => ({ ...prev, workItems: [...missing, ...prev.workItems] }), {
+          action: 'DevOps sample backlog loaded',
+          detail: `${missing.length} illustrative items · ${department.name} · no calendar bookings or actual hours were created`,
+        });
         return null;
       },
       importWorkItems: (preview, filename) => {

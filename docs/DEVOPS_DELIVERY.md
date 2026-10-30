@@ -26,7 +26,10 @@ The default demonstration remains IT-only. To see cross-department contributions
 ### DevOps delivery tab
 
 - Epic → feature → ticket hierarchy with parent/child validation.
-- Manual creation and editing; title, description, owner, stream, project/WBS, funding, phase, status and backlog estimate.
+- Manual creation and editing; title, description, acceptance criteria, owner, stream, project/WBS, funding, phase, status and backlog estimate.
+- **Acceptance criteria** are stored per work item (one criterion per line). They appear as a checklist in the item’s detail panel, travel with CSV/JSON import and CSV export, and are fetched read-only from Azure DevOps (`Microsoft.VSTS.Common.AcceptanceCriteria`) when a link is looked up.
+- **Link work items** re-parents existing features under an epic, or tickets under a feature, in one step. The parent supplies project and funding context so the hierarchy rules cannot be broken; calendar plans and timesheet actuals are untouched.
+- **Sample epic** loads an illustrative DevOps backlog (see section 3) into an enabled department. It is always available from the delivery header until it has been loaded, and is part of the seeded demo workspace.
 - Nested department streams with a lead. Example IT streams include Architecture → Solution Architecture, D365, Data & Analytics, Integration, Cloud → DevOps, and Cyber Security.
 - Resource home-stream assignment in the employee master.
 - CSV/JSON upload with a downloadable template, local parse, full preview, row-level errors and explicit confirmation.
@@ -57,7 +60,41 @@ Group the same filtered ledger by:
 
 Filters include date range, resource department, resource, executing stream, epic, feature, ticket, funding and approved-actuals-only. Summary and detailed ledger CSV exports are separate. Clicking a group exposes its contributing rows.
 
-## 3. Hour and funding semantics
+## 3. Sample DevOps backlog
+
+The seeded demo workspace, and the **Sample epic** button for any other enabled department, include one complete DevOps example:
+
+```text
+DevOps platform & release automation (epic)
+├── CI/CD pipeline standardisation (feature)
+│   ├── Create reusable build and test pipeline templates (work item)
+│   └── Add automated quality gates to the shared pipelines (work item)
+├── Infrastructure as code & environment provisioning (feature)
+│   ├── Publish the Terraform module library for landing zones (work item)
+│   └── Create ephemeral preview environments per pull request (work item)
+├── Release automation & change traceability (feature)
+│   ├── Automate gated releases to test and production (work item)
+│   └── Link deployment records to Azure DevOps work items (work item)
+├── Platform observability & service health (feature)
+│   ├── Build golden-signal dashboards for platform services (work item)
+│   └── Add SLO alerts and runbook links for on-call (work item)
+└── Pipeline identity & secrets hardening (feature)
+    ├── Move pipeline cloud access to workload identity federation (work item)
+    └── Automate rotation for platform service account secrets (work item)
+```
+
+Every item has a title, a description and measurable acceptance criteria; the sample epic and features also carry their own criteria. Items are linked to the DevOps, Cloud and Security streams and to the department’s DevOps resources, and the whole hierarchy shares one opex project (`IT change & release governance` in the seeded workspace) and one funding class.
+
+The sample is illustrative **backlog metadata only**:
+
+- Estimates are backlog estimates, not calendar bookings or actual hours.
+- No activity is created, no time is logged and no capitalisation treatment is implied.
+- IDs are stable, so loading the sample twice never duplicates it (the button disappears once loaded).
+- Edit, re-link or delete the items like any other backlog item.
+
+Use it to demonstrate the hierarchy, acceptance criteria and linking before importing a real Azure DevOps export.
+
+## 4. Hour and funding semantics
 
 | Measure | Source | Meaning |
 | --- | --- | --- |
@@ -73,19 +110,21 @@ Each actual entry appears once in the detailed ledger. Ancestor rollups delibera
 
 Plan proration is a planning approximation, not a record of daily attendance. A multi-day activity’s plan is allocated over its working days; actual hours are never prorated. Changing a resource’s department changes current attribution because the pilot does not store historical department snapshots.
 
-## 4. One-time upload mechanism
+## 5. One-time upload mechanism
 
 ### Canonical CSV columns
 
 ```csv
-externalId,kind,title,parentExternalId,description,departmentCode,projectCode,streamCode,assigneeEmail,funding,phase,status,estimateHours,externalUrl,organization,devopsProject
+externalId,kind,title,parentExternalId,description,acceptanceCriteria,departmentCode,projectCode,streamCode,assigneeEmail,funding,phase,status,estimateHours,externalUrl,organization,devopsProject
 1001,epic,Customer platform modernisation,,,,RIT,,,,unclassified,discovery,not_started,0,,contoso,Retail
-1002,feature,Checkout improvements,1001,,RIT,,,,unclassified,build,in_progress,80,,contoso,Retail
-1003,ticket,Implement payment adapter,1002,,RIT,,,,unclassified,build,not_started,24,,contoso,Retail
+1002,feature,Checkout improvements,1001,,,,RIT,,,,unclassified,build,in_progress,80,,contoso,Retail
+1003,ticket,Implement payment adapter,1002,,"Refunds complete in under 30 seconds
+Audit trail shows the operator",RIT,,,,unclassified,build,not_started,24,,contoso,Retail
 ```
 
 - Required: `externalId`, `kind`, `title`.
 - `kind`: `epic`, `feature`, `ticket`.
+- `acceptanceCriteria`: optional. One criterion per line inside a quoted CSV field; leading `-`, `*` or `1.` markers are accepted and normalised when displayed.
 - Feature parent must be an epic; ticket parent must be a feature. Parents may be earlier/later in the file or already in the workspace.
 - `departmentCode` defaults to the selected delivery department.
 - `projectCode` must match an existing project in that department. It supplies the WBS/capitalisation context.
@@ -94,7 +133,7 @@ externalId,kind,title,parentExternalId,description,departmentCode,projectCode,st
 - `funding`: `capex`, `opex`, `unclassified`. Capex requires an existing capital project.
 - `phase`: discovery, design, build, test, deploy, hypercare, support, training.
 - `status`: not_started, in_progress, blocked, completed, cancelled.
-- Blank optional fields on a re-import preserve existing local project/stream/assignee/funding/phase/status/estimate overrides. A blank description also preserves the existing description.
+- Blank optional fields on a re-import preserve existing local project/stream/assignee/funding/phase/status/estimate overrides. A blank description or acceptance-criteria field also preserves the existing value.
 - UTF-8, quoted commas, escaped quotes and multiline CSV fields are supported.
 - Limits: 500 rows and 512 KB per batch; the entire shared snapshot must remain below the existing 3 MB pilot limit.
 
@@ -113,6 +152,7 @@ Export a flat query with parent links. Recognised aliases include:
 | State / System.State | status |
 | Assigned To / System.AssignedTo | assigneeEmail |
 | Original Estimate / Microsoft.VSTS.Scheduling.OriginalEstimate | estimateHours |
+| Acceptance Criteria / Microsoft.VSTS.Common.AcceptanceCriteria | acceptanceCriteria |
 | System.TeamProject | devopsProject |
 
 Epic and Feature map directly. Task, Bug, User Story, Product Backlog Item and Issue map to ticket. Azure’s deeper User Story → Task hierarchy is not represented as two ticket levels: map the export to the canonical three-level model before import. The link lookup selects the nearest feature and epic ancestors and omits intermediate user-story levels from the local view; it does not change Azure DevOps.
@@ -123,7 +163,7 @@ Custom Azure states/process templates may need a mapping to the canonical status
 
 The parser and preview are local. Nothing is committed until **Confirm import**. Duplicate IDs, missing parents, wrong parent types, unknown project/stream/resource references, invalid capex links and cyclic hierarchies fail the whole batch. Successful imports record counts, filename, actor and time; raw file contents and credentials are not retained. The shared workspace still uses compare-and-swap revision control.
 
-## 5. Optional Azure DevOps link lookup
+## 6. Optional Azure DevOps link lookup
 
 Set this **server-only** environment variable in the existing Vercel project and redeploy:
 
@@ -146,7 +186,7 @@ Controls:
 
 Lookup is an on-demand import assist, not continuous synchronisation. If the server is not configured, CSV/JSON upload and manual entry still work.
 
-## 6. Permissions and production boundary
+## 7. Permissions and production boundary
 
 The current repository uses one shared workspace password. Persona/role checks are **product previews**, not server-enforced authorization. In the UI, department leadership can import/configure streams; stream leads can maintain their department backlog. Any holder of the shared password can still read or modify the raw snapshot through the API.
 
@@ -160,7 +200,7 @@ Before real employee, project-financial or cross-customer use:
 
 The additive JSONB collections (`deliveryStreams`, `workItems`, `devopsImports`) and optional activity/employee/department fields persist through the existing Neon workspace API. Older snapshots heal to empty delivery collections; existing projects, activities and timesheets are not replaced.
 
-## 7. Verification
+## 8. Verification
 
 ```bash
 npm run typecheck
@@ -169,4 +209,4 @@ node --test tests/devops.test.mjs
 npm run check
 ```
 
-The delivery smoke test covers out-of-order imports, idempotency, CSV quoting, invalid batches, all seven report groupings, cross-department rollups, working-day plan allocation, approval filtering, capex eligibility, nested stream cycles, tenant isolation, server schema validation and rendering both new tabs. Azure tests use mocked provider responses; a live Azure tenant/PAT is still required for an end-to-end provider check.
+The delivery smoke test covers out-of-order imports, idempotency, CSV quoting, invalid batches, acceptance-criteria import and preservation, the seeded DevOps sample hierarchy, linking and re-parenting rules, all seven report groupings, cross-department rollups, working-day plan allocation, approval filtering, capex eligibility, nested stream cycles, tenant isolation, server schema validation and rendering both new tabs. Azure tests use mocked provider responses; a live Azure tenant/PAT is still required for an end-to-end provider check.

@@ -60,6 +60,50 @@ export function workItemDescendants(items: WorkItem[], id: string): Set<string> 
   }
   return result;
 }
+/** Acceptance criteria are one per line; leading bullets or numbers are tolerated on input. */
+export function acceptanceCriteriaList(value: string | null | undefined): string[] {
+  return (value ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*(?:[-*\u2022]|\d+[.)])\s+/, '').trim())
+    .filter(Boolean);
+}
+export const normaliseAcceptanceCriteria = (value: string | null | undefined) => (value ?? '').replace(/\r\n?/g, '\n').trim();
+
+/**
+ * Re-parents existing backlog items (features under an epic, tickets under a
+ * feature) in one step. The parent supplies project and funding context, so a
+ * link can never break the hierarchy rules. Pure and side-effect free.
+ */
+export function linkWorkItemsToParent(items: WorkItem[], parentId: string, childIds: string[], now = new Date().toISOString()): { items: WorkItem[]; error: string | null; linked: string[] } {
+  const parent = items.find((i) => i.id === parentId);
+  if (!parent) return { items, error: 'Select the epic or feature to link work items to.', linked: [] };
+  if (parent.kind === 'ticket') return { items, error: 'A ticket cannot own other work items. Link to a feature or epic instead.', linked: [] };
+  const expected: WorkItemKind = parent.kind === 'epic' ? 'feature' : 'ticket';
+  const unique = Array.from(new Set(childIds)).filter((id) => id !== parentId);
+  if (!unique.length) return { items, error: `Select at least one ${expected} to link.`, linked: [] };
+  let next = items;
+  const linked: string[] = [];
+  for (const id of unique) {
+    const child = next.find((i) => i.id === id);
+    if (!child) return { items, error: 'One of the selected work items no longer exists.', linked: [] };
+    if (child.kind !== expected) return { items, error: `Only ${expected}s can be linked to a ${parent.kind}.`, linked: [] };
+    if (child.departmentId !== parent.departmentId) return { items, error: 'Linked work must stay in the owning department.', linked: [] };
+    if (workItemDescendants(next, id).has(parentId)) return { items, error: 'A work item cannot be linked beneath its own descendant.', linked: [] };
+    const affected = workItemDescendants(next, id);
+    next = next.map((i) => affected.has(i.id)
+      ? { ...i, parentId: i.id === id ? parent.id : i.parentId, projectId: parent.projectId, funding: parent.funding, updatedAt: now }
+      : i);
+    linked.push(id);
+  }
+  for (const id of [parentId, ...unique]) {
+    const item = next.find((i) => i.id === id);
+    if (!item) continue;
+    const error = validateWorkItem(next, item);
+    if (error) return { items, error, linked: [] };
+  }
+  return { items: next, error: null, linked };
+}
+
 export function validateWorkItem(items: WorkItem[], item: WorkItem): string | null {
   if (!item.title.trim()) return 'A title is required.';
   if (!Number.isFinite(item.estimateHours) || item.estimateHours < 0 || item.estimateHours > 100000) return 'Estimate must be between 0 and 100,000 hours.';
@@ -224,12 +268,12 @@ export function effortReport(state: StoreState, filters: EffortFilters) {
   return { lines: lines.sort((a, b) => b.date.localeCompare(a.date)), totals, group };
 }
 
-export const IMPORT_COLUMNS = ['externalId', 'kind', 'title', 'parentExternalId', 'description', 'departmentCode', 'projectCode', 'streamCode', 'assigneeEmail', 'funding', 'phase', 'status', 'estimateHours', 'externalUrl', 'organization', 'devopsProject'] as const;
+export const IMPORT_COLUMNS = ['externalId', 'kind', 'title', 'parentExternalId', 'description', 'acceptanceCriteria', 'departmentCode', 'projectCode', 'streamCode', 'assigneeEmail', 'funding', 'phase', 'status', 'estimateHours', 'externalUrl', 'organization', 'devopsProject'] as const;
 export const IMPORT_TEMPLATE = [
   IMPORT_COLUMNS.join(','),
   '1001,epic,Customer platform modernisation,,,,RIT,,,,unclassified,discovery,not_started,0,,contoso,Retail',
-  '1002,feature,Checkout improvements,1001,,RIT,,,,unclassified,build,in_progress,80,,contoso,Retail',
-  '1003,ticket,Implement payment adapter,1002,,RIT,,,,unclassified,build,not_started,24,,contoso,Retail',
+  '1002,feature,Checkout improvements,1001,,,,RIT,,,,unclassified,build,in_progress,80,,contoso,Retail',
+  '1003,ticket,Implement payment adapter,1002,,"Refunds complete in under 30 seconds\nAudit trail shows the operator",RIT,,,,unclassified,build,not_started,24,,contoso,Retail',
 ].join('\n') + '\n';
 
 /** RFC-4180-style CSV: quoted commas, escaped quotes and multiline fields. */
@@ -259,6 +303,7 @@ const ALIASES: Record<string, string> = {
   systemtitle: 'title', parent: 'parentExternalId', parentid: 'parentExternalId', systemparent: 'parentExternalId',
   systemdescription: 'description', systemstate: 'status', state: 'status', assignedto: 'assigneeEmail', systemassignedto: 'assigneeEmail',
   originalestimate: 'estimateHours', microsoftvstsschedulingoriginalestimate: 'estimateHours', effort: 'estimateHours',
+  acceptancecriteria: 'acceptanceCriteria', microsoftvstsacceptancecriteria: 'acceptanceCriteria',
   systemteamproject: 'devopsProject', project: 'devopsProject', url: 'externalUrl', tags: '',
 };
 const KINDS: Record<string, WorkItemKind> = { epic: 'epic', feature: 'feature', ticket: 'ticket', task: 'ticket', bug: 'ticket', userstory: 'ticket', productbacklogitem: 'ticket', issue: 'ticket' };
@@ -292,7 +337,7 @@ export function parseImport(text: string, format: 'csv' | 'json'): Record<string
     const estimate = value('estimateHours') === '' ? null : Number(value('estimateHours'));
     const emailMatch = value('assigneeEmail').match(/<([^<>]+)>/);
     return { ...normalized, source: normalized.source === 'azure_devops' ? 'azure_devops' : format === 'json' ? 'json' : 'csv', externalId: value('externalId'), kind, title: value('title'), parentExternalId: value('parentExternalId'),
-      description: value('description'), departmentCode: value('departmentCode'), projectCode: value('projectCode'), streamCode: value('streamCode'),
+      description: value('description'), acceptanceCriteria: value('acceptanceCriteria'), departmentCode: value('departmentCode'), projectCode: value('projectCode'), streamCode: value('streamCode'),
       assigneeEmail: emailMatch?.[1] ?? value('assigneeEmail'), funding: value('funding').toLowerCase(),
       phase: value('phase').toLowerCase(), status, estimateHours: estimate,
       externalUrl: value('externalUrl'), organization: value('organization'), devopsProject: value('devopsProject') };
@@ -335,7 +380,8 @@ export function previewImport(state: StoreState, raw: Record<string, unknown>[],
     if (row.externalUrl && !/^https:\/\/(dev\.azure\.com\/|[a-z0-9-]+\.visualstudio\.com\/)/i.test(row.externalUrl)) errors.push(`${at}: externalUrl must be an Azure DevOps HTTPS link.`);
     const item: WorkItem = {
       id: previous?.id ?? stableImportId(key),
-      kind: row.kind, title: row.title, description: row.description || previous?.description || '', parentId: null,
+      kind: row.kind, title: row.title, description: row.description || previous?.description || '',
+      acceptanceCriteria: row.acceptanceCriteria || previous?.acceptanceCriteria || '', parentId: null,
       departmentId: department?.id ?? defaults.departmentId, streamId: stream?.id ?? null, projectId: project?.id ?? null,
       assigneeId: assignee?.id ?? null, funding, phase, status, priority: previous?.priority ?? 'medium',
       estimateHours, source: row.source ?? previous?.source ?? 'csv', externalId: row.externalId, externalUrl: row.externalUrl || previous?.externalUrl || '',

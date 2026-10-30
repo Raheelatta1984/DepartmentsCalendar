@@ -14,7 +14,7 @@ Built with React + TypeScript, with a deterministic product demo and an optional
 
 ## DevOps delivery and effort reporting
 
-The **DevOps delivery** tab adds epic → feature → ticket planning, nested department streams and leads, CSV/JSON backlog imports, and optional read-only Azure DevOps link lookup. Calendar activities link to backlog items; timesheets remain the single source of actual hours. The separate **Effort reports** tab groups planned/logged/approved effort by epic, feature, ticket, resource, department, stream and funding, with CSV exports.
+The **DevOps delivery** tab adds epic → feature → ticket planning, nested department streams and leads, acceptance criteria, one-step linking of work items to their feature or epic, CSV/JSON backlog imports, and optional read-only Azure DevOps link lookup. A **Sample epic** loads an illustrative DevOps hierarchy (epic, five features and ten work items, each with a description and acceptance criteria) without creating calendar bookings or actual hours. Calendar activities link to backlog items; timesheets remain the single source of actual hours. The separate **Effort reports** tab groups planned/logged/approved effort by epic, feature, ticket, resource, department, stream and funding, with CSV exports.
 
 IT is enabled by default; other departments can opt in through Master setup. See [`docs/DEVOPS_DELIVERY.md`](docs/DEVOPS_DELIVERY.md) for the import template, Azure setup, hour semantics, capex safeguards and production authorization boundary.
 

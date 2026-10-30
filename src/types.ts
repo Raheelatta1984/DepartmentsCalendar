@@ -232,6 +232,8 @@ export interface WorkItem {
   description: string;
   /** Epics have no parent; features belong to epics; tickets to features. */
   parentId: string | null;
+  /** One acceptance criterion per line; empty when the item has none yet. */
+  acceptanceCriteria: string;
   departmentId: string;
   streamId: string | null;
   projectId: string | null;
@@ -270,6 +272,7 @@ export interface WorkItemImportRow {
   title: string;
   parentExternalId: string;
   description: string;
+  acceptanceCriteria: string;
   departmentCode: string;
   projectCode: string;
   streamCode: string;

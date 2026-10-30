@@ -44,7 +44,7 @@ export const workspaceSchema = record({
     id, departmentId: id, parentId: id.nullable(), name: text, code: text, leadId: id.nullable(), color: text,
   }).optional(),
   workItems: rows({
-    id, kind: z.enum(['epic', 'feature', 'ticket']), title: text, description: text, parentId: id.nullable(),
+    id, kind: z.enum(['epic', 'feature', 'ticket']), title: text, description: text, acceptanceCriteria: text.optional(), parentId: id.nullable(),
     departmentId: id, streamId: id.nullable(), projectId: id.nullable(), assigneeId: id.nullable(),
     funding: z.enum(['capex', 'opex', 'unclassified']), phase: taskPhase,
     status: z.enum(['not_started', 'in_progress', 'blocked', 'completed', 'cancelled']),

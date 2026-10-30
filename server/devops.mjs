@@ -64,7 +64,9 @@ export async function lookupDevopsWorkItem(input, { pat, fetchImpl = fetch, time
     const hasHours = fields['Microsoft.VSTS.Scheduling.OriginalEstimate'] != null || fields['Microsoft.VSTS.Scheduling.Effort'] != null;
     chain.push({
       externalId: String(item.id), kind: kindOf(fields['System.WorkItemType']), title: plainText(fields['System.Title']).slice(0, 500),
-      parentExternalId: '', description: plainText(fields['System.Description']), departmentCode: '', projectCode: '', streamCode: '',
+      parentExternalId: '', description: plainText(fields['System.Description']),
+      acceptanceCriteria: plainText(fields['Microsoft.VSTS.Common.AcceptanceCriteria']),
+      departmentCode: '', projectCode: '', streamCode: '',
       assigneeEmail: fields['System.AssignedTo']?.uniqueName ?? '', funding: 'unclassified', phase: 'discovery', status: stateOf(fields['System.State']),
       estimateHours: hasHours && Number.isFinite(estimate) ? Math.max(0, Math.min(100000, estimate)) : 0,
       externalUrl: `https://dev.azure.com/${encodeURIComponent(target.organization)}/${encodeURIComponent(target.project)}/_workitems/edit/${item.id}`,
