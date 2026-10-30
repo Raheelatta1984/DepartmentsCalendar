@@ -165,9 +165,11 @@ export function capitalisationEligibility(
     return { eligible: false, reason: 'operational_project', detail: 'Operational run project — expensed' };
   }
   const task = projectTaskFor(project, activity);
-  const phase = activity.projectPhase ?? task?.phase ?? 'support';
+  const workItem = state.workItems?.find((item) => item.id === activity.workItemId);
+  if (workItem && workItem.funding !== 'capex') return { eligible: false, reason: 'non_capitalisable_task', detail: `Delivery item is classified as ${workItem.funding}` };
+  const phase = activity.projectPhase ?? workItem?.phase ?? task?.phase ?? 'support';
   const phaseEligible = state.capitalisation?.eligiblePhases.includes(phase) ?? false;
-  if (!activity.capitalisable || !task?.capitalisable || !phaseEligible) {
+  if (!activity.capitalisable || !(task?.capitalisable || (workItem?.funding === 'capex' && activity.capitalisable)) || !phaseEligible) {
     return {
       eligible: false,
       reason: 'non_capitalisable_task',
@@ -342,7 +344,9 @@ export function capitalisationReport(state: StoreState, scopeInput: Capitalisati
       });
       return;
     }
-    const project = activity.projectId ? projectMap.get(activity.projectId) : undefined;
+    const deliveryItem = state.workItems?.find((item) => item.id === activity.workItemId);
+    const projectId = deliveryItem?.projectId ?? activity.projectId;
+    const project = projectId ? projectMap.get(projectId) : undefined;
     const eligibility = capitalisationEligibility(state, activity, project);
     const task = project ? projectTaskFor(project, activity) : undefined;
     const phase = (activity.projectPhase ?? task?.phase ?? 'support') as TaskPhase;
@@ -591,12 +595,14 @@ export function buildApproval(
 }
 
 export function projectLoggedStats(state: StoreState, project: Project) {
-  const activityIds = new Set(project.tasks.map((task) => task.activityId));
+  const taskActivityIds = new Set(project.tasks.map((task) => task.activityId));
+  const deliveryActivities = state.activities.filter((a) => !taskActivityIds.has(a.id) && (state.workItems?.find((i) => i.id === a.workItemId)?.projectId ?? a.projectId) === project.id);
+  const activityIds = new Set([...taskActivityIds, ...deliveryActivities.map((a) => a.id)]);
   const entries = state.timeEntries.filter((entry) => activityIds.has(entry.activityId));
-  const capitalisableIds = new Set(project.tasks.filter((task) => task.capitalisable).map((task) => task.activityId));
-  const capitalHours = entries.filter((entry) => capitalisableIds.has(entry.activityId)).reduce((sum, entry) => sum + entry.hours, 0);
+  const activityMap = new Map(state.activities.map((a) => [a.id, a]));
+  const capitalHours = entries.filter((entry) => { const activity = activityMap.get(entry.activityId); return activity && capitalisationEligibility(state, activity, project).eligible; }).reduce((sum, entry) => sum + entry.hours, 0);
   const hours = entries.reduce((sum, entry) => sum + entry.hours, 0);
-  const planned = project.tasks.reduce((sum, task) => sum + task.plannedHours, 0);
+  const planned = project.tasks.reduce((sum, task) => sum + task.plannedHours, 0) + deliveryActivities.reduce((sum, a) => sum + a.plannedHours, 0);
   return {
     hours: round(hours),
     capitalHours: round(capitalHours),

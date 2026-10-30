@@ -5,6 +5,7 @@ import { createNeonRepository } from './repository.mjs';
 import { createRequestGuard, etagFor } from './request-guard.mjs';
 import { applyHeaders, apiSecurityHeaders } from './security-headers.mjs';
 import { loginSchema, saveSchema } from './validation.mjs';
+import { devopsLookupSchema, lookupDevopsWorkItem } from './devops.mjs';
 
 export const MAX_BODY_BYTES = 3 * 1024 * 1024;
 // `extra` carries the retry contract the browser uses to decide between an
@@ -55,6 +56,7 @@ const ROUTES = {
   '/api/config': { GET: 'config' },
   '/api/session': { POST: 'session:login', DELETE: 'session:logout' },
   '/api/workspace': { GET: 'workspace:read', PUT: 'workspace:write' },
+  '/api/devops': { POST: 'devops:lookup' },
 };
 
 const fingerprint = (config, label, value) => createHmac('sha256', config.sessionSecret).update(label).update('\0').update(value).digest('base64url');
@@ -201,6 +203,13 @@ export function createHandler({ env = process.env, repository, logger = console,
           return response.end();
         }
         return send(response, 200, snapshot);
+      }
+
+      if (routeClass === 'devops:lookup') {
+        const parsed = devopsLookupSchema.safeParse(await jsonBody(request, 4096));
+        if (!parsed.success) throw fail(400, 'Provide a valid Azure DevOps work-item URL.');
+        const result = await lookupDevopsWorkItem(parsed.data.url, { pat: env.AZURE_DEVOPS_PAT });
+        return send(response, 200, result);
       }
 
       // workspace:write

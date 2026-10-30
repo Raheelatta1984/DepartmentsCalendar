@@ -17,6 +17,8 @@ import { StandupsPage } from './pages/StandupsPage';
 import { LeavePage } from './pages/LeavePage';
 import { PerformancePage } from './pages/PerformancePage';
 import { ProjectsPage } from './pages/ProjectsPage';
+import { DeliveryPage } from './pages/DeliveryPage';
+import { EffortReportsPage } from './pages/EffortReportsPage';
 import { CapitalisationPage } from './pages/CapitalisationPage';
 import { IntegrationsPage } from './pages/IntegrationsPage';
 import { AdminPage } from './pages/AdminPage';
@@ -26,7 +28,7 @@ import { WhatsNewPage } from './pages/WhatsNewPage';
 import { ThemeStudioPage } from './pages/ThemeStudioPage';
 import { fontStack, getEntityTheme } from './lib/portal-theme';
 
-const VIEWS: ViewKey[] = ['dashboard', 'calendar', 'activities', 'roadmap', 'timesheet', 'standups', 'leave', 'projects', 'capitalisation', 'performance', 'integrations', 'admin', 'whats-new', 'theme-studio'];
+const VIEWS: ViewKey[] = ['dashboard', 'calendar', 'activities', 'roadmap', 'timesheet', 'standups', 'leave', 'delivery', 'effort-reports', 'projects', 'capitalisation', 'performance', 'integrations', 'admin', 'whats-new', 'theme-studio'];
 
 function viewFromHash(): ViewKey {
   const hash = window.location.hash.replace(/^#\/?/, '').split('?')[0];
@@ -180,6 +182,8 @@ export function App() {
             {view === 'timesheet' ? <TimesheetPage filters={filters} setFilters={setFilters} onNewActivity={() => newActivity()} /> : null}
             {view === 'standups' ? <StandupsPage /> : null}
             {view === 'leave' ? <LeavePage filters={filters} /> : null}
+            {view === 'delivery' ? <DeliveryPage onNewActivity={(defaults) => newActivity(defaults)} onNavigate={navigate} /> : null}
+            {view === 'effort-reports' ? <EffortReportsPage /> : null}
             {view === 'projects' ? <ProjectsPage /> : null}
             {view === 'capitalisation' ? <CapitalisationPage /> : null}
             {view === 'performance' ? <PerformancePage filters={filters} setFilters={setFilters} onOpenEmployee={setEmployeeId} /> : null}

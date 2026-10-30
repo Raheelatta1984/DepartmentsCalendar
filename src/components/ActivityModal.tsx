@@ -3,6 +3,7 @@ import { CalendarCheck2, CalendarX2, Check, Plus, Send, Trash2, X } from 'lucide
 import { emptyActivity, newId, useScopedState, useStore } from '../store';
 import type { Activity, ActivityType, Priority, TaskStatus } from '../types';
 import { TYPE_LABELS } from '../lib/analytics';
+import { linkActivity, workItemPath } from '../lib/delivery';
 import { Badge, Button, Field, Input, Label, Modal, Select, Textarea, Toggle } from './ui';
 
 const TYPES = Object.keys(TYPE_LABELS) as ActivityType[];
@@ -54,12 +55,15 @@ export function ActivityModal({
   const outlookConn = state.connections.find((c) => c.employeeId === assignee?.id && c.provider === 'outlook');
   const googleConn = state.connections.find((c) => c.employeeId === assignee?.id && c.provider === 'google');
 
+  const deliveryItems = state.workItems.filter((i) => state.departments.some((d) => d.id === i.departmentId && d.devopsEnabled));
+  const linkedItem = state.workItems.find((i) => i.id === draft.workItemId);
+
   const patch = (p: Partial<Activity>) => setDraft((prev) => ({ ...prev, ...p }));
 
   const setAssignee = (id: string) => {
     const emp = state.employees.find((e) => e.id === id);
     if (!emp) return;
-    patch({ assigneeId: id, departmentId: emp.departmentId, entityId: emp.entityId });
+    patch({ assigneeId: id, departmentId: emp.departmentId, entityId: emp.entityId, streamId: emp.streamId });
   };
 
   const handleSave = () => {
@@ -237,6 +241,25 @@ export function ActivityModal({
         <Field label="Location / channel" hint="optional">
           <Input value={draft.location ?? ''} onChange={(e) => patch({ location: e.target.value })} placeholder="Teams, Boardroom 2, client site…" />
         </Field>
+
+        {deliveryItems.length ? (
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3">
+            <Field label="DevOps work item" hint="optional · links planned and logged effort to the delivery hierarchy">
+              <Select value={draft.workItemId ?? ''} onChange={(e) => {
+                const next = e.target.value ? linkActivity(state, draft, e.target.value) : { ...draft, workItemId: undefined, projectId: undefined, projectTaskId: undefined, capitalisable: false };
+                const item = state.workItems.find((i) => i.id === e.target.value);
+                setDraft({ ...next, title: draft.title || item?.title || '', description: draft.description || item?.description || '' });
+              }}>
+                <option value="">No backlog link — ordinary activity</option>
+                {deliveryItems.map((item) => <option key={item.id} value={item.id}>{item.kind.toUpperCase()} · {item.externalId ? `#${item.externalId} · ` : ''}{item.title}</option>)}
+              </Select>
+            </Field>
+            {linkedItem ? <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] text-indigo-700">
+              {workItemPath(state.workItems, linkedItem.id).map((item) => <Badge key={item.id} tone={item.kind === 'epic' ? 'purple' : item.kind === 'feature' ? 'info' : 'neutral'}>{item.title}</Badge>)}
+              <span>Logged time rolls up to this hierarchy. Capex remains subject to the project policy.</span>
+            </div> : null}
+          </div>
+        ) : null}
 
         <div className="rounded-lg border border-slate-200 p-3">
           <Label hint={`${draft.subtasks.filter((s) => s.done).length}/${draft.subtasks.length} complete`}>Subtasks</Label>

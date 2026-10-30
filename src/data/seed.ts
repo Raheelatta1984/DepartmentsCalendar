@@ -23,6 +23,7 @@ import { buildLeaveSeed } from './leave-seed';
 import { buildApproval, capitalisationReport, monthKey, monthScope } from '../lib/capitalisation';
 import { toISO } from '../lib/dates';
 import { buildStandupSeed } from './standup-seed';
+import { withDeliverySample } from './delivery-seed';
 
 /* ------------------------------------------------------------------ */
 /* Deterministic pseudo-random generator so the demo is reproducible  */
@@ -607,14 +608,17 @@ export function createSeedState(): StoreState {
   const seededLeafEmployees = seededEmployees.filter((employee) => employee.status !== 'inactive');
   const leaves = buildLeaveSeed({
     employees: seededLeafEmployees,
-    departments: seededDepartments,
+    departments: seededDepartments.map((d) => ({ ...d, devopsEnabled: ['RIT', 'ITS'].includes(d.code) })),
     holidays: holidayRows,
     countries: COUNTRIES,
   });
   const base: StoreState = {
     tenants: TENANTS,
     entities: [...ENTITIES, ...retail.entities],
-    departments: seededDepartments,
+    departments: seededDepartments.map((d) => ({ ...d, devopsEnabled: ['RIT', 'ITS'].includes(d.code) })),
+    deliveryStreams: [],
+    workItems: [],
+    devopsImports: [],
     employees: seededEmployees,
     activities: seededActivities,
     timeEntries: [...TIME_ENTRIES, ...retail.timeEntries],
@@ -698,7 +702,7 @@ export function createSeedState(): StoreState {
   submitted.submittedById = RETAIL_CIO_ID;
   submitted.submittedAt = new Date(now.getFullYear(), now.getMonth(), Math.min(now.getDate(), 5), 10, 15).toISOString();
 
-  return { ...base, capitalisationApprovals: [submitted, approved] };
+  return withDeliverySample({ ...base, capitalisationApprovals: [submitted, approved] });
 }
 
 export const CEO_ID = ceo.id;
