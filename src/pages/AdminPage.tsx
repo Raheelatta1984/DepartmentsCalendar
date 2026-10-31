@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Building2,
@@ -6,6 +6,7 @@ import {
   Check,
   Download,
   Globe2,
+  GripHorizontal,
   Landmark,
   Layers,
   Pencil,
@@ -34,7 +35,7 @@ import { Avatar, Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeade
 import { useToast } from '../components/toast';
 import { streamPath } from '../lib/delivery';
 
-type Tab = 'tenants' | 'entities' | 'departments' | 'subdepartments' | 'designations' | 'employees' | 'holidays' | 'settings' | 'audit';
+type Tab = 'tenants' | 'entities' | 'org-hierarchy' | 'departments' | 'subdepartments' | 'designations' | 'employees' | 'holidays' | 'settings' | 'audit';
 
 const ROLE_OPTIONS = Object.keys(ROLE_LABELS) as Role[];
 const COLORS = ['#3b82f6', '#f59e0b', '#8b5cf6', '#10b981', '#ef4444', '#06b6d4', '#ec4899', '#eab308', '#6366f1', '#14b8a6', '#f97316', '#84cc16'];
@@ -84,6 +85,9 @@ export function AdminPage() {
   const [holidayYear, setHolidayYear] = useState(new Date().getFullYear());
   const [settingsDraft, setSettingsDraft] = useState(state.settings);
   const [holidayView, setHolidayView] = useState<'list' | 'coverage'>('list');
+  /* Drag-and-drop re-parenting for the organization hierarchy. */
+  const [drag, setDrag] = useState<{ kind: 'entity' | 'department'; id: string } | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ kind: 'entity' | 'department'; id: string } | null>(null);
 
   /* The scope editor follows the active tenant; it never edits another
      tenant's configuration. */
@@ -93,8 +97,85 @@ export function AdminPage() {
 
   const canEdit = scope.canManageMaster;
   const empMap = useMemo(() => new Map(state.employees.map((e) => [e.id, e])), [state.employees]);
+
   const deptMap = useMemo(() => new Map(state.departments.map((d) => [d.id, d])), [state.departments]);
   const entityMap = useMemo(() => new Map(state.entities.map((e) => [e.id, e])), [state.entities]);
+
+  /* Organization hierarchy — companies and sub-companies nested under their
+     parent entity, departments nested under their owning entity. */
+  const childrenByParent = useMemo(() => {
+    const map = new Map<string, Entity[]>();
+    state.entities.forEach((entity) => {
+      const key = entity.parentId ?? 'root';
+      const list = map.get(key) ?? [];
+      list.push(entity);
+      map.set(key, list);
+    });
+    return map;
+  }, [state.entities]);
+  const departmentsByEntity = useMemo(() => {
+    const map = new Map<string, Department[]>();
+    state.departments.forEach((department) => {
+      const list = map.get(department.entityId) ?? [];
+      list.push(department);
+      map.set(department.entityId, list);
+    });
+    return map;
+  }, [state.departments]);
+
+  /** True when `descendantId` sits anywhere below `ancestorId` in the tree. */
+  const isEntityDescendant = useCallback(
+    (descendantId: string, ancestorId: string): boolean => {
+      let current = entityMap.get(descendantId);
+      const seen = new Set<string>();
+      while (current?.parentId) {
+        if (current.parentId === ancestorId) return true;
+        if (seen.has(current.parentId)) break;
+        seen.add(current.parentId);
+        current = entityMap.get(current.parentId);
+      }
+      return false;
+    },
+    [entityMap],
+  );
+
+  const beginDrag = useCallback((kind: 'entity' | 'department', id: string) => {
+    if (!canEdit) return;
+    setDrag({ kind, id });
+  }, [canEdit]);
+
+  const endDrag = useCallback(() => {
+    setDrag(null);
+    setDropTarget(null);
+  }, []);
+
+  const reparentEntity = useCallback(
+    (entityId: string, newParentId: string | null) => {
+      const entity = entityMap.get(entityId);
+      if (!entity) return;
+      if (newParentId !== null && isEntityDescendant(entityId, newParentId)) {
+        toast.push({
+          tone: 'error',
+          title: 'Cannot re-parent',
+          description: 'That would place a company beneath its own child and loop the hierarchy.',
+        });
+        return;
+      }
+      upsertEntity({ ...entity, parentId: newParentId });
+      toast.push({ tone: 'success', title: 'Hierarchy updated', description: `${entity.name} moved.` });
+    },
+    [entityMap, isEntityDescendant, toast, upsertEntity],
+  );
+
+  const reparentDepartment = useCallback(
+    (departmentId: string, newEntityId: string) => {
+      const department = deptMap.get(departmentId);
+      if (!department) return;
+      upsertDepartment({ ...department, entityId: newEntityId });
+      toast.push({ tone: 'success', title: 'Department moved', description: `${department.name} moved to a new entity.` });
+    },
+    [deptMap, toast, upsertDepartment],
+  );
 
   const yearCoverage = useMemo(
     () =>
@@ -117,6 +198,121 @@ export function AdminPage() {
   const employees = state.employees
     .filter((e) => (q ? `${e.name} ${e.email} ${e.code}`.toLowerCase().includes(q) : true))
     .sort((a, b) => ROLE_RANK[b.role] - ROLE_RANK[a.role] || a.name.localeCompare(b.name));
+
+  /* Drag-and-drop tree nodes for the Organization hierarchy tab. They close over
+     AdminPage's drag state, the entity/department maps and the save functions. */
+  function OrganizationEntity({ entity, depth }: { entity: Entity; depth: number }) {
+    const children = childrenByParent.get(entity.id) ?? [];
+    const depts = departmentsByEntity.get(entity.id) ?? [];
+    const dragging = drag?.kind === 'entity' && drag.id === entity.id;
+    const isTarget = dropTarget?.kind === 'entity' && dropTarget.id === entity.id;
+    const validTarget = Boolean(
+      drag?.kind === 'entity'
+        ? drag.id !== entity.id && !isEntityDescendant(entity.id, drag.id)
+        : drag?.kind === 'department',
+    );
+    const highlight = dragging || (isTarget && validTarget);
+
+    return (
+      <div key={entity.id} className="my-0.5">
+        <div
+          role="treeitem"
+          aria-level={depth + 1}
+          draggable={canEdit}
+          onDragStart={(e) => {
+            beginDrag('entity', entity.id);
+            e.dataTransfer.setData('text/plain', `entity:${entity.id}`);
+            e.dataTransfer.effectAllowed = 'move';
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            if (validTarget) setDropTarget({ kind: 'entity', id: entity.id });
+          }}
+          onDragLeave={() => {
+            if (dropTarget?.kind === 'entity' && dropTarget.id === entity.id) setDropTarget(null);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            endDrag();
+            if (drag?.kind === 'entity') reparentEntity(drag.id, entity.id);
+            else if (drag?.kind === 'department') reparentDepartment(drag.id, entity.id);
+          }}
+          className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-left cursor-move select-none transition-colors ${
+            highlight ? 'border-brand-300 bg-brand-50/60' : 'border-transparent hover:bg-slate-50/60'
+          }`}
+          style={{ paddingLeft: `${Math.max(0, depth - 1) * 14 + 12}px` }}
+        >
+          <div className="flex items-center gap-1.5 text-slate-400">
+            <GripHorizontal className="h-3.5 w-3.5 opacity-60" />
+            {depth > 0 ? <div className="w-[10px]" /> : null}
+          </div>
+          <span className={`flex h-6 w-6 items-center justify-center rounded-md ${entity.type === 'group' ? 'bg-brand-50 text-brand-600' : 'bg-slate-100 text-slate-500'}`}>
+            {entity.type === 'group' ? <Building2 className="h-3 w-3" /> : <Landmark className="h-3 w-3" />}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-semibold text-slate-800 truncate">{entity.name}</div>
+            <div className="text-[10px] text-slate-400 truncate">
+              {entity.code} · {entity.type.replace('_', ' ')}
+            </div>
+          </div>
+          <Badge tone="neutral">{depts.length} department{depts.length === 1 ? '' : 's'}</Badge>
+          {depth === 0 && <span className="ml-auto text-[10px] text-slate-400">Top level</span>}
+        </div>
+        {children.map((child) => (
+          <OrganizationEntity key={child.id} entity={child} depth={depth + 1} />
+        ))}
+        {depts.map((department) => (
+          <OrganizationDepartment key={department.id} department={department} depth={depth + 1} />
+        ))}
+      </div>
+    );
+  }
+
+  function OrganizationDepartment({ department, depth }: { department: Department; depth: number }) {
+    const dragging = drag?.kind === 'department' && drag.id === department.id;
+    const validTarget = drag?.kind === 'department';
+    const isTarget = dropTarget?.kind === 'entity';
+    const highlight = dragging || (isTarget && validTarget);
+
+    return (
+      <div key={department.id} className="my-0.5">
+        <div
+          role="treeitem"
+          aria-level={depth + 1}
+          draggable={canEdit}
+          onDragStart={(e) => {
+            beginDrag('department', department.id);
+            e.dataTransfer.setData('text/plain', `department:${department.id}`);
+            e.dataTransfer.effectAllowed = 'move';
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            if (validTarget) setDropTarget({ kind: 'entity', id: department.entityId });
+          }}
+          onDragLeave={endDrag}
+          onDrop={(e) => {
+            e.preventDefault();
+            endDrag();
+            // Departments are leaves: dropping onto one does nothing.
+          }}
+          className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-left cursor-move select-none transition-colors ${
+            highlight ? 'border-brand-300 bg-brand-50/60' : 'border-transparent hover:bg-slate-50/60'
+          }`}
+          style={{ paddingLeft: `${depth * 14 + 12}px` }}
+        >
+          <div className="flex items-center gap-1.5 text-slate-400">
+            <GripHorizontal className="h-3.5 w-3.5 opacity-60" />
+          </div>
+          <span className="h-3 w-3 rounded-full" style={{ background: department.color }} />
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-semibold text-slate-700 truncate">{department.name}</div>
+            <div className="text-[10px] text-slate-400 truncate">{department.code}</div>
+          </div>
+          <Badge tone="neutral">{state.employees.filter((e) => e.departmentId === department.id).length} people</Badge>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -168,6 +364,7 @@ export function AdminPage() {
           tabs={[
             { id: 'tenants', label: 'Tenants & calendar scope' },
             { id: 'entities', label: 'Entities & group' },
+            { id: 'org-hierarchy', label: 'Organization hierarchy' },
             { id: 'departments', label: 'Departments' },
             { id: 'subdepartments', label: 'Sub-departments', count: state.deliveryStreams.length },
             { id: 'designations', label: 'Designations', count: state.designations.length },
@@ -508,6 +705,76 @@ export function AdminPage() {
             </table>
           </div>
         </Card>
+      ) : null}
+
+      {tab === 'org-hierarchy' ? (
+        <div className="grid gap-3 xl:grid-cols-[260px_1fr]">
+          <div className="space-y-3">
+            <Card>
+              <SectionHeader
+                title="Organization hierarchy"
+                subtitle="Drag a company, sub-company or department onto a new parent — or to the top level — to re-parent it. Groups always sit at the top of the tree. Moves are saved and audited immediately."
+                action={
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={!canEdit}
+                    onClick={() =>
+                      setEntityDraft({
+                        id: newId('ent'),
+                        tenantId: tenant?.id ?? '',
+                        name: '',
+                        code: '',
+                        type: 'company',
+                        parentId: null,
+                        countryCode: tenant?.countryCode ?? 'AE',
+                        timezone: tenant?.timezone ?? 'Asia/Dubai',
+                        industry: '',
+                      })
+                    }
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Add entity
+                  </Button>
+                }
+              />
+              {canEdit ? (
+                <div
+                  className="mt-3 rounded-xl border border-dashed border-slate-200 bg-white/50 p-4 text-center"
+                  onDragOver={(e) => e.preventDefault()}
+                  onDragLeave={endDrag}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    endDrag();
+                    if (drag?.kind === 'entity') reparentEntity(drag.id, null);
+                  }}
+                >
+                  <GripHorizontal className="mb-1.5 h-4 w-4 text-slate-400" />
+                  <div className="text-xs font-semibold text-slate-700">Top level</div>
+                  <div className="text-[10px] text-slate-500">
+                    Drag a company or sub-company here to make it a top-level group of companies
+                  </div>
+                </div>
+              ) : null}
+              {!canEdit ? (
+                <Card className="border-slate-200/60">
+                  <SectionHeader
+                    title="Read-only view"
+                    subtitle="Your role cannot manage master data. Sign in as a CEO, Head of Operations or department head to re-parent entities and departments here."
+                  />
+                </Card>
+              ) : null}
+            </Card>
+          </div>
+          <Card padded={false}>
+            <div className="overflow-x-auto">
+              <div role="tree" className="min-w-[560px] divide-y divide-slate-100/60">
+                {(childrenByParent.get('root') ?? []).map((entity) => (
+                  <OrganizationEntity key={entity.id} entity={entity} depth={0} />
+                ))}
+              </div>
+            </div>
+          </Card>
+        </div>
       ) : null}
 
       {tab === 'departments' ? (
@@ -1702,10 +1969,10 @@ score            = 40% utilizationScore + 35% onTimeRate + 25% completionRate`}<
           </div>
         ) : null}
       </Modal>
+
     </div>
   );
 }
-
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between border-b border-dashed border-slate-100 pb-1 last:border-0">
