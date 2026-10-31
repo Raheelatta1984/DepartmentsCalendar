@@ -687,6 +687,7 @@ export type ViewKey =
   | 'effort-reports'
   | 'capitalisation'
   | 'performance'
+  | 'organisation'
   | 'admin'
   | 'integrations'
   | 'whats-new'

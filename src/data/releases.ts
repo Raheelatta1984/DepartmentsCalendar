@@ -51,6 +51,7 @@ export const RELEASE_LINK_VIEWS = [
   'delivery',
   'effort-reports',
   'admin',
+  'organisation',
   'theme-studio',
   'capitalisation',
   'timesheet',
@@ -75,6 +76,25 @@ export type Release = {
 };
 
 export const RELEASES: Release[] = [
+  {
+    title: 'Reporting-line hierarchy you can drag into shape',
+    date: '2026-11-01',
+    released: '1 November 2026',
+    label: 'Just added',
+    tone: 'brand',
+    icon: 'branch',
+    description:
+      'A new Organisation screen turns the employee register into a live reporting-line chart: Angus Harris at the top, RAM as CIO and Phil as CTO beneath him, the Delivery Head under the CIO, and the PMO, BA Lead and QA Lead lines under delivery — with Data, Lead Architecture, DevOps, Architecture Design and D365 under the CTO. Drag anyone onto a colleague to make them the manager, or drop them on the top-level zone to remove their manager; their whole team moves with them and the change is saved and audited immediately. A move rewrites the reporting line only, so departments, entities, delivery streams and calendar access keep their own settings. Search keeps the line above a person in view, the directory lists every reporting line in one table, and the same drag-and-drop is available in Master setup.',
+    bullets: [
+      'New Organisation screen with a drag-and-drop reporting-line chart',
+      'Top-level drop zone, search that keeps reporting context, and a reporting directory',
+      'Change-manager picker as a keyboard-friendly alternative to dragging',
+      'Cycle and self-reporting protection, with the reason shown before a drop is accepted',
+      'Every line change written to the audit trail with the previous and new manager',
+      'Harris Farm Markets reporting lines confirmed: CIO and CTO under Angus, delivery under the CIO, data and architecture under the CTO, PMO with BA and QA leads beneath it',
+    ],
+    link: { view: 'organisation', label: 'Open the organisation chart' },
+  },
   {
     title: 'Organization hierarchy with drag-and-drop setup',
     date: '2026-10-31',

@@ -33,6 +33,12 @@ export interface Scope {
   visibleEmployeeIds: string[];
   directReportIds: string[];
   canManageMaster: boolean;
+  /**
+   * Who may re-draw the reporting lines: every access tier that already owns
+   * master data, plus unit heads and managers for their own organisations.
+   * Employees can read the chart but not re-parent people.
+   */
+  canManageReportingLines: boolean;
   canConfigureGroup: boolean;
   canEscalate: boolean;
   canApproveTimesheets: boolean;
@@ -140,6 +146,7 @@ export function getScope(state: StoreState, userId: string): Scope {
     visibleEmployeeIds,
     directReportIds: reports,
     canManageMaster: user.role === 'ceo' || user.role === 'head_operations' || user.role === 'department_head',
+    canManageReportingLines: ROLE_RANK[user.role] >= ROLE_RANK.unit_head,
     canConfigureGroup: user.role === 'ceo' || user.role === 'head_operations',
     canEscalate: ['ceo', 'head_operations', 'department_head'].includes(user.role),
     canApproveTimesheets: ROLE_RANK[user.role] >= ROLE_RANK.supervisor,

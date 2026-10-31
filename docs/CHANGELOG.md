@@ -3,7 +3,24 @@
 
 The portal’s **What’s new** tab renders this same log from `src/data/releases.ts`, so the screen and this file can never disagree. Newest first.
 
-**20 releases · last updated 31 October 2026**
+**21 releases · last updated 1 November 2026**
+
+---
+
+## Reporting-line hierarchy you can drag into shape
+
+**1 November 2026 · Just added**
+
+A new Organisation screen turns the employee register into a live reporting-line chart: Angus Harris at the top, RAM as CIO and Phil as CTO beneath him, the Delivery Head under the CIO, and the PMO, BA Lead and QA Lead lines under delivery — with Data, Lead Architecture, DevOps, Architecture Design and D365 under the CTO. Drag anyone onto a colleague to make them the manager, or drop them on the top-level zone to remove their manager; their whole team moves with them and the change is saved and audited immediately. A move rewrites the reporting line only, so departments, entities, delivery streams and calendar access keep their own settings. Search keeps the line above a person in view, the directory lists every reporting line in one table, and the same drag-and-drop is available in Master setup.
+
+- New Organisation screen with a drag-and-drop reporting-line chart
+- Top-level drop zone, search that keeps reporting context, and a reporting directory
+- Change-manager picker as a keyboard-friendly alternative to dragging
+- Cycle and self-reporting protection, with the reason shown before a drop is accepted
+- Every line change written to the audit trail with the previous and new manager
+- Harris Farm Markets reporting lines confirmed: CIO and CTO under Angus, delivery under the CIO, data and architecture under the CTO, PMO with BA and QA leads beneath it
+
+_Where to look: **Organisation** (`#/organisation`) — Open the organisation chart._
 
 ---
 

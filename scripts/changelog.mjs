@@ -33,6 +33,7 @@ const SCREENS = {
   delivery: 'DevOps delivery',
   'effort-reports': 'Effort reports',
   admin: 'Master setup',
+  organisation: 'Organisation',
   'theme-studio': 'Theme Studio',
   capitalisation: 'Capitalisation pack',
   timesheet: 'Timesheets',

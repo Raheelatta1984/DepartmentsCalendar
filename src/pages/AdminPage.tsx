@@ -8,6 +8,7 @@ import {
   Globe2,
   GripHorizontal,
   Landmark,
+  Network,
   Layers,
   Pencil,
   Plus,
@@ -34,6 +35,7 @@ import { fromISO, horizonYears, toISO } from '../lib/dates';
 import { Avatar, Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, SearchInput, SectionHeader, Select, Tabs, Textarea, Toggle } from '../components/ui';
 import { useToast } from '../components/toast';
 import { streamPath } from '../lib/delivery';
+import { buildOrgTree, flattenOrg, orgBlockedTargets, orgStats } from '../lib/org';
 
 type Tab = 'tenants' | 'entities' | 'org-hierarchy' | 'departments' | 'subdepartments' | 'designations' | 'employees' | 'holidays' | 'settings' | 'audit';
 
@@ -63,6 +65,7 @@ export function AdminPage() {
     deleteDesignation,
     upsertEmployee,
     deleteEmployee,
+    moveReportingLine,
     addHoliday,
     deleteHoliday,
     generateHolidays,
@@ -86,7 +89,7 @@ export function AdminPage() {
   const [settingsDraft, setSettingsDraft] = useState(state.settings);
   const [holidayView, setHolidayView] = useState<'list' | 'coverage'>('list');
   /* Drag-and-drop re-parenting for the organization hierarchy. */
-  const [drag, setDrag] = useState<{ kind: 'entity' | 'department'; id: string } | null>(null);
+  const [drag, setDrag] = useState<{ kind: 'entity' | 'department' | 'person'; id: string } | null>(null);
   const [dropTarget, setDropTarget] = useState<{ kind: 'entity' | 'department'; id: string } | null>(null);
 
   /* The scope editor follows the active tenant; it never edits another
@@ -176,6 +179,94 @@ export function AdminPage() {
     },
     [deptMap, toast, upsertDepartment],
   );
+
+  /* People tree — the reporting lines confirmed for this organisation. */
+  const orgTree = useMemo(() => buildOrgTree(state.employees), [state.employees]);
+  const orgStatsForTenant = useMemo(() => orgStats(state.employees), [state.employees]);
+  const peopleBlocked = useMemo(
+    () => (drag?.kind === 'person' ? orgBlockedTargets(state.employees, drag.id) : new Set<string>()),
+    [drag, state.employees],
+  );
+
+  const commitReportingMove = useCallback(
+    (employeeId: string, managerId: string | null) => {
+      const error = moveReportingLine(employeeId, managerId);
+      if (error) {
+        toast.push({ tone: 'error', title: 'Reporting line not changed', description: error });
+        return;
+      }
+      const person = empMap.get(employeeId);
+      const manager = managerId ? empMap.get(managerId) : null;
+      toast.push({
+        tone: 'success',
+        title: manager ? `${person?.name} now reports to ${manager.name}` : `${person?.name} is now top level`,
+        description: 'Saved and audited. Their team moved with them.',
+      });
+    },
+    [moveReportingLine, toast, empMap],
+  );
+
+  function OrganizationPerson({ node }: { node: ReturnType<typeof buildOrgTree>[number] }) {
+    const employee = node.employee;
+    const dragging = drag?.kind === 'person' && drag.id === employee.id;
+    const blocked = Boolean(drag?.kind === 'person') && peopleBlocked.has(employee.id);
+
+    return (
+      <div className="my-0.5">
+        <div
+          role="treeitem"
+          aria-level={node.depth + 1}
+          aria-label={`${employee.name}, ${employeeTitle(employee)}`}
+          draggable={canEdit}
+          onDragStart={(event) => {
+            if (!canEdit) return;
+            setDrag({ kind: 'person', id: employee.id });
+            event.dataTransfer.setData('text/plain', `person:${employee.id}`);
+            event.dataTransfer.effectAllowed = 'move';
+          }}
+          onDragEnd={endDrag}
+          onDragOver={(event) => {
+            if (drag?.kind !== 'person' || blocked) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+          }}
+          onDrop={(event) => {
+            if (drag?.kind !== 'person') return;
+            event.preventDefault();
+            event.stopPropagation();
+            const movedId = drag.id;
+            endDrag();
+            if (blocked) {
+              toast.push({
+                tone: 'error',
+                title: 'Cannot drop there',
+                description: 'A person cannot report to themselves or to one of their own reports.',
+              });
+              return;
+            }
+            commitReportingMove(movedId, employee.id);
+          }}
+          className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-left select-none transition-colors ${
+            dragging ? 'opacity-40' : ''
+          } ${blocked ? 'border-dashed border-rose-200 bg-rose-50/30' : 'border-transparent hover:bg-slate-50/60'} ${
+            canEdit && !blocked ? 'cursor-move' : ''
+          }`}
+          style={{ paddingLeft: `${(node.depth + 2) * 14 + 12}px` }}
+        >
+          <GripHorizontal className="h-3.5 w-3.5 flex-none text-slate-400 opacity-60" />
+          <Avatar name={employee.name} color={employee.avatarColor} size={22} />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-xs font-semibold text-slate-800">{employee.name}</div>
+            <div className="truncate text-[10px] text-slate-400">{employeeTitle(employee)}</div>
+          </div>
+          <Badge tone="neutral">{node.teamSize}</Badge>
+        </div>
+        {node.children.map((child) => (
+          <OrganizationPerson key={child.employee.id} node={child} />
+        ))}
+      </div>
+    );
+  }
 
   const yearCoverage = useMemo(
     () =>
@@ -770,6 +861,56 @@ export function AdminPage() {
               <div role="tree" className="min-w-[560px] divide-y divide-slate-100/60">
                 {(childrenByParent.get('root') ?? []).map((entity) => (
                   <OrganizationEntity key={entity.id} entity={entity} depth={0} />
+                ))}
+              </div>
+            </div>
+          </Card>
+
+          {/* Reporting lines: the people branch of the same organisation tree.
+              Drag a person onto a colleague to make them the manager. */}
+          <Card padded={false} className="xl:col-span-2">
+            <div className="flex flex-wrap items-start justify-between gap-2 px-4 pt-4">
+              <SectionHeader
+                title="Reporting lines · people"
+                subtitle="Drag a person onto the colleague who should become their manager — their team moves with them. Use the full Organisation screen for a searchable chart, directory and change history."
+                action={
+                  <div className="flex items-center gap-2">
+                    <Badge tone="neutral">{orgStatsForTenant.headcount} people</Badge>
+                    <Badge tone="neutral">{orgStatsForTenant.layers} layers</Badge>
+                    <a href="#/organisation">
+                      <Button size="sm">
+                        <Network className="h-3.5 w-3.5" /> Open Organisation
+                      </Button>
+                    </a>
+                  </div>
+                }
+              />
+            </div>
+            <div
+              className={`mx-4 mt-3 rounded-xl border border-dashed px-3 py-2 text-center transition-colors ${
+                drag?.kind === 'person' ? 'border-brand-400 bg-brand-50/60' : 'border-slate-200 bg-slate-50/60'
+              }`}
+              onDragOver={(event) => {
+                if (drag?.kind !== 'person') return;
+                event.preventDefault();
+              }}
+              onDrop={(event) => {
+                if (drag?.kind !== 'person') return;
+                event.preventDefault();
+                const movedId = drag.id;
+                endDrag();
+                commitReportingMove(movedId, null);
+              }}
+            >
+              <div className="text-[11px] font-semibold text-slate-700">Top of the hierarchy</div>
+              <div className="text-[10px] text-slate-500">
+                {canEdit ? 'Drop a person here to remove their manager' : 'Read-only for your role'}
+              </div>
+            </div>
+            <div className="mt-3 overflow-x-auto pb-3">
+              <div role="tree" aria-label="Reporting lines" className="min-w-[560px] divide-y divide-slate-100/60">
+                {orgTree.map((node) => (
+                  <OrganizationPerson key={node.employee.id} node={node} />
                 ))}
               </div>
             </div>

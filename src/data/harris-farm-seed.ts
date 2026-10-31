@@ -38,6 +38,8 @@ export const HARRIS_FARM_EMPLOYEE_IDS = {
   natasha: 'hfm-emp-natasha',
   greg: 'hfm-emp-greg',
   naweesh: 'hfm-emp-naweesh',
+  /** Rahil is the same person record that was previously spelled Raheem. */
+  rahil: 'hfm-emp-raheem',
   rob: 'hfm-emp-rob',
   mohsin: 'hfm-emp-mohsin',
   akin: 'hfm-emp-akin',
@@ -101,15 +103,15 @@ const EMPLOYEE_SPECS: EmployeeSpec[] = [
     responsibleDepartmentIds: [],
   },
   { key: 'ram', name: 'RAM', role: 'department_head', jobTitle: 'Chief Information Officer (CIO)', manager: 'angus', stream: 'cio' },
-  { key: 'phil', name: 'Phil', role: 'manager', jobTitle: 'Chief Technology Officer (CTO)', manager: 'angus', stream: 'cto' },
-  { key: 'bharat', name: 'Bharat', role: 'manager', jobTitle: 'Head of Data', manager: 'ram', stream: 'data' },
+  { key: 'phil', name: 'Phil', role: 'ceo', jobTitle: 'Chief Technology Officer (CTO)', manager: 'angus', stream: 'cto' },
+  { key: 'bharat', name: 'Bharat', role: 'manager', jobTitle: 'Head of Data', manager: 'phil', stream: 'data' },
   { key: 'sunil', name: 'Sunil', role: 'employee', jobTitle: 'Data team member · designation to confirm', manager: 'bharat', stream: 'data' },
   { key: 'arti', name: 'Arti', role: 'employee', jobTitle: 'Data team member · designation to confirm', manager: 'bharat', stream: 'data' },
   { key: 'swechchha', name: 'Swechchha', role: 'manager', jobTitle: 'Delivery Head', manager: 'ram', stream: 'delivery' },
-  { key: 'daniel', name: 'Daniel', role: 'supervisor', jobTitle: 'PMO', manager: 'swechchha', stream: 'pmo' },
-  { key: 'damien', name: 'Damien', role: 'supervisor', jobTitle: 'PMO / BA', manager: 'swechchha', stream: 'qa' },
+  { key: 'damien', name: 'Damien', role: 'supervisor', jobTitle: 'PMO', manager: 'swechchha', stream: 'pmo' },
+  { key: 'daniel', name: 'Daniel', role: 'supervisor', jobTitle: 'PMO analyst · designation to confirm', manager: 'swechchha', stream: 'pmo' },
   { key: 'sujan', name: 'Sujan', role: 'employee', jobTitle: 'Junior PMO', manager: 'swechchha', stream: 'pmo' },
-  { key: 'pavithra', name: 'Pavithra', role: 'employee', jobTitle: 'Junior PMO', manager: 'daniel', stream: 'pmo' },
+  { key: 'pavithra', name: 'Pavithra', role: 'employee', jobTitle: 'Junior PMO', manager: 'damien', stream: 'pmo' },
   {
     key: 'priyanka', name: 'Priyanka', role: 'employee', jobTitle: 'BA / PMO', manager: 'swechchha', stream: 'pmo',
     supportingStreams: ['data'], collaborationNotes: 'Works with the Data team alongside the PMO / BA stream.',
@@ -118,8 +120,8 @@ const EMPLOYEE_SPECS: EmployeeSpec[] = [
     key: 'aliRad', name: 'Ali Rad', role: 'employee', jobTitle: 'BA / PMO', manager: 'swechchha', stream: 'pmo',
     supportingStreams: ['data'], collaborationNotes: 'Supports Data and Finance stakeholders; the Finance department is not part of the initial IT-only rollout.',
   },
-  { key: 'raheem', name: 'Raheem', role: 'employee', jobTitle: 'QA', manager: 'damien', stream: 'qa' },
-  { key: 'natasha', name: 'Natasha', role: 'employee', jobTitle: 'Project resource · designation to confirm', manager: 'damien', stream: 'qa' },
+  { key: 'rahil', name: 'Rahil', role: 'supervisor', jobTitle: 'QA Lead', manager: 'damien', stream: 'qa' },
+  { key: 'natasha', name: 'Natasha', role: 'supervisor', jobTitle: 'BA Lead', manager: 'damien', stream: 'pmo' },
   { key: 'greg', name: 'Greg', role: 'manager', jobTitle: 'Lead Architect', manager: 'phil', stream: 'architecture' },
   { key: 'naweesh', name: 'Naweesh', role: 'supervisor', jobTitle: 'DevOps Lead', manager: 'greg', stream: 'devops' },
   { key: 'rob', name: 'Rob', role: 'employee', jobTitle: 'DevOps developer', manager: 'naweesh', stream: 'devops' },
@@ -128,9 +130,9 @@ const EMPLOYEE_SPECS: EmployeeSpec[] = [
   { key: 'michael', name: 'Michael', role: 'employee', jobTitle: 'DevOps developer', manager: 'naweesh', stream: 'devops' },
   { key: 'anup', name: 'Anup', role: 'employee', jobTitle: 'DevOps developer', manager: 'naweesh', stream: 'devops' },
   { key: 'mukti', name: 'Mukti', role: 'employee', jobTitle: 'Support · DevOps team member', manager: 'naweesh', stream: 'devops' },
-  { key: 'jayden', name: 'Jayden', role: 'supervisor', jobTitle: 'Architecture Design Lead', manager: 'greg', stream: 'architectureDesign' },
+  { key: 'jayden', name: 'Jayden', role: 'supervisor', jobTitle: 'Architecture Design Lead', manager: 'naweesh', stream: 'architectureDesign' },
   { key: 'tristan', name: 'Tristan', role: 'employee', jobTitle: 'Architecture Design team member', manager: 'jayden', stream: 'architectureDesign' },
-  { key: 'ibadur', name: 'Ibadur', role: 'supervisor', jobTitle: 'D365 Stream Lead', manager: 'greg', stream: 'd365' },
+  { key: 'ibadur', name: 'Ibadur', role: 'supervisor', jobTitle: 'D365 Stream Lead', manager: 'jayden', stream: 'd365' },
   { key: 'samundra', name: 'Samundra', role: 'employee', jobTitle: 'D365 team member', manager: 'ibadur', stream: 'd365' },
   { key: 'sudeep', name: 'Sudeep', role: 'employee', jobTitle: 'D365 team member', manager: 'ibadur', stream: 'd365' },
   { key: 'ramaparsad', name: 'Ramaparsad', role: 'employee', jobTitle: 'D365 team member · remote resource', manager: 'ibadur', stream: 'd365', workLocation: 'remote' },
@@ -182,9 +184,9 @@ function makeStreams(): DeliveryStream[] {
   return [
     { id: streamIds.cio, departmentId: HARRIS_FARM_IT_DEPT_ID, parentId: null, name: 'CIO Office', code: 'CIO', leadId: ids.ram, color: '#0f766e' },
     { id: streamIds.delivery, departmentId: HARRIS_FARM_IT_DEPT_ID, parentId: streamIds.cio, name: 'Delivery & PMO', code: 'DELIVERY', leadId: ids.swechchha, color: '#7c3aed' },
-    { id: streamIds.pmo, departmentId: HARRIS_FARM_IT_DEPT_ID, parentId: streamIds.delivery, name: 'PMO / BA', code: 'PMOBA', leadId: ids.daniel, color: '#2563eb' },
-    { id: streamIds.qa, departmentId: HARRIS_FARM_IT_DEPT_ID, parentId: streamIds.pmo, name: 'Quality Assurance', code: 'QA', leadId: ids.damien, color: '#d97706' },
-    { id: streamIds.data, departmentId: HARRIS_FARM_IT_DEPT_ID, parentId: streamIds.cio, name: 'Data & Analytics', code: 'DATA', leadId: ids.bharat, color: '#059669' },
+    { id: streamIds.pmo, departmentId: HARRIS_FARM_IT_DEPT_ID, parentId: streamIds.delivery, name: 'PMO / BA', code: 'PMOBA', leadId: ids.damien, color: '#2563eb' },
+    { id: streamIds.qa, departmentId: HARRIS_FARM_IT_DEPT_ID, parentId: streamIds.pmo, name: 'Quality Assurance', code: 'QA', leadId: ids.rahil, color: '#d97706' },
+    { id: streamIds.data, departmentId: HARRIS_FARM_IT_DEPT_ID, parentId: streamIds.cto, name: 'Data & Analytics', code: 'DATA', leadId: ids.bharat, color: '#059669' },
     { id: streamIds.cto, departmentId: HARRIS_FARM_IT_DEPT_ID, parentId: null, name: 'CTO Office', code: 'CTO', leadId: ids.phil, color: '#4f46e5' },
     { id: streamIds.architecture, departmentId: HARRIS_FARM_IT_DEPT_ID, parentId: streamIds.cto, name: 'Lead Architecture', code: 'ARCH', leadId: ids.greg, color: '#9333ea' },
     { id: streamIds.devops, departmentId: HARRIS_FARM_IT_DEPT_ID, parentId: streamIds.architecture, name: 'DevOps', code: 'DEVOPS', leadId: ids.naweesh, color: '#0891b2' },
@@ -251,7 +253,7 @@ function makeWorkItems(now: string): WorkItem[] {
     {
       id: WORK_ITEM_IDS.qaTicket, kind: 'ticket', title: 'DevOps release QA and issue follow-up',
       description: 'Draft QA ticket for recording release test scenarios, evidence, defects and follow-up actions with the PMO / BA team.',
-      acceptanceCriteria: ACCEPTANCE.qa, parentId: WORK_ITEM_IDS.pmoFeature, streamId: streams.qa, assigneeId: employees.damien, phase: 'test',
+      acceptanceCriteria: ACCEPTANCE.qa, parentId: WORK_ITEM_IDS.pmoFeature, streamId: streams.qa, assigneeId: employees.rahil, phase: 'test',
     },
     {
       id: WORK_ITEM_IDS.dataFeature, kind: 'feature', title: 'Data and reporting dependencies',
@@ -307,8 +309,8 @@ const ACTIVITY_SPECS: ActivitySpec[] = [
   { employee: 'pavithra', workItemId: WORK_ITEM_IDS.pmoTicket, action: 'Junior PMO requirements follow-up', type: 'follow_up' },
   { employee: 'priyanka', workItemId: WORK_ITEM_IDS.dataTicket, action: 'BA / PMO data requirements gathering', type: 'meeting' },
   { employee: 'aliRad', workItemId: WORK_ITEM_IDS.dataTicket, action: 'Data and Finance dependency follow-up', type: 'follow_up' },
-  { employee: 'raheem', workItemId: WORK_ITEM_IDS.qaTicket, action: 'QA test planning and evidence review', type: 'audit' },
-  { employee: 'natasha', workItemId: WORK_ITEM_IDS.qaTicket, action: 'Release readiness follow-up', type: 'follow_up' },
+  { employee: 'rahil', workItemId: WORK_ITEM_IDS.qaTicket, action: 'QA lead test planning and evidence review', type: 'audit' },
+  { employee: 'natasha', workItemId: WORK_ITEM_IDS.pmoTicket, action: 'BA lead requirements and scope follow-up', type: 'meeting' },
   { employee: 'greg', workItemId: WORK_ITEM_IDS.architectureTicket, action: 'Lead Architect design review and technical planning', type: 'meeting' },
   { employee: 'naweesh', workItemId: WORK_ITEM_IDS.devopsTicket, action: 'DevOps pipeline planning and ticket triage', type: 'task' },
   { employee: 'rob', workItemId: WORK_ITEM_IDS.devopsTicket, action: 'DevOps pipeline implementation', type: 'task' },
@@ -436,6 +438,48 @@ export function withHarrisFarmSample<T extends {
     workItems: mergeById(state.workItems, sample.workItems),
     activities: mergeById(state.activities, sample.activities),
   };
+}
+
+/**
+ * The organisation structure the Harris Farm IT pilot was confirmed against.
+ * Kept as one table so the seed, the upgrade migration and the onboarding doc
+ * describe the same reporting lines.
+ */
+export const HARRIS_FARM_REPORTING_LINES: { name: string; jobTitle: string; manager: string | null }[] = EMPLOYEE_SPECS.map((spec) => ({
+  name: spec.name,
+  jobTitle: spec.jobTitle,
+  manager: spec.manager ? EMPLOYEE_SPECS.find((row) => row.key === spec.manager)!.name : null,
+}));
+
+/**
+ * One-time, additive upgrade to the confirmed organisation hierarchy.
+ *
+ * Older pilot snapshots stored the earlier draft reporting lines (Bharat under
+ * the CIO, Jayden and Ibadur as Lead Architect reports, Raheem/Damien spelling).
+ * This rewrites only those reporting lines and designations, keeps ids stable,
+ * and leaves every other field — streams, activities, hours — untouched.
+ */
+export function withConfirmedOrganisationHierarchy<T extends { employees: Employee[] }>(state: T): T {
+  const byId = new Map(state.employees.map((employee) => [employee.id, employee]));
+  if (!byId.has(HARRIS_FARM_EMPLOYEE_IDS.angus)) return state;
+
+  const employees = state.employees.map((employee) => {
+    const match = EMPLOYEE_SPECS.find((spec) => HARRIS_FARM_EMPLOYEE_IDS[spec.key] === employee.id);
+    if (!match) return employee;
+    const managerId = match.manager ? HARRIS_FARM_EMPLOYEE_IDS[match.manager] : null;
+    const titleChanged = Boolean(match.jobTitle) && employee.jobTitle !== match.jobTitle;
+    return {
+      ...employee,
+      name: employee.name === 'Raheem' ? match.name : employee.name,
+      managerId,
+      ...(match.jobTitle ? { jobTitle: match.jobTitle } : {}),
+      // A renamed title must not stay linked to the designation master record
+      // that still carries the old wording; clearing the link keeps the
+      // corrected designation on this person without rewriting the master.
+      ...(titleChanged ? { designationId: undefined } : {}),
+    };
+  });
+  return { ...state, employees };
 }
 
 export const HARRIS_FARM_ACTIVITY_TEMPLATES = ACTIVITY_SPECS.map(({ employee, workItemId, action, type }) => ({

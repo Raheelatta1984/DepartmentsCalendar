@@ -56,10 +56,11 @@ import {
   tenantDepartments,
 } from './lib/tenants';
 import { leaveBreakdown } from './lib/leave';
+import { reparentEmployees, validateOrgMove } from './lib/org';
 import { externalKey, linkActivity, linkWorkItemsToParent, normaliseAcceptanceCriteria, validateWorkItem, validStreamParent, workItemDescendants } from './lib/delivery';
 import { devopsSampleWorkItems } from './data/delivery-seed';
 import { DEFAULT_TENANT_ID, HARRIS_FARM_TENANT_ID, HARBOURLINE_TENANT_ID, MERIDIAN_TENANT_ID, TENANTS } from './data/tenant-seed';
-import { HARRIS_FARM_ACTIVE_USER_ID, withHarrisFarmSample } from './data/harris-farm-seed';
+import { HARRIS_FARM_ACTIVE_USER_ID, withConfirmedOrganisationHierarchy, withHarrisFarmSample } from './data/harris-farm-seed';
 import { fromSharedState, rememberPersona, rememberTenant } from './lib/workspace-api';
 import { useWorkspacePersistence, type SharedConnection, type WorkspacePersistence } from './lib/useWorkspacePersistence';
 
@@ -142,7 +143,17 @@ export function normaliseState(state: StoreState): StoreState {
 
 /** Apply one-time, additive seed migrations without re-adding user-deleted tenants later. */
 export function initialiseWorkspaceState(state: StoreState): StoreState {
-  if ((state.settings?.onboardingVersion ?? 0) >= 1) return normaliseState(state);
+  const version = state.settings?.onboardingVersion ?? 0;
+  /* Version 2 confirms the Harris Farm reporting lines (Bharat under the CTO,
+     Jayden and Ibadur as DevOps-lead reports, Natasha and Rahil under Damien).
+     It rewrites reporting lines and designations only — no hours, no streams. */
+  if (version >= 2) return normaliseState(state);
+  if (version >= 1) {
+    return normaliseState({
+      ...withConfirmedOrganisationHierarchy(state),
+      settings: { ...state.settings, onboardingVersion: 2 },
+    });
+  }
 
   let migrated = state;
   const hasHarrisFarm = (state.tenants ?? []).some((row) => row.id === HARRIS_FARM_TENANT_ID);
@@ -155,7 +166,7 @@ export function initialiseWorkspaceState(state: StoreState): StoreState {
     ...migrated,
     settings: {
       ...migrated.settings,
-      onboardingVersion: 1,
+      onboardingVersion: 2,
       ...(shouldOpenHarrisFarm
         ? {
             activeTenantId: HARRIS_FARM_TENANT_ID,
@@ -221,6 +232,8 @@ interface StoreContextValue {
   toggleSubtask: (activityId: string, subtaskId: string) => void;
   upsertEmployee: (employee: Employee) => void;
   deleteEmployee: (id: string) => void;
+  /** Re-parents one person's reporting line; returns a message when refused. */
+  moveReportingLine: (employeeId: string, managerId: string | null) => string | null;
   upsertDepartment: (department: Department) => void;
   deleteDepartment: (id: string) => void;
   upsertDesignation: (designation: Designation) => string | null;
@@ -645,6 +658,33 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
           }),
           { action: 'Employee saved', detail: employee.name },
         ),
+      moveReportingLine: (employeeId, managerId) => {
+        const current = latestStateRef.current;
+        if (!scope.canManageReportingLines) return 'Only department leadership can change the organisation hierarchy.';
+        const employee = current.employees.find((row) => row.id === employeeId);
+        if (!employee) return 'That person is no longer in the register.';
+        const check = validateOrgMove(current.employees, employeeId, managerId);
+        if (!check.ok) return check.reason;
+        // Your own line is the anchor the whole tree is read from; leaving it
+        // unanchored would hide every screen behind a person with no manager.
+        if (!managerId && current.settings.activeUserId === employeeId) {
+          return 'You cannot move your own reporting line to the top of the hierarchy.';
+        }
+        const manager = managerId ? current.employees.find((row) => row.id === managerId) : null;
+        const previousManager = employee.managerId
+          ? current.employees.find((row) => row.id === employee.managerId)?.name
+          : null;
+        save(
+          (prev) => ({ ...prev, employees: reparentEmployees(prev.employees, employeeId, managerId) }),
+          {
+            action: 'Reporting line changed',
+            detail: manager
+              ? `${employee.name}: ${previousManager ?? 'no manager'} → ${manager.name} · team below them moves unchanged`
+              : `${employee.name}: ${previousManager ?? 'no manager'} → top of the hierarchy`,
+          },
+        );
+        return null;
+      },
       deleteEmployee: (id) =>
         save(
           (prev) => ({

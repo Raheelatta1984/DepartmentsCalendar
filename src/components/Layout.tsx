@@ -25,6 +25,7 @@ import {
   TrendingUp,
   Wallet,
   Users,
+  Network,
   X,
 } from 'lucide-react';
 import { useStore } from '../store';
@@ -56,6 +57,7 @@ export const NAV_ITEMS: { id: ViewKey; label: string; icon: React.ReactNode; gro
   { id: 'capitalisation', label: 'Capitalisation pack', icon: <Landmark className="h-4 w-4" />, group: 'Governance', hint: 'Board approval of IT effort' },
   { id: 'performance', label: 'Performance & escalation', icon: <TrendingUp className="h-4 w-4" />, group: 'Governance', hint: 'Scores, alerts, escalation log' },
   { id: 'integrations', label: 'Calendar sync', icon: <Plug className="h-4 w-4" />, group: 'Governance', hint: 'Outlook & Google connectors' },
+  { id: 'organisation', label: 'Organisation', icon: <Network className="h-4 w-4" />, group: 'Configuration', hint: 'Reporting hierarchy · drag to re-parent' },
   { id: 'admin', label: 'Master setup', icon: <Settings2 className="h-4 w-4" />, group: 'Configuration', hint: 'Entities, departments, people, holidays' },
   { id: 'theme-studio', label: 'Theme Studio', icon: <Palette className="h-4 w-4" />, group: 'Configuration', hint: 'Entity identity, colour and typography' },
   { id: 'whats-new', label: 'What’s new', icon: <Sparkles className="h-4 w-4" />, group: 'Workspace', hint: 'Recent portal improvements' },
