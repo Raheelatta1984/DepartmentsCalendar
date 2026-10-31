@@ -131,6 +131,71 @@ test('leave rows are validated, including the PH exclusion fields', () => {
   assert.equal(parse({ ...baseState, leaves: 'none' }).success, false);
 });
 
+test('calendar grants, designations, delegation and time windows validate without breaking legacy rows', () => {
+  const owner = { ...baseState.employees[0], designationId: 'des-1', jobTitle: 'Department Lead' };
+  const teammate = {
+    ...baseState.employees[0],
+    id: 'teammate',
+    role: 'employee',
+    managerId: owner.id,
+    designationId: 'des-1',
+    jobTitle: 'Department Lead',
+  };
+  const activity = {
+    id: 'act-shared',
+    title: 'Delegated month-end task',
+    description: '',
+    type: 'task',
+    entityId: 'group',
+    departmentId: 'dept-it',
+    assigneeId: teammate.id,
+    createdById: owner.id,
+    startDate: '2026-10-31',
+    endDate: '2026-10-31',
+    startTime: '09:00',
+    endTime: '10:30',
+    plannedHours: 1.5,
+    status: 'in_progress',
+    priority: 'medium',
+    progress: 25,
+    location: 'HQ',
+    subtasks: [],
+    sync: { outlook: false, google: false },
+    createdAt: '2026-10-31T08:00:00.000Z',
+    delegationNote: 'Please complete this task',
+    delegationHistory: [{ fromEmployeeId: owner.id, toEmployeeId: teammate.id, byEmployeeId: owner.id, at: '2026-10-31T08:00:00.000Z', note: 'Please complete this task' }],
+  };
+  const timeEntry = {
+    id: 'te-shared',
+    employeeId: teammate.id,
+    activityId: activity.id,
+    date: '2026-10-31',
+    startTime: '09:00',
+    endTime: '10:30',
+    hours: 1.5,
+    note: 'Completed assigned work',
+    billable: true,
+    approved: false,
+    loggedById: owner.id,
+    createdAt: '2026-10-31T10:30:00.000Z',
+    updatedAt: '2026-10-31T10:30:00.000Z',
+  };
+  const workforceState = {
+    ...baseState,
+    employees: [owner, teammate],
+    designations: [{ id: 'des-1', tenantId: 'tnt-harbourline', title: 'Department Lead', code: 'LEAD', description: '' }],
+    calendarShares: [{ id: 'share-1', ownerId: owner.id, audience: 'employee', departmentId: null, employeeId: teammate.id, createdAt: '2026-10-31T08:00:00.000Z' }],
+    activities: [activity],
+    timeEntries: [timeEntry],
+  };
+  assert.equal(parse(workforceState).success, true, JSON.stringify(parse(workforceState).error?.issues, null, 2));
+  assert.equal(parse({ ...workforceState, activities: [{ ...activity, plannedHours: 2 }] }).success, false, 'activity duration mismatches are refused');
+  assert.equal(parse({ ...workforceState, timeEntries: [{ ...timeEntry, hours: 2 }] }).success, false, 'timesheet duration mismatches are refused');
+  assert.equal(parse({ ...workforceState, calendarShares: [{ ...workforceState.calendarShares[0], employeeId: owner.id }] }).success, false, 'self shares are refused');
+  assert.equal(parse({ ...workforceState, designations: [{ ...workforceState.designations[0], tenantId: 'tnt-other' }] }).success, false, 'cross-tenant designation links are refused');
+  assert.equal(parse({ ...workforceState, activities: [{ ...activity, startTime: undefined, endTime: undefined }], timeEntries: [{ ...timeEntry, startTime: undefined, endTime: undefined }] }).success, true, 'legacy all-day rows remain readable');
+});
+
 test('unknown fields are still refused on tenant-owned rows', () => {
   assert.equal(
     parse({ ...baseState, entities: [{ ...baseState.entities[0], anotherTenantId: 'tnt-meridian' }] }).success,

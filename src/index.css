@@ -9,9 +9,28 @@
     -moz-osx-font-smoothing: grayscale;
     scroll-behavior: smooth;
   }
+  html,
+  body,
+  #root {
+    min-height: 100%;
+    max-width: 100%;
+  }
   body {
-    @apply bg-slate-100/70 text-slate-800;
+    @apply m-0 bg-slate-100/70 text-slate-800;
+    overflow-x: clip;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
+  }
+  #root,
+  .portal-theme {
+    min-width: 0;
+  }
+  /* Prevent iOS auto-zoom and keep form controls readable on narrow screens. */
+  @media (max-width: 639px) {
+    .portal-theme input,
+    .portal-theme select,
+    .portal-theme textarea {
+      font-size: 16px !important;
+    }
   }
   ::selection {
     @apply bg-brand-200 text-brand-900;

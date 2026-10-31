@@ -28,6 +28,7 @@ import type { AppFilters } from '../types';
 import { filterActivities, scoreTone } from '../lib/analytics';
 import { fromISO, humanHours, isoWeek, quarterOf, toISO } from '../lib/dates';
 import { activitiesToCSV, downloadICS } from '../lib/export';
+import { compareOrganisationEmployees, ORGANISATION_BAND_LABELS, organisationBand } from '../lib/permissions';
 import { Avatar, Badge, Button, Card, EmptyState, PageHeader, Select, Tabs } from '../components/ui';
 import { StatusBadge, TypeIcon, TYPE_COLORS } from '../components/activity-ui';
 import { useToast } from '../components/toast';
@@ -137,10 +138,14 @@ export function RoadmapPage({
       const deptActs = activities
         .filter((a) => a.departmentId === dept.id)
         .filter((a) => (filters.employeeId === 'all' ? true : a.assigneeId === filters.employeeId));
-      const empIds = Array.from(new Set(deptActs.map((a) => a.assigneeId)));
       const employees = state.employees
-        .filter((e) => empIds.includes(e.id))
-        .sort((a, b) => a.name.localeCompare(b.name));
+        .filter((employee) =>
+          employee.departmentId === dept.id &&
+          scope.visibleEmployeeIds.includes(employee.id) &&
+          employee.status !== 'inactive' &&
+          (filters.employeeId === 'all' || employee.id === filters.employeeId),
+        )
+        .sort((a, b) => compareOrganisationEmployees(a, b, state.departments, state.deliveryStreams));
       return { dept, acts: deptActs, employees };
     })
     .filter((d) => d.acts.length > 0 || d.employees.length > 0);
@@ -188,7 +193,7 @@ export function RoadmapPage({
       <PageHeader
         eyebrow="Roadmap"
         title="Group roadmap timeline"
-        description="Departments, employees, activities and subtasks on the left; year, quarter, month, ISO week and day across the top. Public holidays and country weekends are shaded so slippage is never blamed on the calendar."
+        description="Executive drill-down follows department → department heads and their activities → department leads and their activities → team members and their activities. Year, quarter, month, ISO week and day remain visible across the timeline."
         actions={
           <>
             <Button
@@ -226,7 +231,7 @@ export function RoadmapPage({
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
-          <div className="w-[170px]">
+            <div className="w-full sm:w-[170px]">
             <Select value={horizon} onChange={(e) => setHorizon(e.target.value as Horizon)}>
               {HORIZONS.map((h) => (
                 <option key={h.id} value={h.id}>
@@ -235,7 +240,7 @@ export function RoadmapPage({
               ))}
             </Select>
           </div>
-          <div className="w-[190px]">
+          <div className="w-full sm:w-[190px]">
             <Select value={filters.departmentId} onChange={(e) => setFilters({ departmentId: e.target.value, employeeId: 'all' })}>
               <option value="all">All departments</option>
               {scope.visibleDepartments.map((d) => (
@@ -245,7 +250,7 @@ export function RoadmapPage({
               ))}
             </Select>
           </div>
-          <div className="w-[190px]">
+          <div className="w-full sm:w-[190px]">
             <Select value={filters.employeeId} onChange={(e) => setFilters({ employeeId: e.target.value })}>
               <option value="all">All employees</option>
               {state.employees
@@ -257,7 +262,7 @@ export function RoadmapPage({
                 ))}
             </Select>
           </div>
-          <div className="ml-auto flex items-center gap-1">
+          <div className="flex w-full items-center gap-1 sm:ml-auto sm:w-auto">
             <button
               onClick={() => setDensity(density === 'compact' ? 'comfortable' : 'compact')}
               className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1.5 text-[10px] font-medium text-slate-600 hover:bg-slate-50"
@@ -360,12 +365,24 @@ export function RoadmapPage({
                   </div>
 
                   {!deptCollapsed &&
-                    employees.map((emp) => {
+                    employees.map((emp, employeeIndex) => {
                       const empActs = acts.filter((a) => a.assigneeId === emp.id);
                       const empCollapsed = collapsedEmps.includes(emp.id);
                       const planned = empActs.reduce((a, b) => a + b.plannedHours, 0);
+                      const band = organisationBand(emp, dept, state.deliveryStreams);
+                      const previousBand = employeeIndex > 0 ? organisationBand(employees[employeeIndex - 1], dept, state.deliveryStreams) : undefined;
                       return (
                         <div key={emp.id}>
+                          {band !== previousBand ? (
+                            <div className="relative flex border-b border-slate-200 bg-slate-100/70">
+                              {rowBg(1)}
+                              <div className="sticky left-0 z-20 flex w-[300px] flex-none items-center gap-2 border-r border-slate-200 bg-slate-100/95 py-1 pl-7 pr-2 text-[9px] font-semibold uppercase tracking-wider text-slate-500 backdrop-blur">
+                                <Circle className="h-2 w-2 fill-current" /> {ORGANISATION_BAND_LABELS[band]}
+                                <span className="font-normal normal-case tracking-normal text-slate-400">· activities below each person</span>
+                              </div>
+                              <div className="flex-1" />
+                            </div>
+                          ) : null}
                           <div className="relative flex border-b border-slate-100">
                             {rowBg(1)}
                             <button

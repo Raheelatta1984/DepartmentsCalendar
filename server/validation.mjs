@@ -43,6 +43,11 @@ export const workspaceSchema = record({
   deliveryStreams: rows({
     id, departmentId: id, parentId: id.nullable(), name: text, code: text, leadId: id.nullable(), color: text,
   }).optional(),
+  designations: rows({ id, tenantId: id, title: text, code: text, description: text }).optional(),
+  calendarShares: rows({
+    id, ownerId: id, audience: z.enum(['department', 'employee']),
+    departmentId: id.nullable(), employeeId: id.nullable(), createdAt: text,
+  }).optional(),
   workItems: rows({
     id, kind: z.enum(['epic', 'feature', 'ticket']), title: text, description: text, acceptanceCriteria: text.optional(), parentId: id.nullable(),
     departmentId: id, streamId: id.nullable(), projectId: id.nullable(), assigneeId: id.nullable(),
@@ -58,7 +63,7 @@ export const workspaceSchema = record({
   employees: rows({
     id, name: text, email: text, code: text, entityId: id, departmentId: id,
     role: z.enum(['ceo', 'head_operations', 'department_head', 'unit_head', 'manager', 'supervisor', 'employee']),
-    jobTitle: text.optional(),
+    jobTitle: text.optional(), designationId: id.optional(),
     managerId: id.nullable(), countryCode: text, weeklyHours: number.min(1).max(80), joinDate: date,
     status: z.enum(['active', 'on_leave', 'inactive']), avatarColor: text,
     employmentType: z.enum(['employee', 'contractor']).optional(),
@@ -78,11 +83,16 @@ export const workspaceSchema = record({
     location: text.optional(), subtasks: rows({ id, title: text, done: z.boolean(), plannedHours: number.min(0) }),
     sync: record({ outlook: z.boolean(), google: z.boolean() }), createdAt: text,
     projectId: id.optional(), projectTaskId: id.optional(), capitalisable: z.boolean().optional(), projectPhase: taskPhase.optional(),
-    workItemId: id.optional(), streamId: id.optional(),
+    workItemId: id.optional(), streamId: id.optional(), delegationNote: text.optional(),
+    delegationHistory: rows({
+      fromEmployeeId: id, toEmployeeId: id, byEmployeeId: id, at: text, note: text,
+    }).optional(),
   }),
   timeEntries: rows({
-    id, employeeId: id, activityId: id, date, hours: number.min(0).max(24), note: text,
-    billable: z.boolean(), approved: z.boolean(),
+    id, employeeId: id, activityId: id, date, startTime: time.optional(), endTime: time.optional(),
+    hours: number.min(0).max(24), note: text,
+    billable: z.boolean(), approved: z.boolean(), loggedById: id.optional(),
+    createdAt: text.optional(), updatedAt: text.optional(),
   }),
   holidays: rows({ id, countryCode: text, date, name: text, type: z.enum(['public_holiday', 'company_holiday', 'weekly_off']) }),
   countries: rows({
@@ -174,6 +184,7 @@ export const workspaceSchema = record({
   const employees = new Map(state.employees.map((e) => [e.id, e]));
   const projects = new Map((state.projects ?? []).map((p) => [p.id, p]));
   const streams = new Map((state.deliveryStreams ?? []).map((s) => [s.id, s]));
+  const designations = new Map((state.designations ?? []).map((designation) => [designation.id, designation]));
   const items = new Map((state.workItems ?? []).map((i) => [i.id, i]));
   const sameDepartment = (a, b) => a && b && entityTenant.get(departments.get(a)?.entityId) === entityTenant.get(departments.get(b)?.entityId);
   for (const [index, stream] of (state.deliveryStreams ?? []).entries()) {
@@ -209,6 +220,12 @@ export const workspaceSchema = record({
       if (streams.get(streamId)?.departmentId !== employee.departmentId) ctx.addIssue({ code: 'custom', path, message: 'Invalid supporting stream' });
     }
     const employeeTenant = entityTenant.get(departments.get(employee.departmentId)?.entityId);
+    if (employee.designationId) {
+      const designation = designations.get(employee.designationId);
+      if (!designation || (employeeTenant && designation.tenantId !== employeeTenant)) {
+        ctx.addIssue({ code: 'custom', path, message: 'Invalid employee designation' });
+      }
+    }
     for (const departmentId of employee.responsibleDepartmentIds ?? []) {
       const assignedDepartment = departments.get(departmentId);
       const assignedTenant = entityTenant.get(assignedDepartment?.entityId);
@@ -220,6 +237,47 @@ export const workspaceSchema = record({
   for (const [index, activity] of state.activities.entries()) {
     if (activity.workItemId && (!items.has(activity.workItemId) || !sameDepartment(activity.departmentId, items.get(activity.workItemId)?.departmentId))) ctx.addIssue({ code: 'custom', path: ['activities', index], message: 'Invalid delivery activity link' });
     if (activity.streamId && streams.get(activity.streamId)?.departmentId !== activity.departmentId) ctx.addIssue({ code: 'custom', path: ['activities', index], message: 'Invalid activity stream' });
+  }
+  for (const [index, share] of (state.calendarShares ?? []).entries()) {
+    const path = ['calendarShares', index];
+    const owner = employees.get(share.ownerId);
+    if (!owner) ctx.addIssue({ code: 'custom', path, message: 'Calendar-share owner must exist' });
+    if (share.audience === 'department') {
+      if (!owner || share.departmentId !== owner.departmentId || share.employeeId) ctx.addIssue({ code: 'custom', path, message: 'Department shares must target the owner’s home department only' });
+    } else {
+      const recipient = employees.get(share.employeeId);
+      if (!recipient || recipient.id === share.ownerId || share.departmentId || !sameDepartment(owner?.departmentId, recipient.departmentId)) {
+        ctx.addIssue({ code: 'custom', path, message: 'Person shares must target another employee in the same tenant' });
+      }
+    }
+  }
+  const minutes = (value) => {
+    const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value ?? '');
+    return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+  };
+  for (const [index, activity] of state.activities.entries()) {
+    if (activity.startDate !== activity.endDate || (!activity.startTime && !activity.endTime)) continue;
+    const path = ['activities', index];
+    const start = minutes(activity.startTime); const end = minutes(activity.endTime);
+    if (start === null || end === null || end <= start) {
+      ctx.addIssue({ code: 'custom', path, message: 'Same-day activity requires a valid start and end time' });
+    } else if (Math.abs(activity.plannedHours * 60 - (end - start)) > 1) {
+      ctx.addIssue({ code: 'custom', path, message: 'Activity hours must match the selected time window' });
+    }
+  }
+  for (const [index, entry] of state.timeEntries.entries()) {
+    if (!entry.startTime && !entry.endTime) {
+      if (entry.loggedById && !employees.has(entry.loggedById)) ctx.addIssue({ code: 'custom', path: ['timeEntries', index], message: 'Time-entry logger must exist' });
+      continue; // legacy rows predate work windows
+    }
+    const path = ['timeEntries', index];
+    const start = minutes(entry.startTime); const end = minutes(entry.endTime);
+    if (start === null || end === null || end <= start) {
+      ctx.addIssue({ code: 'custom', path, message: 'Time entry requires a valid same-day start and end time' });
+    } else if (Math.abs(entry.hours * 60 - (end - start)) > 1) {
+      ctx.addIssue({ code: 'custom', path, message: 'Time-entry hours must match the selected time window' });
+    }
+    if (entry.loggedById && !employees.has(entry.loggedById)) ctx.addIssue({ code: 'custom', path, message: 'Time-entry logger must exist' });
   }
   for (const [key, value] of Object.entries(state)) {
     if (!Array.isArray(value)) continue;

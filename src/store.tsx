@@ -5,8 +5,10 @@ import type {
   CalendarConnection,
   CalendarProvider,
   CalendarScopeSettings,
+  CalendarShare,
   Department,
   DeliveryStream,
+  Designation,
   WorkItem,
   WorkItemImportPreview,
   CapitalisationApproval,
@@ -30,7 +32,16 @@ import { createSeedState } from './data/seed';
 import { RETAIL_CAPITALISATION_POLICY, withRetailSample } from './data/retail-seed';
 import { buildApproval, monthScope, capitalisationReport } from './lib/capitalisation';
 import { buildHolidayDataset } from './data/countries';
-import { getScope, type Scope } from './lib/permissions';
+import {
+  canApproveEmployeeTime,
+  canAssignActivity,
+  canEditActivity,
+  canLogForEmployee,
+  getScope,
+  type Scope,
+} from './lib/permissions';
+import { addHoursToTime, timeWindowError } from './lib/time';
+import { withDesignationDefaults } from './lib/master-data';
 import {
   FALLBACK_TENANT_ID,
   buildTenantIndex,
@@ -88,8 +99,20 @@ export function normaliseState(state: StoreState): StoreState {
     state.employees?.find((employee) => tenantDeptIds.has(employee.departmentId)) ??
     state.employees?.[0];
 
-  return {
+  const stateWithMasters = {
     ...state,
+    entities,
+    designations: Array.isArray(state.designations) ? state.designations : [],
+    calendarShares: Array.isArray(state.calendarShares) ? state.calendarShares : [],
+  };
+  // Derive reusable titles only for legacy snapshots that predate the master.
+  // Once initialized, an explicitly custom employee title stays custom.
+  const designatedState = Array.isArray(state.designations)
+    ? stateWithMasters
+    : withDesignationDefaults(stateWithMasters);
+
+  return {
+    ...designatedState,
     tenants,
     entities,
     deliveryStreams: Array.isArray(state.deliveryStreams) ? state.deliveryStreams : [],
@@ -192,7 +215,7 @@ interface StoreContextValue {
   decideLeave: (id: string, decision: Extract<LeaveStatus, 'approved' | 'rejected'>, note: string) => void;
   cancelLeave: (id: string) => void;
   deleteLeave: (id: string) => void;
-  upsertActivity: (activity: Activity) => void;
+  upsertActivity: (activity: Activity) => string | null;
   deleteActivity: (id: string) => void;
   updateActivityStatus: (id: string, status: Activity['status'], progress?: number) => void;
   toggleSubtask: (activityId: string, subtaskId: string) => void;
@@ -200,9 +223,13 @@ interface StoreContextValue {
   deleteEmployee: (id: string) => void;
   upsertDepartment: (department: Department) => void;
   deleteDepartment: (id: string) => void;
+  upsertDesignation: (designation: Designation) => string | null;
+  deleteDesignation: (id: string) => string | null;
+  shareCalendar: (share: CalendarShare) => string | null;
+  revokeCalendarShare: (id: string) => void;
   upsertEntity: (entity: Entity) => void;
   deleteEntity: (id: string) => void;
-  addTimeEntry: (entry: TimeEntry) => void;
+  addTimeEntry: (entry: TimeEntry) => string | null;
   deleteTimeEntry: (id: string) => void;
   toggleEntryApproved: (id: string) => void;
   addHoliday: (holiday: Holiday) => void;
@@ -264,11 +291,50 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
     [state, tenant, ownDepartmentId],
   );
 
-  /* Master setting in action: single / multiple / all departments. */
-  const scopedState = useMemo(
-    () => scopeStateToDepartments(state, calendarDepartmentIds),
-    [state, calendarDepartmentIds],
-  );
+  /* Master setting in action: single / multiple / all departments. Direct
+     person-to-person calendar grants are then added row by row. Including the
+     owner's whole department here would leak colleagues and expand access
+     beyond the read-only grant, so only the shared owner's operational rows
+     cross the configured department boundary. */
+  const scopedState = useMemo(() => {
+    const base = scopeStateToDepartments(state, calendarDepartmentIds);
+    const relevantShares = state.calendarShares.filter((share) =>
+      share.ownerId !== activeUserId && (
+        (share.audience === 'employee' && share.employeeId === activeUserId) ||
+        (share.audience === 'department' && share.departmentId === ownDepartmentId)
+      ),
+    );
+    const sharedOwnerIds = new Set(relevantShares.map((share) => share.ownerId));
+    const sharedOwners = state.employees.filter((employee) =>
+      sharedOwnerIds.has(employee.id) && !base.employees.some((row) => row.id === employee.id),
+    );
+    if (!sharedOwners.length) return base;
+    const sharedDepartmentIds = new Set(sharedOwners.map((employee) => employee.departmentId));
+    return {
+      ...base,
+      departments: [
+        ...base.departments,
+        ...state.departments.filter((department) => sharedDepartmentIds.has(department.id) && !base.departments.some((row) => row.id === department.id)),
+      ],
+      employees: [...base.employees, ...sharedOwners],
+      activities: [
+        ...base.activities,
+        ...state.activities.filter((activity) => sharedOwnerIds.has(activity.assigneeId) && !base.activities.some((row) => row.id === activity.id)),
+      ],
+      timeEntries: [
+        ...base.timeEntries,
+        ...state.timeEntries.filter((entry) => sharedOwnerIds.has(entry.employeeId) && !base.timeEntries.some((row) => row.id === entry.id)),
+      ],
+      leaves: [
+        ...(base.leaves ?? []),
+        ...(state.leaves ?? []).filter((leave) => sharedOwnerIds.has(leave.employeeId) && !(base.leaves ?? []).some((row) => row.id === leave.id)),
+      ],
+      calendarShares: [
+        ...base.calendarShares,
+        ...relevantShares.filter((share) => !base.calendarShares.some((row) => row.id === share.id)),
+      ],
+    };
+  }, [state, calendarDepartmentIds, activeUserId, ownDepartmentId]);
 
   useEffect(() => {
     if (shared) {
@@ -442,27 +508,78 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
           (prev) => ({ ...prev, settings: { ...prev.settings, ...patch } }),
           { action: 'Settings updated', detail: Object.entries(patch).map(([k, v]) => `${k}=${v}`).join(', ') },
         ),
-      upsertActivity: (inputActivity) =>
+      upsertActivity: (inputActivity) => {
+        const current = latestStateRef.current;
+        const actorId = current.settings.activeUserId;
+        const existing = current.activities.find((row) => row.id === inputActivity.id);
+        if (existing && !canEditActivity(current, actorId, existing)) {
+          return 'This shared calendar is read-only. Only the assignee or their reporting lead can change the activity.';
+        }
+        const assignmentSource = { ...inputActivity, assigneeId: existing?.assigneeId ?? actorId };
+        if (!canAssignActivity(current, actorId, assignmentSource, inputActivity.assigneeId)) {
+          return inputActivity.type === 'task'
+            ? 'You can assign this task only to yourself, your reporting team, or a colleague when delegating your own task.'
+            : 'Only the employee or their reporting lead can schedule this activity for another person.';
+        }
+        const assignee = current.employees.find((employee) => employee.id === inputActivity.assigneeId);
+        if (!assignee || assignee.status === 'inactive') return 'Select an active employee in this tenant.';
+        if (inputActivity.endDate < inputActivity.startDate) return 'The end date cannot be before the start date.';
+        if (inputActivity.startDate === inputActivity.endDate) {
+          const mismatch = timeWindowError(inputActivity.plannedHours, inputActivity.startTime, inputActivity.endTime);
+          if (mismatch) return mismatch;
+        }
+        if (inputActivity.plannedHours <= 0) return 'Planned hours must be greater than zero for workload calculations.';
+
+        const now = new Date().toISOString();
+        const delegationHistory = [...(existing?.delegationHistory ?? inputActivity.delegationHistory ?? [])];
+        const changedOwner = Boolean(existing && existing.assigneeId !== inputActivity.assigneeId);
+        const newPeerDelegation = Boolean(
+          !existing && inputActivity.assigneeId !== actorId && !canLogForEmployee(current, actorId, inputActivity.assigneeId),
+        );
+        if (changedOwner || newPeerDelegation) {
+          delegationHistory.push({
+            fromEmployeeId: existing?.assigneeId ?? actorId,
+            toEmployeeId: inputActivity.assigneeId,
+            byEmployeeId: actorId,
+            at: now,
+            note: inputActivity.delegationNote?.trim() ?? '',
+          });
+        }
+
+        const rawActivity: Activity = {
+          ...inputActivity,
+          createdById: existing?.createdById ?? actorId,
+          departmentId: assignee.departmentId,
+          entityId: assignee.entityId,
+          delegationHistory,
+          delegationNote: changedOwner || newPeerDelegation ? inputActivity.delegationNote?.trim() ?? '' : existing?.delegationNote,
+        };
         save(
           (prev) => {
-            const activity = inputActivity.workItemId ? linkActivity(prev, inputActivity, inputActivity.workItemId) : inputActivity;
-            const exists = prev.activities.some((a) => a.id === activity.id);
-            const activities = exists
-              ? prev.activities.map((a) => (a.id === activity.id ? activity : a))
+            const activity = rawActivity.workItemId ? linkActivity(prev, rawActivity, rawActivity.workItemId) : rawActivity;
+            const activities = existing
+              ? prev.activities.map((row) => (row.id === activity.id ? activity : row))
               : [activity, ...prev.activities];
             const providers: CalendarProvider[] = [];
             if (activity.sync.outlook) providers.push('outlook');
             if (activity.sync.google) providers.push('google');
-            const withSync = queueSync(prev, activity, exists ? 'update' : 'create', providers);
+            const withSync = queueSync(prev, activity, existing ? 'update' : 'create', providers);
             return { ...withSync, activities };
           },
-          { action: 'Activity saved', detail: '' },
-        ),
+          {
+            action: changedOwner || newPeerDelegation ? 'Task delegated' : 'Activity saved',
+            detail: changedOwner || newPeerDelegation
+              ? `${inputActivity.title} → ${assignee.name}`
+              : `${inputActivity.title} · ${assignee.name}`,
+          },
+        );
+        return null;
+      },
       deleteActivity: (id) =>
         save(
           (prev) => {
             const activity = prev.activities.find((a) => a.id === id);
-            if (!activity) return prev;
+            if (!activity || !canEditActivity(prev, prev.settings.activeUserId, activity)) return prev;
             const providers: CalendarProvider[] = [];
             if (activity.sync.outlook) providers.push('outlook');
             if (activity.sync.google) providers.push('google');
@@ -478,6 +595,8 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
       updateActivityStatus: (id, status, progress) =>
         save(
           (prev) => {
+            const existing = prev.activities.find((row) => row.id === id);
+            if (!existing || !canEditActivity(prev, prev.settings.activeUserId, existing)) return prev;
             const activities = prev.activities.map((a) =>
               a.id === id
                 ? {
@@ -503,7 +622,7 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
         save((prev) => ({
           ...prev,
           activities: prev.activities.map((a) => {
-            if (a.id !== activityId) return a;
+            if (a.id !== activityId || !canEditActivity(prev, prev.settings.activeUserId, a)) return a;
             const subtasks = a.subtasks.map((s) => (s.id === subtaskId ? { ...s, done: !s.done } : s));
             const total = subtasks.reduce((sum, s) => sum + s.plannedHours, 0) || 1;
             const done = subtasks.filter((s) => s.done).reduce((sum, s) => sum + s.plannedHours, 0);
@@ -532,6 +651,7 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
             ...prev,
             employees: prev.employees.filter((e) => e.id !== id),
             deliveryStreams: prev.deliveryStreams.map((s) => s.leadId === id ? { ...s, leadId: null } : s),
+            calendarShares: prev.calendarShares.filter((share) => share.ownerId !== id && share.employeeId !== id),
             workItems: prev.workItems.map((i) => i.assigneeId === id ? { ...i, assigneeId: null } : i),
             departments: prev.departments.map((d) => ({ ...d, headId: d.headId === id ? null : d.headId, opsOwnerId: d.opsOwnerId === id ? null : d.opsOwnerId })),
             settings:
@@ -558,9 +678,72 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
             workItems: prev.workItems.filter((i) => i.departmentId !== id),
             devopsImports: prev.devopsImports.filter((i) => i.departmentId !== id),
             activities: prev.activities.filter((a) => a.departmentId !== id),
+            calendarShares: prev.calendarShares.filter((share) => share.departmentId !== id),
           }),
           { action: 'Department removed', detail: id },
         ),
+      upsertDesignation: (designation) => {
+        const current = latestStateRef.current;
+        if (!scope.canManageMaster) return 'Only department leadership can modify designations.';
+        if (designation.tenantId !== current.settings.activeTenantId) return 'The designation must belong to the active tenant.';
+        if (!designation.title.trim()) return 'Designation title is required.';
+        if (current.designations.some((row) => row.id !== designation.id && row.tenantId === designation.tenantId && row.title.trim().toLowerCase() === designation.title.trim().toLowerCase())) {
+          return 'A designation with this title already exists.';
+        }
+        const next = { ...designation, title: designation.title.trim(), code: designation.code.trim().toUpperCase() };
+        save((prev) => ({
+          ...prev,
+          designations: prev.designations.some((row) => row.id === next.id)
+            ? prev.designations.map((row) => row.id === next.id ? next : row)
+            : [...prev.designations, next],
+          employees: prev.employees.map((employee) => employee.designationId === next.id ? { ...employee, jobTitle: next.title } : employee),
+        }), { action: 'Designation saved', detail: next.title });
+        return null;
+      },
+      deleteDesignation: (id) => {
+        const current = latestStateRef.current;
+        if (!scope.canManageMaster) return 'Only department leadership can delete designations.';
+        const designation = current.designations.find((row) => row.id === id);
+        if (!designation) return null;
+        const assigned = current.employees.filter((employee) => employee.designationId === id).length;
+        if (assigned) return `Reassign ${assigned} employee${assigned === 1 ? '' : 's'} before deleting ${designation.title}.`;
+        save((prev) => ({ ...prev, designations: prev.designations.filter((row) => row.id !== id) }), {
+          action: 'Designation deleted', detail: designation.title,
+        });
+        return null;
+      },
+      shareCalendar: (share) => {
+        const current = latestStateRef.current;
+        const owner = current.employees.find((employee) => employee.id === current.settings.activeUserId);
+        if (!owner || share.ownerId !== owner.id) return 'Employees can share only their own calendar.';
+        if (share.audience === 'department') {
+          if (share.departmentId !== owner.departmentId || share.employeeId) return 'A department share must target your own home department.';
+        } else {
+          const recipient = current.employees.find((employee) => employee.id === share.employeeId);
+          if (!recipient || recipient.id === owner.id || recipient.status === 'inactive' || share.departmentId) {
+            return 'Select another active employee in this tenant.';
+          }
+        }
+        const duplicate = current.calendarShares.some((row) =>
+          row.ownerId === owner.id && row.audience === share.audience &&
+          row.departmentId === share.departmentId && row.employeeId === share.employeeId,
+        );
+        if (duplicate) return 'This calendar has already been shared with that audience.';
+        save((prev) => ({ ...prev, calendarShares: [share, ...prev.calendarShares] }), {
+          action: 'Calendar shared',
+          detail: share.audience === 'department'
+            ? `${owner.name} → ${current.departments.find((department) => department.id === share.departmentId)?.name ?? 'department'}`
+            : `${owner.name} → ${current.employees.find((employee) => employee.id === share.employeeId)?.name ?? 'employee'}`,
+        });
+        return null;
+      },
+      revokeCalendarShare: (id) => {
+        save((prev) => {
+          const share = prev.calendarShares.find((row) => row.id === id);
+          if (!share || share.ownerId !== prev.settings.activeUserId) return prev;
+          return { ...prev, calendarShares: prev.calendarShares.filter((row) => row.id !== id) };
+        }, { action: 'Calendar sharing revoked', detail: id });
+      },
       upsertEntity: (entity) =>
         save(
           (prev) => ({
@@ -582,24 +765,74 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
           }),
           { action: 'Entity removed', detail: id },
         ),
-      addTimeEntry: (entry) =>
+      addTimeEntry: (entry) => {
+        const current = latestStateRef.current;
+        const actorId = current.settings.activeUserId;
+        const existing = current.timeEntries.find((row) => row.id === entry.id);
+        if (!canLogForEmployee(current, actorId, entry.employeeId) || (existing && !canLogForEmployee(current, actorId, existing.employeeId))) {
+          return 'You can log time only for yourself or a member of your reporting team.';
+        }
+        if (!entry.date) return 'Select a date.';
+        if (!Number.isFinite(entry.hours) || entry.hours <= 0 || entry.hours > 24) return 'Hours must be greater than zero and no more than 24.';
+        const mismatch = timeWindowError(entry.hours, entry.startTime, entry.endTime, { requireWindow: true });
+        if (mismatch) return mismatch;
+        const activity = current.activities.find((row) => row.id === entry.activityId);
+        if (!activity) return 'Pick the activity this time belongs to.';
+        const retainsOriginalActivity = Boolean(
+          existing && existing.employeeId === entry.employeeId && existing.activityId === entry.activityId,
+        );
+        if (activity.assigneeId !== entry.employeeId && !retainsOriginalActivity) {
+          return 'This activity is assigned to another employee. Delegate the task first, then log time under the current assignee.';
+        }
+        const now = new Date().toISOString();
+        const next: TimeEntry = {
+          ...entry,
+          hours: Number(entry.hours),
+          loggedById: actorId,
+          approved: existing ? entry.approved : false,
+          createdAt: existing?.createdAt ?? now,
+          updatedAt: now,
+        };
         save(
-          (prev) => ({ ...prev, timeEntries: [entry, ...prev.timeEntries] }),
-          { action: 'Time logged', detail: `${entry.hours}h on ${entry.date}` },
-        ),
+          (prev) => ({
+            ...prev,
+            timeEntries: existing
+              ? prev.timeEntries.map((row) => row.id === next.id ? next : row)
+              : [next, ...prev.timeEntries],
+          }),
+          {
+            action: existing ? 'Time entry updated' : 'Time logged',
+            detail: `${entry.hours}h on ${entry.date}${actorId !== entry.employeeId ? ` · logged by ${actorId} on behalf of ${entry.employeeId}` : ''}`,
+          },
+        );
+        return null;
+      },
       deleteTimeEntry: (id) =>
-        save((prev) => ({ ...prev, timeEntries: prev.timeEntries.filter((t) => t.id !== id) }), {
+        save((prev) => {
+          const entry = prev.timeEntries.find((row) => row.id === id);
+          if (!entry || !canLogForEmployee(prev, prev.settings.activeUserId, entry.employeeId)) return prev;
+          return { ...prev, timeEntries: prev.timeEntries.filter((t) => t.id !== id) };
+        }, {
           action: 'Time entry deleted',
           detail: id,
         }),
       toggleEntryApproved: (id) =>
+        save((prev) => {
+          const entry = prev.timeEntries.find((row) => row.id === id);
+          if (!entry || !canApproveEmployeeTime(prev, prev.settings.activeUserId, entry.employeeId)) return prev;
+          return {
+            ...prev,
+            timeEntries: prev.timeEntries.map((t) => (t.id === id ? { ...t, approved: !t.approved, updatedAt: new Date().toISOString() } : t)),
+          };
+        }),
+      addHoliday: (holiday) =>
         save((prev) => ({
           ...prev,
-          timeEntries: prev.timeEntries.map((t) => (t.id === id ? { ...t, approved: !t.approved } : t)),
-        })),
-      addHoliday: (holiday) =>
-        save((prev) => ({ ...prev, holidays: [...prev.holidays, holiday] }), {
-          action: 'Holiday added',
+          holidays: prev.holidays.some((row) => row.id === holiday.id)
+            ? prev.holidays.map((row) => row.id === holiday.id ? holiday : row)
+            : [...prev.holidays, holiday],
+        }), {
+          action: 'Holiday saved',
           detail: `${holiday.date} · ${holiday.name}`,
         }),
       deleteHoliday: (id) =>
@@ -707,7 +940,8 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
                 },
           ),
         })),
-      connectCalendar: (connection) =>
+      connectCalendar: (connection) => {
+        if (!canLogForEmployee(latestStateRef.current, activeUserId, connection.employeeId)) return;
         save(
           (prev) => {
             const others = prev.connections.filter(
@@ -716,8 +950,10 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
             return { ...prev, connections: [...others, connection] };
           },
           { action: 'Calendar connected', detail: `${connection.provider} · ${connection.accountEmail}` },
-        ),
-      disconnectCalendar: (employeeId, provider) =>
+        );
+      },
+      disconnectCalendar: (employeeId, provider) => {
+        if (!canLogForEmployee(latestStateRef.current, activeUserId, employeeId)) return;
         save(
           (prev) => ({
             ...prev,
@@ -728,11 +964,12 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
             ),
           }),
           { action: 'Calendar disconnected', detail: `${employeeId} · ${provider}` },
-        ),
+        );
+      },
       pushToCalendars: (activityId, providers) =>
         save((prev) => {
           const activity = prev.activities.find((a) => a.id === activityId);
-          if (!activity) return prev;
+          if (!activity || !canEditActivity(prev, prev.settings.activeUserId, activity)) return prev;
           const list: CalendarProvider[] = providers ?? [
             ...(activity.sync.outlook ? (['outlook'] as CalendarProvider[]) : []),
             ...(activity.sync.google ? (['google'] as CalendarProvider[]) : []),
@@ -743,7 +980,9 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
         save((prev) => ({
           ...prev,
           activities: prev.activities.map((a) =>
-            a.id === activityId ? { ...a, sync: { ...a.sync, [provider]: enabled } } : a,
+            a.id === activityId && canEditActivity(prev, prev.settings.activeUserId, a)
+              ? { ...a, sync: { ...a.sync, [provider]: enabled } }
+              : a,
           ),
         })),
       submitLeave: (input) => {
@@ -822,10 +1061,17 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
       upsertStream: (stream) => {
         const current = latestStateRef.current;
         if (!scope.canManageMaster) return 'Only department leadership can configure streams in this pilot.';
-        if (!stream.name.trim() || !stream.code.trim()) return 'Stream name and code are required.';
-        if (!current.departments.find((d) => d.id === stream.departmentId)?.devopsEnabled) return 'Enable DevOps delivery on the department first.';
+        if (!stream.name.trim() || !stream.code.trim()) return 'Sub-department name and code are required.';
+        if (!current.departments.some((department) => department.id === stream.departmentId)) return 'Select a department in this tenant.';
         if (!validStreamParent(current.deliveryStreams, stream.id, stream.parentId, stream.departmentId)) return 'A parent stream must be in the same department and cannot create a cycle.';
         if (current.deliveryStreams.some((s) => s.id !== stream.id && s.departmentId === stream.departmentId && s.code.toLowerCase() === stream.code.toLowerCase())) return 'Stream code must be unique in its department.';
+        const previous = current.deliveryStreams.find((row) => row.id === stream.id);
+        if (previous && previous.departmentId !== stream.departmentId) {
+          const linked = current.employees.some((employee) => employee.departmentId === previous.departmentId && employee.streamId === stream.id)
+            || current.workItems.some((item) => item.departmentId === previous.departmentId && item.streamId === stream.id)
+            || current.activities.some((activity) => activity.departmentId === previous.departmentId && activity.streamId === stream.id);
+          if (linked) return 'Reassign this sub-department’s people and linked work before moving it to another department.';
+        }
         if (current.deliveryStreams.some((s) => s.parentId === stream.id && s.departmentId !== stream.departmentId)) return 'Move child streams to this department first.';
         const lead = current.employees.find((e) => e.id === stream.leadId);
         if (stream.leadId && lead?.departmentId !== stream.departmentId) return 'The stream lead must belong to the owning department.';
@@ -1044,7 +1290,7 @@ export function emptyActivity(state: StoreState, defaults: Partial<Activity> = {
     endDate: today,
     startTime: '09:00',
     endTime: '10:00',
-    plannedHours: 2,
+    plannedHours: 1,
     status: 'not_started',
     priority: 'medium',
     progress: 0,
@@ -1095,6 +1341,8 @@ export function emptyTimeEntry(state: StoreState): TimeEntry {
     employeeId: state.settings.activeUserId,
     activityId: state.activities[0]?.id ?? '',
     date: new Date().toISOString().slice(0, 10),
+    startTime: state.settings.workingDayStart,
+    endTime: addHoursToTime(state.settings.workingDayStart, 2),
     hours: 2,
     note: '',
     billable: true,

@@ -90,7 +90,7 @@ export function Sidebar({
         <div className="fixed inset-0 z-30 bg-slate-950/50 lg:hidden" onClick={onCloseMobile} aria-hidden />
       ) : null}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-[248px] flex-col bg-ink-900 text-slate-300 transition-transform lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 flex w-[248px] max-w-[85vw] flex-col bg-ink-900 text-slate-300 transition-transform lg:translate-x-0 ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -297,7 +297,7 @@ export function Topbar({
           {notifMenu ? (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setNotifMenu(false)} />
-              <div className="absolute right-0 z-20 mt-2 w-80 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+              <div className="absolute right-0 z-20 mt-2 w-80 max-w-[calc(100vw-1rem)] rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
                 <div className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                   Escalations in your scope
                 </div>
@@ -351,7 +351,7 @@ export function Topbar({
           {userMenu ? (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setUserMenu(false)} />
-              <div className="absolute right-0 z-20 mt-2 w-80 rounded-xl border border-slate-200 bg-white shadow-xl">
+              <div className="absolute right-0 z-20 mt-2 w-80 max-w-[calc(100vw-1rem)] rounded-xl border border-slate-200 bg-white shadow-xl">
                 <div className="border-b border-slate-100 px-3 py-2.5">
                   <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Select profile</div>
                   <p className="mt-1 text-[11px] leading-snug text-slate-500">

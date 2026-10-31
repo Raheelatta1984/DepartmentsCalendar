@@ -54,7 +54,7 @@ function Probe() {
       results.push(['sync jobs added', s1.syncJobs.length - jobsBefore]);
       results.push(['audit logged', s1.auditLog.length > s0.auditLog.length, s0.auditLog.length, s1.auditLog.length]);
 
-      latest.addTimeEntry({ id: newId('te'), employeeId: emp.id, activityId: a.id, date: new Date().toISOString().slice(0, 10), hours: 3, note: 'smoke', billable: true, approved: false });
+      latest.addTimeEntry({ id: newId('te'), employeeId: emp.id, activityId: a.id, date: new Date().toISOString().slice(0, 10), startTime: '09:00', endTime: '12:00', hours: 3, note: 'smoke', billable: true, approved: false });
       setTimeout(() => {
         const s2 = latest.state;
         results.push(['time entry added', s2.timeEntries.length - s0.timeEntries.length]);
