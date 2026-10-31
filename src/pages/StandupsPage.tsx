@@ -20,9 +20,8 @@ import { addDays } from 'date-fns';
 import { useScopedState, useStore, emptyStandup, newId } from '../store';
 import type { StandupActionItem, StandupEntry, SupportRequest, SupportRequestStatus } from '../types';
 import {
-  ROLE_LABELS,
+  employeeTitle,
   canEditStandupEntry,
-  canResolveSupportRequest,
   canViewStandupBoard,
 } from '../lib/permissions';
 import {
@@ -36,6 +35,8 @@ import {
   type DepartmentStandupPulse,
 } from '../lib/standups';
 import { fromISO, prettyDate, toISO } from '../lib/dates';
+import { canPublishLeadershipUpdate, canSeeLeadershipUpdate, feelingScale, standupStateForViewer } from '../lib/people-workflows';
+import { orgChain } from '../lib/org';
 import { Avatar, Badge, Button, Card, EmptyState, Field, Input, PageHeader, Progress, SectionHeader, Select, Tabs, Textarea } from '../components/ui';
 import { useToast } from '../components/toast';
 
@@ -84,7 +85,7 @@ function DateNavigator({ date, onChange }: { date: string; onChange: (iso: strin
 /* ------------------------------------------------------------------ */
 
 function MyStandupTab({ date }: { date: string }) {
-  const { scope, upsertStandup  } = useStore();
+  const { scope, tenant, upsertStandup  } = useStore();
   /* Operational rows come from the active tenant, cut down to the departments
      the calendar is implemented for (master setting: one / several / all). */
   const state = useScopedState();
@@ -147,6 +148,10 @@ function MyStandupTab({ date }: { date: string }) {
   const save = (status: StandupEntry['status']) => {
     const entry = cleanEntry(status);
     if (status === 'submitted') {
+      if (!entry.feeling) {
+        toast.push({ tone: 'error', title: 'Choose how you are feeling', description: 'Select a rating from 1 to 5 before submitting.' });
+        return;
+      }
       if (!entry.lastDayUpdate.trim() || !entry.progressUpdate.trim()) {
         toast.push({ tone: 'error', title: 'Stand-up needs both updates', description: 'Share your last working day update and a progress update before submitting.' });
         return;
@@ -190,6 +195,18 @@ function MyStandupTab({ date }: { date: string }) {
         ) : null}
 
         <div className="mt-4 space-y-4">
+          <Field label="How are you feeling today?" hint="Choose one rating · labels and colours are configurable in Master setup">
+            <div role="radiogroup" aria-label="Feeling rating" className="flex flex-wrap gap-2">
+              {feelingScale(tenant).map((option) => (
+                <button key={option.value} type="button" role="radio" aria-checked={draft.feeling === option.value}
+                  onClick={() => patch({ feeling: option.value })}
+                  className="rounded-lg border-2 px-3 py-2 text-xs font-medium transition"
+                  style={{ borderColor: option.color, backgroundColor: draft.feeling === option.value ? option.color : 'white', color: draft.feeling === option.value ? 'white' : option.color }}>
+                  {option.value} · {option.label}
+                </button>
+              ))}
+            </div>
+          </Field>
           <Field label="Last working day — what did you complete?" hint="Share the activity and outcomes from the previous working day">
             <Textarea
               value={draft.lastDayUpdate}
@@ -340,19 +357,19 @@ function MyStandupTab({ date }: { date: string }) {
           </ol>
         </Card>
         <Card>
-          <SectionHeader title="Who sees this" subtitle="Role-based, department-scoped visibility" />
+          <SectionHeader title="Who sees this" subtitle="Reporting-line visibility" />
           <ul className="mt-3 space-y-2 text-[11px] leading-snug text-slate-600">
             <li className="flex gap-2">
               <UserCheck className="mt-0.5 h-3.5 w-3.5 flex-none text-brand-500" />
-              Your supervisor, manager and department head track the whole department.
+              Your reporting leads can review submitted check-ins from their downstream reports.
             </li>
             <li className="flex gap-2">
               <Users className="mt-0.5 h-3.5 w-3.5 flex-none text-brand-500" />
-              The CEO and COO see the high-level pulse and drill in department by department.
+              You can see your immediate reporting lead, but not their reporting lead’s personal stand-up.
             </li>
             <li className="flex gap-2">
               <MessagesSquare className="mt-0.5 h-3.5 w-3.5 flex-none text-brand-500" />
-              Other team members only see their own stand-up form.
+              Leadership messages reach you separately through the cascade, without exposing higher personal check-ins.
             </li>
           </ul>
         </Card>
@@ -403,9 +420,8 @@ function PulseTiles({ pulse }: { pulse: DepartmentStandupPulse }) {
 /* ------------------------------------------------------------------ */
 
 function StandupDetail({ entry, departmentId }: { entry: StandupEntry; departmentId: string }) {
-  const { scope, setSupportRequestStatus, toggleStandupAction } = useStore();
-  const state = useScopedState();
-  const canResolve = canResolveSupportRequest(scope, departmentId);
+  const { scope, state, tenant, setSupportRequestStatus, toggleStandupAction } = useStore();
+  const canResolve = scope.user.id !== entry.employeeId && orgChain(state.employees, entry.employeeId).some((person) => person.id === scope.user.id);
   const canToggle = canResolve || canEditStandupEntry(scope, entry.employeeId);
   const deptMap = new Map(state.departments.map((d) => [d.id, d]));
 
@@ -414,6 +430,7 @@ function StandupDetail({ entry, departmentId }: { entry: StandupEntry; departmen
 
   return (
     <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/50 p-3">
+      {entry.feeling ? (() => { const choice = feelingScale(tenant).find((option) => option.value === entry.feeling); return choice ? <div className="text-xs font-semibold" style={{ color: choice.color }}>Feeling: {choice.value} · {choice.label}</div> : null; })() : null}
       <div className="grid gap-2 md:grid-cols-2">
         <DetailBlock label="Last working day">{entry.lastDayUpdate}</DetailBlock>
         <DetailBlock label="Progress update">{entry.progressUpdate}</DetailBlock>
@@ -524,11 +541,12 @@ function DepartmentBoardTab({
   onDepartmentChange: (id: string) => void;
   onDateChange: (iso: string) => void;
 }) {
-  const { scope } = useStore();
-  const state = useScopedState();
+  const { scope, state: tenantState } = useStore();
+  const state = useMemo(() => standupStateForViewer(tenantState, scope.user.id), [tenantState, scope.user.id]);
+  const visibleDepartments = state.departments.filter((department) => state.employees.some((person) => person.departmentId === department.id));
   const toast = useToast();
   const [openId, setOpenId] = useState<string | null>(null);
-  const department = state.departments.find((d) => d.id === departmentId) ?? scope.visibleDepartments[0];
+  const department = visibleDepartments.find((d) => d.id === departmentId) ?? visibleDepartments[0];
   const pulse = useMemo(
     () => (department ? buildDepartmentPulse(state, department.id, date) : null),
     [state, department, date],
@@ -545,7 +563,7 @@ function DepartmentBoardTab({
         <EmptyState
           icon={<MessagesSquare className="h-5 w-5" />}
           title="No department in your scope"
-          description="Your role does not currently track any department. Switch profile from the avatar menu to a supervisor, manager or department head persona."
+          description="No reporting-line members are available in this tenant."
         />
       </Card>
     );
@@ -557,7 +575,7 @@ function DepartmentBoardTab({
         <div className="flex flex-wrap items-center gap-2">
           <div className="min-w-[240px] flex-1">
             <Select value={department.id} onChange={(e) => onDepartmentChange(e.target.value)} aria-label="Department">
-              {scope.visibleDepartments.map((dept) => (
+              {visibleDepartments.map((dept) => (
                 <option key={dept.id} value={dept.id}>
                   {dept.name} · {dept.code}
                 </option>
@@ -594,10 +612,10 @@ function DepartmentBoardTab({
       </Card>
 
       {layers.map((layer) => (
-        <Card key={layer.role} padded={false}>
+        <Card key={layer.key} padded={false}>
           <div className="flex items-center justify-between px-4 pt-4">
             <SectionHeader title={layer.label} subtitle={`${layer.members.length} ${layer.members.length === 1 ? 'person' : 'people'}`} />
-            <Badge tone="neutral">{ROLE_LABELS[layer.role]}</Badge>
+            <Badge tone="neutral">Reporting line</Badge>
           </div>
           <div className="divide-y divide-slate-100 px-2 pb-2 pt-1">
             {layer.members.map(({ employee, entry }) => {
@@ -637,7 +655,7 @@ function DepartmentBoardTab({
                     <Avatar name={employee.name} color={employee.avatarColor} size={30} />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-xs font-semibold text-slate-800">{employee.name}</div>
-                      <div className="truncate text-[10px] text-slate-400">{employee.code} · {ROLE_LABELS[employee.role]}</div>
+                      <div className="truncate text-[10px] text-slate-400">{employee.code} · {employeeTitle(employee)}</div>
                     </div>
                     {entry ? (
                       <span className="hidden items-center gap-2 sm:flex">
@@ -702,11 +720,11 @@ function DepartmentBoardTab({
 /* ------------------------------------------------------------------ */
 
 function ExecutivePulseTab({ date, onOpenDepartment }: { date: string; onOpenDepartment: (id: string) => void }) {
-  const { scope } = useStore();
-  const state = useScopedState();
+  const { scope, state: tenantState } = useStore();
+  const state = useMemo(() => standupStateForViewer(tenantState, scope.user.id), [tenantState, scope.user.id]);
   const pulses = useMemo(
-    () => buildStandupPulses(state, scope.visibleDepartments.map((d) => d.id), date),
-    [state, scope.visibleDepartments, date],
+    () => buildStandupPulses(state, state.departments.filter((d) => state.employees.some((person) => person.departmentId === d.id)).map((d) => d.id), date),
+    [state, date],
   );
   const totals = pulses.reduce(
     (acc, pulse) => {
@@ -738,7 +756,7 @@ function ExecutivePulseTab({ date, onOpenDepartment }: { date: string; onOpenDep
         <div className="px-4 pt-4">
           <SectionHeader
             title="Department stand-up summary"
-            subtitle={`High-level callouts for ${prettyDate(date)} — open a department to read every layer, top to bottom`}
+            subtitle={`Reporting-line callouts for ${prettyDate(date)} — open a department to read visible check-ins`}
           />
         </div>
         <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
@@ -821,29 +839,49 @@ function Pill({ children, active, tone }: { children: React.ReactNode; active: b
   return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${tones[tone]}`}>{children}</span>;
 }
 
+/** Leadership communications are intentional messages, never copied personal check-ins. */
+function LeadershipUpdates() {
+  const { state, scope, publishLeadershipUpdate } = useStore();
+  const [message, setMessage] = useState('');
+  const toast = useToast();
+  const updates = state.leadershipUpdates.filter((update) => canSeeLeadershipUpdate(state, scope.user.id, update)).slice(0, 8);
+  const canPublish = canPublishLeadershipUpdate(state, scope.user.id);
+  return <Card className="mb-4">
+    <SectionHeader title="Leadership cascade" subtitle="Separate updates from department heads and leads flow down their reporting line, without revealing higher personal stand-ups." />
+    {updates.length ? <div className="mt-3 space-y-2">{updates.map((update) => <div key={update.id} className="rounded-lg bg-brand-50/60 p-2.5 text-xs text-slate-700">
+      <div className="mb-1 text-[10px] font-semibold text-brand-700">{state.employees.find((person) => person.id === update.authorId)?.name ?? 'Department lead'} · {new Date(update.createdAt).toLocaleDateString()}</div>
+      <p className="whitespace-pre-wrap">{update.message}</p>
+    </div>)}</div> : <p className="mt-2 text-xs text-slate-400">No cascaded updates for your reporting line yet.</p>}
+    {canPublish ? <div className="mt-3 flex flex-wrap items-end gap-2"><div className="min-w-[220px] flex-1"><Textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Share a leadership update with your downstream team…" /></div>
+      <Button size="sm" variant="primary" onClick={() => { const error = publishLeadershipUpdate(message); if (error) toast.push({ tone: 'error', title: 'Update not published', description: error }); else { setMessage(''); toast.push({ tone: 'success', title: 'Update cascaded to your reporting line' }); } }}>Publish update</Button></div> : null}
+  </Card>;
+}
+
 /* ------------------------------------------------------------------ */
 /* Page shell                                                          */
 /* ------------------------------------------------------------------ */
 
 export function StandupsPage() {
-  const { scope } = useStore();
+  const { scope, state: tenantState } = useStore();
+  const visible = useMemo(() => standupStateForViewer(tenantState, scope.user.id), [tenantState, scope.user.id]);
+  const visibleDepartments = visible.departments.filter((department) => visible.employees.some((person) => person.departmentId === department.id));
   const today = toISO(new Date());
   const [date, setDate] = useState(today);
   const isBoardViewer = canViewStandupBoard(scope);
   const isExecutive = scope.isGroupExecutive;
 
-  const validDepartments = new Set(scope.visibleDepartments.map((d) => d.id));
+  const validDepartments = new Set(visibleDepartments.map((d) => d.id));
   const hashDept = departmentFromHash();
   const [departmentId, setDepartmentId] = useState<string>(
-    hashDept && validDepartments.has(hashDept) ? hashDept : scope.visibleDepartments[0]?.id ?? '',
+    hashDept && validDepartments.has(hashDept) ? hashDept : visibleDepartments.find((d) => d.id === scope.user.departmentId)?.id ?? visibleDepartments[0]?.id ?? '',
   );
   useEffect(() => {
     if (departmentId && validDepartments.has(departmentId)) return;
-    setDepartmentId(scope.visibleDepartments[0]?.id ?? '');
+    setDepartmentId(visibleDepartments.find((d) => d.id === scope.user.departmentId)?.id ?? visibleDepartments[0]?.id ?? '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scope.user.id]);
 
-  const defaultTab: StandupTab = isExecutive ? 'pulse' : isBoardViewer ? 'board' : 'mine';
+  const defaultTab: StandupTab = isExecutive ? 'pulse' : 'mine';
   const [tab, setTab] = useState<StandupTab>(defaultTab);
 
   /* Profile switching changes which tabs exist — reset to the persona's
@@ -856,7 +894,7 @@ export function StandupsPage() {
   const tabs = [
     { id: 'mine' as const, label: 'My stand-up' },
     ...(isExecutive ? [{ id: 'pulse' as const, label: 'Executive pulse' }] : []),
-    ...(isBoardViewer ? [{ id: 'board' as const, label: 'Department board' }] : []),
+    ...(isBoardViewer ? [{ id: 'board' as const, label: 'Reporting-line board' }] : []),
   ];
 
   return (
@@ -864,7 +902,7 @@ export function StandupsPage() {
       <PageHeader
         eyebrow="Daily stand-up"
         title="Department stand-up & support callouts"
-        description="A daily check-in per department: last working day updates, progress, blockers, support requests and the day's action items — visible to authorised department leadership and the CEO/COO only."
+        description="Your own check-in, your immediate reporting lead and your downstream reports. Leadership messages are cascaded separately; higher personal stand-ups are not shown."
         actions={<DateNavigator date={date} onChange={setDate} />}
       />
 
@@ -872,6 +910,7 @@ export function StandupsPage() {
         <Tabs<StandupTab> guideSkip tabs={tabs} value={tab} onChange={setTab} />
       </Card>
 
+      <LeadershipUpdates />
       {tab === 'mine' ? <MyStandupTab date={date} /> : null}
       {tab === 'pulse' && isExecutive ? (
         <ExecutivePulseTab

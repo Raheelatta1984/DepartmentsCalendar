@@ -60,6 +60,9 @@ function Probe() {
         results.push(['time entry added', s2.timeEntries.length - s0.timeEntries.length]);
         const holBefore = s2.holidays.length;
         const added = latest.generateHolidays('AE', 2032);
+        // The top-level CEO has no reporting lead, so use the employee persona
+        // for this upward-only escalation.
+        latest.setActiveUser(emp.id);
         setTimeout(() => {
           results.push(['generated holidays', added, 'total delta', latest.state.holidays.length - holBefore]);
           const escBefore = latest.state.escalations.length;
@@ -68,6 +71,8 @@ function Probe() {
             latest.upsertEscalation({ id: 'esc-smoke', departmentId: emp.departmentId, period: 'week', periodStart: score.periodStart, periodEnd: score.periodEnd, score: 40, threshold: 70, utilization: 50, onTimeRate: 40, recipients: [], cc: [], createdAt: new Date().toISOString(), status: 'open', note: 'smoke' });
           setTimeout(() => {
             results.push(['escalation added', latest.state.escalations.length - escBefore]);
+            const raised = latest.state.escalations.find((row) => row.id === 'esc-smoke');
+            results.push(['urgent follow-up', latest.state.activities.some((row) => row.id === raised?.followUpActivityId && row.assigneeId === emp.managerId && row.type === 'follow_up' && row.priority === 'critical')]);
             latest.setActiveUser(emp.id);
             setTimeout(() => {
               results.push(['active user switched', latest.state.settings.activeUserId === emp.id]);
@@ -80,7 +85,7 @@ function Probe() {
                 errs.slice(0, 5).forEach((e) => console.log('ERR', e.slice(0, 300)));
                 try {
                   assert.equal(errs.length, 0, 'store actions must not log errors');
-                  for (const name of ['activity created', 'audit logged', 'active user switched', 'activity deleted', 'time entries cascaded']) {
+                  for (const name of ['activity created', 'audit logged', 'active user switched', 'activity deleted', 'time entries cascaded', 'urgent follow-up']) {
                     assert.equal(results.find((r) => r[0] === name)?.[1], true, name);
                   }
                   assert.equal(results.find((r) => r[0] === 'sync jobs added')?.[1], 2);

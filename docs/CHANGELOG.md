@@ -3,7 +3,27 @@
 
 The portal’s **What’s new** tab renders this same log from `src/data/releases.ts`, so the screen and this file can never disagree. Newest first.
 
-**21 releases · last updated 1 November 2026**
+**22 releases · last updated 1 November 2026**
+
+---
+
+## Reporting-line check-ins, escalations and one-on-ones
+
+**1 November 2026 · Just added**
+
+Stand-ups show your own check-in, your immediate reporting lead and your downstream reports, without displaying higher personal stand-ups. Department heads and leads can publish separate cascade updates. Every tab now offers time logging and editing, including directly in an activity. Staff can raise an escalation only to their reporting lead; it creates an urgent follow-up activity and supports notes and actions along the reporting chain. A configurable coloured 1–5 feeling scale and structured one-on-ones support wellbeing and career conversations.
+
+- Reporting-line stand-up board: self, immediate lead and downstream reports; no higher personal stand-ups or peer leakage
+- Separate cascade messages from department heads and leads, and business-designation layers for PMO, BA and QA
+- Log or edit actual hours from every tab and inside activity setup, alongside planned hours
+- Escalations route to the reporter’s immediate lead and automatically create a critical follow-up activity
+- Reporting-chain follow-up threads support notes and optional urgent actions from leadership down to staff
+- Tenant-configurable 1–5 feeling labels and colour codes in Master setup
+- One-on-one discussions cover balance, support, feelings, escalation, feedback and career tasks and advice
+- On request, a configured AI provider generates a summary for the lead and their leadership chain; drafts are not shown upward in the portal
+- The shared pilot snapshot limit is 4 MB; individual authentication is still required before storing confidential personnel information
+
+_Where to look: **One-on-ones** (`#/one-on-ones`) — Open one-on-ones._
 
 ---
 

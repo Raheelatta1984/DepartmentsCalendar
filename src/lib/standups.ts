@@ -1,7 +1,6 @@
 import type {
   Department,
   Employee,
-  Role,
   StandupActionItem,
   StandupEntry,
   StoreState,
@@ -113,37 +112,46 @@ export function buildStandupPulses(state: StoreState, departmentIds: string[], d
 /* ---- Top-to-bottom reporting layers -------------------------------- */
 
 export interface StandupLayer {
-  role: Role;
+  key: string;
   label: string;
   members: { employee: Employee; entry: StandupEntry | undefined }[];
 }
 
-const LAYER_ORDER: { role: Role; label: string }[] = [
-  { role: 'department_head', label: 'Department head' },
-  { role: 'unit_head', label: 'Unit heads' },
-  { role: 'manager', label: 'Managers' },
-  { role: 'supervisor', label: 'Supervisors' },
-  { role: 'employee', label: 'Team members' },
-];
+const LAYERS = [
+  ['executive', 'Executive leadership'],
+  ['heads', 'Department Heads'],
+  ['pmo', 'PMO'],
+  ['baqa', 'BA & QA Leads'],
+  ['ba', 'BA Leads'],
+  ['qa', 'QA Leads'],
+  ['leads', 'Department & stream leads'],
+  ['members', 'Team members'],
+] as const;
 
-/**
- * The department board reads top to bottom: head first, then the
- * management layer, supervisors, and finally the employees. The CEO and
- * Head of Operations appear inside their own Executive Office layer.
- */
+/** Classify by real business designation, not the legacy access-role name. */
+function layerFor(employee: Employee, department: Department): string {
+  const title = (employee.jobTitle ?? '').toLowerCase();
+  if (employee.role === 'ceo' || employee.role === 'head_operations') return 'executive';
+  if (employee.id === department.headId || employee.role === 'department_head' || /\b(head|cio|cto)\b/.test(title)) return 'heads';
+  const lead = /\blead\b/.test(title);
+  const ba = /\bba\b|business analy/.test(title);
+  const qa = /\bqa\b|quality assur/.test(title);
+  if (lead && ba && qa) return 'baqa';
+  if (lead && ba) return 'ba';
+  if (lead && qa) return 'qa';
+  if (/\bpmo\b/.test(title)) return 'pmo';
+  if (lead || ['unit_head', 'manager', 'supervisor'].includes(employee.role)) return 'leads';
+  return 'members';
+}
+
+/** Caller passes a viewer-filtered state; each visible active person appears once. */
 export function standupLayers(state: StoreState, department: Department, date: string): StandupLayer[] {
   const members = state.employees
     .filter((employee) => employee.departmentId === department.id && employee.status !== 'inactive')
-    .sort((a, b) => {
-      const rank = ROLE_RANK[b.role] - ROLE_RANK[a.role];
-      return rank || a.name.localeCompare(b.name);
-    });
-
-  return LAYER_ORDER.map(({ role, label }) => ({
-    role,
-    label,
-    members: members
-      .filter((employee) => employee.role === role)
+    .sort((a, b) => ROLE_RANK[b.role] - ROLE_RANK[a.role] || a.name.localeCompare(b.name));
+  return LAYERS.map(([key, label]) => ({
+    key, label,
+    members: members.filter((employee) => layerFor(employee, department) === key)
       .map((employee) => ({ employee, entry: entryFor(state.standups, date, employee.id) })),
   })).filter((layer) => layer.members.length > 0);
 }

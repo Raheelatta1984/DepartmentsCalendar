@@ -74,20 +74,19 @@ export function WhatsNewPage({ onNavigate }: { onNavigate: (view: ViewKey) => vo
           <div className="absolute -right-1 -top-5 h-32 w-32 rounded-full border border-white/10" />
           <div className="relative max-w-2xl">
             <Badge tone="brand" className="!bg-white/10 !text-blue-100 !ring-white/10">
-              <LockKeyhole className="h-3 w-3" /> New · Private calendars
+              <MessagesSquare className="h-3 w-3" /> New · People & reporting lines
             </Badge>
-            <h2 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">Your work calendar is yours to share.</h2>
+            <h2 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">Check in, log time and follow up together.</h2>
             <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-300">
-              Sharing with a department or a single colleague is now a decision you make — read-only, reversible, and never a
-              licence to edit, log time on your behalf or approve on your behalf. Delegate a task and current ownership moves
-              with it, while history stays where it was recorded.
+              See stand-ups within your reporting line, share leadership updates, log actual time from any tab and raise urgent
+              follow-ups. Structured one-on-ones bring wellbeing and career conversations together with AI summaries for leadership.
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <Button className="!border-white/15 !bg-white !text-slate-900 hover:!bg-slate-100" onClick={() => onNavigate('calendar')}>
-                <CalendarDays className="h-3.5 w-3.5" /> Open the calendar <ArrowUpRight className="h-3.5 w-3.5" />
+              <Button className="!border-white/15 !bg-white !text-slate-900 hover:!bg-slate-100" onClick={() => onNavigate('standups')}>
+                <CalendarDays className="h-3.5 w-3.5" /> Open daily stand-ups <ArrowUpRight className="h-3.5 w-3.5" />
               </Button>
-              <Button className="!border-white/15 !bg-white/10 !text-white hover:!bg-white/20" onClick={() => onNavigate('delivery')}>
-                <GitBranch className="h-3.5 w-3.5" /> See DevOps delivery
+              <Button className="!border-white/15 !bg-white/10 !text-white hover:!bg-white/20" onClick={() => onNavigate('one-on-ones')}>
+                <GitBranch className="h-3.5 w-3.5" /> Explore one-on-ones
               </Button>
             </div>
             <div className="mt-5 flex flex-wrap gap-x-6 gap-y-1 text-[11px] text-slate-300">

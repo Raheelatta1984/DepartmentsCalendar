@@ -135,7 +135,7 @@ Audit trail shows the operator",RIT,,,,unclassified,build,not_started,24,,contos
 - `status`: not_started, in_progress, blocked, completed, cancelled.
 - Blank optional fields on a re-import preserve existing local project/stream/assignee/funding/phase/status/estimate overrides. A blank description or acceptance-criteria field also preserves the existing value.
 - UTF-8, quoted commas, escaped quotes and multiline CSV fields are supported.
-- Limits: 500 rows and 512 KB per batch; the entire shared snapshot must remain below the existing 3 MB pilot limit.
+- Limits: 500 rows and 512 KB per batch; the entire shared snapshot must remain below the existing 4 MB pilot limit.
 
 JSON accepts either an array of the same row objects or `{ "items": [...] }`.
 

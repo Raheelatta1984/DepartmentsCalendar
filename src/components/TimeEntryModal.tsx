@@ -3,7 +3,7 @@ import { AlertTriangle, Check, Clock3, Trash2, UserCheck } from 'lucide-react';
 import { newId, useStore } from '../store';
 import type { TimeEntry } from '../types';
 import { TYPE_LABELS } from '../lib/analytics';
-import { workingDays } from '../lib/dates';
+import { toISO, workingDays } from '../lib/dates';
 import { workItemPath } from '../lib/delivery';
 import { canLogForEmployee } from '../lib/permissions';
 import { addHoursToTime, elapsedHours, timeWindowError } from '../lib/time';
@@ -25,7 +25,7 @@ export function TimeEntryModal({
     id: newId('te'),
     employeeId: state.settings.activeUserId,
     activityId: '',
-    date: new Date().toISOString().slice(0, 10),
+    date: toISO(new Date()),
     startTime: state.settings.workingDayStart,
     endTime: addHoursToTime(state.settings.workingDayStart, 2),
     hours: 2,
@@ -50,7 +50,7 @@ export function TimeEntryModal({
       id: entry?.id ?? newId('te'),
       employeeId: entry?.employeeId ?? defaults?.employeeId ?? state.settings.activeUserId,
       activityId: openingActivityId,
-      date: entry?.date ?? defaults?.date ?? new Date().toISOString().slice(0, 10),
+      date: entry?.date ?? defaults?.date ?? toISO(new Date()),
       startTime,
       endTime,
       hours: entry?.hours ?? elapsedHours(startTime, endTime) ?? requestedHours,

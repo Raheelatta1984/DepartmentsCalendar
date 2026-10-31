@@ -47,7 +47,7 @@ Shared company data is not cached in localStorage. Only the selected persona ID 
 - The API classifies database errors using SQLSTATE, HTTP status and network error metadata. Transient connection/provider failures carry `retryable: true`; schema/permission errors, rejected credentials, missing endpoints and unknown failures carry `retryable: false` with a safe repair message. Raw provider error messages and credentials are never returned to the browser. The circuit breaker is used only for transient failures and is cleared as soon as a database call succeeds.
 - Automatic retries pause while the tab is in the background and resume when it is visible again. A browser `online` event can resume an in-flight retry but cannot reset the five-attempt budget. A hidden tab therefore cannot keep Neon awake (and its quota) burning for nobody.
 - Manual refresh and refocusing a clean tab after a minute load other devices' updates. There is no continuous polling or keep-alive job, allowing Neon to suspend when idle.
-- A strict server-side schema validates fields, collection identifiers and required master records. Snapshot payloads are limited to 3 MB. This design is for a small pilot, **not** large-scale multi-user production.
+- A strict server-side schema validates fields, collection identifiers and required master records. Snapshot payloads are limited to 4 MB. This design is for a small pilot, **not** large-scale multi-user production.
 
 ### Access boundary
 
@@ -62,7 +62,7 @@ Every API request passes through an in-process guard before anything touches Neo
 | Layer | What it protects | Behaviour |
 | --- | --- | --- |
 | **Rate limiter** (sliding window, per client HMAC + route class) | Everything | `config` 120/min, `session:login` 10/min, `session:logout` 30/min, `workspace:read` 60/min, `workspace:write` 40/min, unknown routes 20/min, global 240/min. Over-limit → `429` with `Retry-After` and `RateLimit-*` headers. Override with `RATE_LIMIT_<CLASS>_PER_MINUTE`; disable with `REQUEST_GUARD_DISABLED=1`. |
-| **Read micro-cache + single-flight** | `GET /api/workspace` (up to 3 MB JSONB per read) | Snapshot is cached for 5 s (`WORKSPACE_READ_CACHE_MS`), concurrent reads share one query, a successful `PUT` primes the cache with the stored state, and a weak `ETag` lets the browser send `If-None-Match` and receive `304` with no body and no database read. |
+| **Read micro-cache + single-flight** | `GET /api/workspace` (up to 4 MB JSONB per read) | Snapshot is cached for 5 s (`WORKSPACE_READ_CACHE_MS`), concurrent reads share one query, a successful `PUT` primes the cache with the stored state, and a weak `ETag` lets the browser send `If-None-Match` and receive `304` with no body and no database read. |
 | **Negative cache** (bounded TTL map with a Bloom filter in front) | Known misses / known failures | Empty workspace (10 s), cookies that failed verification (5 min), clients blocked by the persisted login limiter (15 min, served `429` from memory), unknown routes (10 min) and a **circuit breaker** that fails fast for 5 s after a Neon connection error instead of queueing more attempts. A Bloom miss skips the map lookup entirely. |
 | **Bloom filter of rejected password fingerprints** | `POST /api/session` (two DB statements per guess) | A guess that was already rejected is answered `401` without the database. A false positive can never lock out the correct password: the real constant-time comparison always runs first and a correct password always proceeds. |
 

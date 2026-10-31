@@ -671,6 +671,8 @@ export function createSeedState(): StoreState {
       holidays: holidayRows,
       countries: COUNTRIES,
     }),
+    leadershipUpdates: [],
+    oneOnOnes: [],
     escalations: ESCALATIONS.map((esc) => {
       const dept = DEPARTMENTS.find((d) => d.id === esc.departmentId);
       const head = EMPLOYEES.find((e) => e.id === dept?.headId);

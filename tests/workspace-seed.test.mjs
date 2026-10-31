@@ -41,7 +41,7 @@ test('a seed that fails validation or the size limit writes nothing', async () =
 
   assert.throws(() => prepareSeedState({ ...seed, employees: [] }), SeedError);
   assert.throws(() => prepareSeedState(null), SeedError);
-  assert.throws(() => prepareSeedState(seed, { maxBytes: 32 }), /3 MB pilot limit/);
+  assert.throws(() => prepareSeedState(seed, { maxBytes: 32 }), /4 MB pilot limit/);
   assert.throws(() => prepareSeedState({ ...seed, settings: { ...seed.settings, weekStartsOn: 3 } }), SeedError);
   await assert.rejects(() => seedWorkspaceIfEmpty(untouched, { ...seed, departments: [] }), SeedError);
   // The guard runs before any DDL/DML, so the database is still untouched.

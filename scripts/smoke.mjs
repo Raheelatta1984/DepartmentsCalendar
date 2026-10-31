@@ -43,7 +43,7 @@ assert.ok(!text.includes('Arjun Mehta'), 'another tenant’s people must never b
 assert.ok(!text.includes('Accounts & Finance'), 'another tenant’s departments must never be on screen');
 assert.ok(!text.includes('Meridian Contracting'), 'another tenant’s entities must never be on screen');
 console.log('--- body sample:', text.slice(0, 400).replace(/\s+/g, ' '));
-for (const v of ['calendar','activities','roadmap','timesheet','standups','leave','delivery','effort-reports','projects','capitalisation','performance','integrations','admin','whats-new']) {
+for (const v of ['calendar','activities','roadmap','timesheet','standups','one-on-ones','leave','delivery','effort-reports','projects','capitalisation','performance','integrations','admin','whats-new']) {
   window.location.hash = '#/' + v;
   window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'));
   await new Promise((r) => setTimeout(r, 900));

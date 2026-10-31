@@ -297,7 +297,7 @@ export function OrganisationPage() {
                       }}
                       className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-brand-700 hover:bg-brand-50"
                     >
-                      <UserCog className="h-3 w-3" /> Change manager
+                      <UserCog className="h-3 w-3" /> Change reporting lead
                     </button>
                   ) : null}
                 </div>
@@ -320,7 +320,7 @@ export function OrganisationPage() {
       <PageHeader
         eyebrow="Organisation"
         title="Who reports to whom"
-        description={`The reporting-line hierarchy for ${tenant?.name ?? state.settings.groupName}, derived from the employee register. Drag anyone onto a new manager — or onto the top-level drop zone — to re-parent them. Their team moves with them, and department, stream and calendar access stay exactly as they were.`}
+        description={`The reporting-line hierarchy for ${tenant?.name ?? state.settings.groupName}, derived from the employee register. Drag anyone onto a new reporting lead — or onto the top-level drop zone — to re-parent them. Their team moves with them, and department, stream and calendar access stay exactly as they were.`}
         actions={
           <>
             <Button size="sm" onClick={() => { setCollapsed(new Set()); setQuery(''); }}>
@@ -339,7 +339,7 @@ export function OrganisationPage() {
         {[
           { icon: <Users className="h-4 w-4" />, label: 'People in scope', value: stats.headcount, hint: `${stats.topLevel} at the top level` },
           { icon: <Layers className="h-4 w-4" />, label: 'Reporting layers', value: stats.layers, hint: `Widest span ${stats.widestSpan} direct reports` },
-          { icon: <GitBranch className="h-4 w-4" />, label: 'Managers', value: stats.managers, hint: `${stats.individualContributors} individual contributors` },
+          { icon: <GitBranch className="h-4 w-4" />, label: 'Reporting leads', value: stats.managers, hint: `${stats.individualContributors} individual contributors` },
           { icon: <History className="h-4 w-4" />, label: 'Line changes logged', value: history.length, hint: 'Audited in Master setup' },
         ].map((card) => (
           <Card key={card.label} className="!py-3">
@@ -386,7 +386,7 @@ export function OrganisationPage() {
                 title="Reporting hierarchy"
                 subtitle={
                   canEdit
-                    ? 'Drag a card onto a colleague to make them the manager. Dark cards with a rose outline are the dragged person’s own team and cannot be dropped on.'
+                    ? 'Drag a card onto a colleague to make them the reporting lead. Dark cards with a rose outline are the dragged person’s own team and cannot be dropped on.'
                     : 'Your access tier can view the hierarchy. An executive, department head or unit head can change reporting lines.'
                 }
               />
@@ -418,7 +418,7 @@ export function OrganisationPage() {
                   <div className="min-w-0 flex-1">
                     <div className="text-xs font-semibold text-slate-700">Top of the hierarchy</div>
                     <div className="text-[10px] text-slate-500">
-                      Drop a person here to remove their manager. Their reports stay beneath them.
+                      Drop a person here to remove their reporting lead. Their reports stay beneath them.
                     </div>
                   </div>
                   <span className="text-[10px] text-slate-400">{stats.topLevel} currently unanchored</span>
@@ -555,7 +555,7 @@ export function OrganisationPage() {
                 </li>
                 <li className="flex gap-1.5">
                   <ArrowRight className="mt-0.5 h-3 w-3 flex-none text-brand-500" />
-                  Manager visibility follows the new line immediately, so timesheet approvals and team scope update with it.
+                  Reporting-line visibility follows the new line immediately, so timesheet approvals and team scope update with it.
                 </li>
                 <li className="flex gap-1.5">
                   <Link2Off className="mt-0.5 h-3 w-3 flex-none text-rose-400" />
@@ -572,7 +572,7 @@ export function OrganisationPage() {
           <div className="px-4 pt-4">
             <SectionHeader
               title="Reporting directory"
-              subtitle="One row per person with the line above them. Expand a row to see their team; use Change manager for a keyboard-friendly alternative to dragging."
+              subtitle="One row per person with the line above them. Expand a row to see their team; use Change reporting lead for a keyboard-friendly alternative to dragging."
             />
           </div>
           <div className="mt-3 overflow-x-auto">
@@ -759,7 +759,7 @@ function ChangeManagerModal({
               autoFocus
               value={query}
               onChange={(event) => onQuery(event.target.value)}
-              placeholder="Search a manager by name or designation…"
+              placeholder="Search a reporting lead by name or designation…"
               className="pl-8"
             />
           </div>
@@ -803,7 +803,7 @@ function ChangeManagerModal({
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[11px] font-semibold text-slate-800">
                     {option.name}
-                    {current ? <span className="ml-1 text-[9px] font-medium text-brand-600">current manager</span> : null}
+                    {current ? <span className="ml-1 text-[9px] font-medium text-brand-600">current reporting lead</span> : null}
                   </span>
                   <span className="block truncate text-[10px] text-slate-500">
                     {employeeTitle(option)} · {departmentById.get(option.departmentId)?.name ?? 'No department'}

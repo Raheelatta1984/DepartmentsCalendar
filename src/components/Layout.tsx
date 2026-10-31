@@ -33,6 +33,7 @@ import { employeeTitle, ROLE_LABELS, ROLE_RANK, describeScope, canViewStandupBoa
 import { entityRoot, entitySubtree } from '../lib/entities';
 import { CALENDAR_SCOPE_LABELS, describeCalendarScope } from '../lib/tenants';
 import { toISO } from '../lib/dates';
+import { canViewEscalation, standupStateForViewer } from '../lib/people-workflows';
 import type { Entity, ViewKey } from '../types';
 import { Avatar, Badge, Button, Field, IconButton, SearchInput, Select } from './ui';
 import { AiGuideToggle } from './AiGuide';
@@ -49,6 +50,7 @@ export const NAV_ITEMS: { id: ViewKey; label: string; icon: React.ReactNode; gro
   { id: 'activities', label: 'Activity register', icon: <ListChecks className="h-4 w-4" />, group: 'Workspace', hint: 'Tasks, meetings, seminars' },
   { id: 'roadmap', label: 'Roadmap timeline', icon: <GanttChartSquare className="h-4 w-4" />, group: 'Workspace', hint: 'Year → month → week → day grid' },
   { id: 'timesheet', label: 'Timesheets', icon: <Clock3 className="h-4 w-4" />, group: 'Workspace', hint: 'Log and approve effort' },
+  { id: 'one-on-ones', label: 'One-on-ones', icon: <Users className="h-4 w-4" />, group: 'Workspace', hint: 'Check-ins & leadership summaries' },
   { id: 'standups', label: 'Daily stand-up', icon: <MessagesSquare className="h-4 w-4" />, group: 'Workspace', hint: 'Updates, blockers & support callouts' },
   { id: 'leave', label: 'Leave & PTO', icon: <Plane className="h-4 w-4" />, group: 'Workspace', hint: 'Holidays plan, approvals, PH' },
   { id: 'delivery', label: 'DevOps delivery', icon: <GitBranch className="h-4 w-4" />, group: 'Delivery', hint: 'Epics, features, tickets & streams' },
@@ -76,9 +78,9 @@ export function Sidebar({
 }) {
   const { state, scope, tenant, tenants, calendarScope } = useStore();
   const groups = ['Workspace', 'Delivery', 'Governance', 'Configuration'];
-  const openEscalations = state.escalations.filter((e) => e.status === 'open').length;
+  const openEscalations = state.escalations.filter((e) => e.status === 'open' && canViewEscalation(state, scope.user.id, e)).length;
   const openSupportToday = canViewStandupBoard(scope)
-    ? state.standups
+    ? standupStateForViewer(state, scope.user.id).standups
         .filter((entry) => entry.date === toISO(new Date()) && scope.visibleDepartmentIds.includes(entry.departmentId))
         .flatMap((entry) => entry.supportRequests)
         .filter((request) => request.status !== 'resolved').length
@@ -192,12 +194,14 @@ export function Topbar({
   view,
   onNavigate,
   onNewActivity,
+  onLogTime,
   onToggleMobile,
   onGlobalSearch,
 }: {
   view: ViewKey;
   onNavigate: (v: ViewKey) => void;
   onNewActivity: () => void;
+  onLogTime: () => void;
   onToggleMobile: () => void;
   onGlobalSearch: () => void;
 }) {
@@ -205,13 +209,12 @@ export function Topbar({
   const [userMenu, setUserMenu] = useState(false);
   const [notifMenu, setNotifMenu] = useState(false);
   const active = NAV_ITEMS.find((i) => i.id === view);
-  const openEscalations = state.escalations.filter((e) => e.status === 'open');
+  const openEscalations = state.escalations.filter((e) => e.status === 'open' && canViewEscalation(state, scope.user.id, e));
   const myAlerts = useMemo(
     () =>
       openEscalations.filter(
         (e) =>
-          scope.visibleDepartmentIds.includes(e.departmentId) &&
-          (scope.user.role !== 'department_head' || e.recipients.includes(scope.user.id)),
+          canViewEscalation(state, scope.user.id, e),
       ),
     [openEscalations, scope],
   );
@@ -304,7 +307,7 @@ export function Topbar({
                   Escalations in your scope
                 </div>
                 {myAlerts.length === 0 ? (
-                  <div className="px-2 py-4 text-center text-xs text-slate-400">No open escalations. All departments above threshold.</div>
+                  <div className="px-2 py-4 text-center text-xs text-slate-400">No open escalations on your reporting line.</div>
                 ) : (
                   myAlerts.map((e) => {
                     const dept = state.departments.find((d) => d.id === e.departmentId);
@@ -321,7 +324,7 @@ export function Topbar({
                         <span className="min-w-0">
                           <span className="block text-xs font-medium text-slate-800">{dept?.name}</span>
                           <span className="block text-[11px] text-slate-500">
-                            Score {e.score} vs threshold {e.threshold} · CC {state.employees.find((x) => x.id === e.cc[0])?.name ?? 'Head of Operations'}
+                            {e.raisedById ? `From ${state.employees.find((x) => x.id === e.raisedById)?.name ?? 'Employee'} → ${state.employees.find((x) => x.id === e.recipients[0])?.name ?? 'reporting lead'}` : 'Legacy escalation'}
                           </span>
                         </span>
                       </button>
@@ -333,6 +336,9 @@ export function Topbar({
           ) : null}
         </div>
 
+        <Button size="sm" onClick={onLogTime} aria-label="Log or update time" title="Log or update time from any tab" className="!px-2.5">
+          <Clock3 className="h-3.5 w-3.5" /><span className="hidden sm:inline">Log / update time</span>
+        </Button>
         <Button variant="primary" size="sm" onClick={onNewActivity} className="!px-2.5">
           <Plus className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">New activity</span>

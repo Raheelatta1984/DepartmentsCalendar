@@ -230,6 +230,7 @@ export const DEFAULT_POLICIES = {
   'session:logout':{ limit: 30, windowMs: MINUTE },
   'workspace:read':{ limit: 60, windowMs: MINUTE },   // focus refresh is >= 60 s apart
   'workspace:write':{ limit: 40, windowMs: MINUTE },  // 600 ms debounce => ~100/min theoretical max, 40 is plenty
+  'one-on-one:summary': { limit: 5, windowMs: MINUTE }, // provider-backed and authenticated
   'devops:lookup':{ limit: 10,  windowMs: MINUTE },   // read-only external metadata lookup
   unknown:        { limit: 20,  windowMs: MINUTE },   // 404 probing / scanners
   global:         { limit: 240, windowMs: MINUTE },   // everything combined per client

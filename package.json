@@ -15,7 +15,7 @@
     "smoke:delivery": "vite-node scripts/delivery-smoke.mjs",
     "smoke:harris": "vite-node scripts/harris-farm-smoke.mjs",
     "smoke:org": "vite-node scripts/org-smoke.mjs",
-    "test": "node --test tests/*.test.mjs && npm run changelog:check && npm run test:workforce && vite-node scripts/workspace-smoke.mjs && vite-node scripts/capitalisation-smoke.mjs && vite-node scripts/standup-smoke.mjs && vite-node scripts/tenancy-leave-smoke.mjs && vite-node scripts/leave-store-smoke.mjs && vite-node scripts/delivery-smoke.mjs && vite-node scripts/harris-farm-smoke.mjs && vite-node scripts/org-smoke.mjs",
+    "test": "node --test tests/*.test.mjs && npm run changelog:check && npm run test:workforce && vite-node scripts/workspace-smoke.mjs && vite-node scripts/capitalisation-smoke.mjs && vite-node scripts/standup-smoke.mjs && vite-node scripts/people-workflows-smoke.mjs && vite-node scripts/people-ui-smoke.mjs && vite-node scripts/tenancy-leave-smoke.mjs && vite-node scripts/leave-store-smoke.mjs && vite-node scripts/delivery-smoke.mjs && vite-node scripts/harris-farm-smoke.mjs && vite-node scripts/org-smoke.mjs",
     "test:workforce": "vite-node scripts/workforce-rules-smoke.mjs && vite-node scripts/workforce-store-smoke.mjs",
     "check": "npm run typecheck && npm test && npm run build && npm run smoke && npm run smoke:store",
     "db:restore": "node --env-file-if-exists=.env scripts/restore-workspace.mjs",

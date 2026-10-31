@@ -36,6 +36,7 @@ import { Avatar, Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeade
 import { useToast } from '../components/toast';
 import { streamPath } from '../lib/delivery';
 import { buildOrgTree, flattenOrg, orgBlockedTargets, orgStats } from '../lib/org';
+import { feelingScale } from '../lib/people-workflows';
 
 type Tab = 'tenants' | 'entities' | 'org-hierarchy' | 'departments' | 'subdepartments' | 'designations' | 'employees' | 'holidays' | 'settings' | 'audit';
 
@@ -87,6 +88,7 @@ export function AdminPage() {
   const [holidayCountry, setHolidayCountry] = useState('AE');
   const [holidayYear, setHolidayYear] = useState(new Date().getFullYear());
   const [settingsDraft, setSettingsDraft] = useState(state.settings);
+  const [feelingDraft, setFeelingDraft] = useState(() => feelingScale(tenant));
   const [holidayView, setHolidayView] = useState<'list' | 'coverage'>('list');
   /* Drag-and-drop re-parenting for the organization hierarchy. */
   const [drag, setDrag] = useState<{ kind: 'entity' | 'department' | 'person'; id: string } | null>(null);
@@ -97,6 +99,7 @@ export function AdminPage() {
   useEffect(() => {
     setScopeDraft(calendarScope);
   }, [calendarScope, tenant?.id]);
+  useEffect(() => { setFeelingDraft(feelingScale(tenant)); }, [tenant?.id, tenant?.feelingScale]);
 
   const canEdit = scope.canManageMaster;
   const empMap = useMemo(() => new Map(state.employees.map((e) => [e.id, e])), [state.employees]);
@@ -782,7 +785,7 @@ export function AdminPage() {
                         <button
                           disabled={!canEdit || ent.type === 'group'}
                           onClick={() => {
-                            if (confirm(`Delete ${ent.name}? Departments and people under it will be removed.`)) deleteEntity(ent.id);
+                            if (confirm(`Delete ${ent.name}? Departments and people under it will be removed.`)) { const error = deleteEntity(ent.id); if (error) toast.push({ tone: 'error', title: 'Entity not removed', description: error }); }
                           }}
                           className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30"
                         >
@@ -996,7 +999,7 @@ export function AdminPage() {
                         <button
                           disabled={!canEdit}
                           onClick={() => {
-                            if (confirm(`Delete ${d.name} and all of its activities?`)) deleteDepartment(d.id);
+                            if (confirm(`Delete ${d.name} and all of its activities?`)) { const error = deleteDepartment(d.id); if (error) toast.push({ tone: 'error', title: 'Department not removed', description: error }); }
                           }}
                           className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30"
                         >
@@ -1207,7 +1210,7 @@ export function AdminPage() {
                         <button
                           disabled={!canEdit || e.id === scope.user.id}
                           onClick={() => {
-                            if (confirm(`Remove ${e.name} from the master?`)) deleteEmployee(e.id);
+                            if (confirm(`Remove ${e.name} from the master?`)) { const error = deleteEmployee(e.id); if (error) toast.push({ tone: 'error', title: 'Employee not removed', description: error }); }
                           }}
                           className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30"
                         >
@@ -1465,6 +1468,19 @@ score            = 40% utilizationScore + 35% onTimeRate + 25% completionRate`}<
           </Card>
 
           <div className="space-y-3">
+            <Card>
+              <SectionHeader title="Feeling check-in scale" subtitle={`Labels and colours for ${tenant?.name ?? 'this tenant'} · used in stand-ups and one-on-ones`} />
+              <div className="mt-3 space-y-2">{feelingDraft.map((option, index) => <div key={option.value} className="flex items-center gap-2">
+                <span className="w-4 text-xs font-semibold">{option.value}</span>
+                <Input aria-label={`Feeling ${option.value} label`} value={option.label} maxLength={80} onChange={(event) => setFeelingDraft((rows) => rows.map((row, i) => i === index ? { ...row, label: event.target.value } : row))} />
+                <input aria-label={`Feeling ${option.value} colour`} type="color" value={option.color} onChange={(event) => setFeelingDraft((rows) => rows.map((row, i) => i === index ? { ...row, color: event.target.value } : row))} className="h-9 w-11 rounded border border-slate-200" />
+              </div>)}</div>
+              <Button className="mt-3" size="sm" variant="primary" disabled={!canEdit || !tenant || feelingDraft.some((option) => !option.label.trim())} onClick={() => {
+                if (!tenant) return;
+                upsertTenant({ ...tenant, feelingScale: feelingDraft.map((option) => ({ ...option, label: option.label.trim() })) });
+                toast.push({ tone: 'success', title: 'Feeling scale saved for this tenant' });
+              }}><Save className="h-3.5 w-3.5" /> Save feeling scale</Button>
+            </Card>
             <Card>
               <SectionHeader title="Workspace" subtitle={workspace.mode === 'shared' ? 'Shared Neon database' : 'Local demo storage'} />
               <div className="mt-2 space-y-1.5 text-[11px] text-slate-600">

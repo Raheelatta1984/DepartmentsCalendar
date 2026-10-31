@@ -80,11 +80,9 @@ assert.equal(group.length, state.departments.length);
 /* ---- Layers read top to bottom and cover every active member -------- */
 const layers = standupLayers(state, department, today);
 assert.ok(layers.length >= 2, 'department has at least a head and a team layer');
-const roleOrder = layers.map((layer) => layer.role);
-assert.deepEqual(roleOrder, [...roleOrder].sort((a, b) => {
-  const rank = { department_head: 5, unit_head: 4, manager: 3, supervisor: 2, employee: 1, ceo: 7, head_operations: 6 };
-  return rank[b] - rank[a];
-}));
+const layerOrder = ['executive', 'heads', 'pmo', 'baqa', 'ba', 'qa', 'leads', 'members'];
+assert.deepEqual(layers.map((layer) => layer.key), layers.map((layer) => layer.key).slice().sort((a, b) => layerOrder.indexOf(a) - layerOrder.indexOf(b)));
+assert.ok(layers.every((layer) => !/supervisor|manager/i.test(layer.label)), 'legacy access roles are not presented as job titles');
 const layeredPeople = layers.flatMap((layer) => layer.members.map((m) => m.employee.id)).sort();
 assert.deepEqual(layeredPeople, members.map((m) => m.id).sort(), 'every active member appears exactly once');
 
@@ -97,7 +95,7 @@ for (const person of [ceo, coo, head]) {
   assert.ok(canViewStandupBoard(getScope(state, person.id)), `${person.role} can open the board`);
 }
 const workerScope = getScope(state, worker.id);
-assert.equal(canViewStandupBoard(workerScope), false, 'plain employees cannot open the board');
+assert.equal(canViewStandupBoard(workerScope), true, 'employees can open their reporting-line board');
 assert.equal(canViewDepartmentStandups(getScope(state, head.id), department.id), true);
 assert.equal(canEditStandupEntry(workerScope, worker.id), true, 'authors edit their own stand-up');
 assert.equal(canEditStandupEntry(workerScope, head.id), false, 'authors cannot rewrite another stand-up');
@@ -112,10 +110,12 @@ const author = state.employees.find(
   (employee) => employee.status !== 'inactive' && !entryFor(state.standups, today, employee.id),
 ) ?? worker;
 assert.ok(!entryFor(latest.state.standups, today, author.id), 'test author starts without a stand-up today');
+await act(async () => latest.setActiveUser(author.id));
 const before = latest.state.standups.length;
 const fresh = emptyStandup(latest.state, today);
 fresh.employeeId = author.id;
 fresh.departmentId = author.departmentId;
+fresh.feeling = 3;
 fresh.lastDayUpdate = 'Smoke: closed the reconciliation pack.';
 fresh.progressUpdate = 'Smoke: month-end at 60%.';
 fresh.actionItems = [{ id: newId('sact'), title: 'File the pack', ownerId: author.id, dueDate: today, status: 'open' }];

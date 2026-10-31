@@ -2,7 +2,7 @@
 
 **Keep the Vercel project already connected to this GitHub repository.** Do not create a second site or move to Render. A push/merge to `main` should trigger its existing production deployment, provided `main` is still the configured Production Branch.
 
-This repository now includes the Vite frontend and three same-origin Vercel Node.js functions. No separate backend URL, desktop installation, VPN, or local server is needed by visitors.
+This repository now includes the Vite frontend and five same-origin Vercel Node.js functions. No separate backend URL, desktop installation, VPN, or local server is needed by visitors.
 
 > Repository changes do not provision a Neon account or configure Vercel secrets. Until you complete the dashboard steps below and redeploy, the site explicitly remains a **browser-only demo**. A successful Vercel build alone does not prove the database is connected.
 
@@ -29,6 +29,8 @@ Open **Project → Settings → Environment Variables** and add these as sensiti
 | `WORKSPACE_PASSWORD` | Unique random password, at least 16 characters; share privately with trusted pilot users | Yes |
 | `SESSION_SECRET` | Independent random secret, at least 32 characters; never share with users | Yes |
 | `PUBLIC_ORIGIN` | Optional exact HTTPS origin, no trailing slash | Usually omit |
+| `OPENAI_API_KEY` | Server-only OpenAI key for consented one-on-one summaries | Optional |
+| `ONE_ON_ONE_AI_MODEL` | OpenAI chat model (defaults to `gpt-4o-mini`) | Optional |
 
 Generate each secret separately in a terminal on your own machine:
 
@@ -45,6 +47,8 @@ Run it twice: use one result for the workspace password and the other for the se
 - Keep Framework Preset **Vite**, build `npm run build`, output `dist`, Node.js **22.x**, and Production Branch **main**. These build defaults are also in `vercel.json` and `package.json`.
 - After adding/changing variables, **redeploy**. Existing deployments do not acquire new environment values automatically.
 
+Before enabling AI summaries, review [one-on-one setup, provider transmission and privacy limitations](ONE_ON_ONES.md); the provider may charge for requests.
+
 There are no frontend database credentials. Browser requests use relative `/api/config`, `/api/session`, and `/api/workspace` URLs, so the same build works on your existing public Vercel domain and custom domains.
 
 ### Optional: initialise the database before the first page load
@@ -57,7 +61,7 @@ npm run db:init -- --dry-run   # verify Neon + ensure schema; does not seed work
 npm run db:init                # seed revision 1 only if the workspace is empty
 ```
 
-`db:init -- --dry-run` may create any missing schema tables while checking the connection, but it does not seed workspace data. The normal `db:init` is idempotent and safe to repeat or run while the site is live: an existing workspace is never replaced, and if a first visit wins the race the CLI reports the winner's revision instead of overwriting it. The seeded payload is validated against the API schema and the 3 MB limit *before* anything is written, and failures print no credentials or workspace data. Do not run the seed command against a database you intend to restore from a backup — use `npm run db:restore` for that.
+`db:init -- --dry-run` may create any missing schema tables while checking the connection, but it does not seed workspace data. The normal `db:init` is idempotent and safe to repeat or run while the site is live: an existing workspace is never replaced, and if a first visit wins the race the CLI reports the winner's revision instead of overwriting it. The seeded payload is validated against the API schema and the 4 MB limit *before* anything is written, and failures print no credentials or workspace data. Do not run the seed command against a database you intend to restore from a backup — use `npm run db:restore` for that.
 
 ## 3. Verify from two devices
 
@@ -91,7 +95,7 @@ With no database variables, local development and the deployed site are clearly 
 - Choose **Neon Free**, not a paid plan, and monitor the current compute, storage, and transfer allowances in the dashboard. Scale-to-zero and cold starts are normal. There are no paid resources or keep-alive cron jobs declared by this repository.
 - **Vercel Hobby has eligibility restrictions, including personal/non-commercial use.** An internal business/enterprise portal may require an eligible paid Vercel plan; do not assume it is free just because it builds. Keep your existing deployment, but check your plan and terms before using this for business. Render Free can be evaluated separately if Vercel Hobby is unsuitable; this change does not deploy to Render.
 - Both services have quotas; there is no guarantee of unlimited free usage, an always-awake database, or a free production SLA. See [Neon pricing](https://neon.com/pricing), [Vercel Hobby](https://vercel.com/docs/plans/hobby), and [Vercel limits](https://vercel.com/docs/limits) for current terms rather than relying on fixed quota numbers in this repository.
-- This is a **single shared pilot workspace**, stored as a versioned JSONB snapshot. Requests are capped at **3 MB**, below Vercel's function request-body limit. The starter dataset is roughly 1.3 MB. Each save writes the full snapshot, so bandwidth and contention grow with usage. Move to record-level tables/API operations before increasing the dataset or concurrent users substantially.
+- This is a **single shared pilot workspace**, stored as a versioned JSONB snapshot. Requests are capped at **4 MiB (4,194,304 bytes)**, below Vercel's function request-body limit. The current starter dataset is roughly 2.9 MiB, leaving limited room for additional records. Each save writes the full snapshot, so bandwidth and contention grow with usage. Move to record-level tables/API operations before increasing the dataset or concurrent users substantially.
 - Password holders have **full read/write access to every record**. Persona switching and browser visibility filters are not server-side authorization. Do not store sensitive employee, payroll, or customer data until individual authentication and server-enforced permissions are implemented.
 - Sessions are HttpOnly, SameSite=Strict, Secure in production, expire after 12 hours, and are invalidated by rotating either authentication secret and redeploying. Password attempts are limited in PostgreSQL across function instances (20 attempts per address per 15 minutes); this is not enterprise identity management.
 - Outlook/Google OAuth, external calendar writes, scheduled escalation emails, immutable audit logging, and SSO remain unimplemented. Existing calendar connector screens are simulations; `.ics` exports work.

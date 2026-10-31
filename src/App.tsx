@@ -6,6 +6,7 @@ import { toISO, fromISO } from './lib/dates';
 import { Sidebar, Topbar, NAV_ITEMS } from './components/Layout';
 import { AiGuide } from './components/AiGuide';
 import { ActivityModal } from './components/ActivityModal';
+import { TimeEntryLauncher } from './components/TimeEntryLauncher';
 import { EmployeeModal } from './components/EmployeeModal';
 import { Avatar, Badge, IconButton, Modal } from './components/ui';
 import { Dashboard } from './pages/Dashboard';
@@ -14,6 +15,7 @@ import { ActivitiesPage } from './pages/ActivitiesPage';
 import { RoadmapPage } from './pages/RoadmapPage';
 import { TimesheetPage } from './pages/TimesheetPage';
 import { StandupsPage } from './pages/StandupsPage';
+import { OneOnOnesPage } from './pages/OneOnOnesPage';
 import { LeavePage } from './pages/LeavePage';
 import { PerformancePage } from './pages/PerformancePage';
 import { ProjectsPage } from './pages/ProjectsPage';
@@ -30,7 +32,7 @@ import { ThemeStudioPage } from './pages/ThemeStudioPage';
 import { fontStack, getEntityTheme } from './lib/portal-theme';
 import { employeeTitle } from './lib/permissions';
 
-const VIEWS: ViewKey[] = ['dashboard', 'calendar', 'activities', 'roadmap', 'timesheet', 'standups', 'leave', 'delivery', 'effort-reports', 'projects', 'capitalisation', 'performance', 'integrations', 'organisation', 'admin', 'whats-new', 'theme-studio'];
+const VIEWS: ViewKey[] = ['dashboard', 'calendar', 'activities', 'roadmap', 'timesheet', 'standups', 'one-on-ones', 'leave', 'delivery', 'effort-reports', 'projects', 'capitalisation', 'performance', 'integrations', 'organisation', 'admin', 'whats-new', 'theme-studio'];
 
 function viewFromHash(): ViewKey {
   const hash = window.location.hash.replace(/^#\/?/, '').split('?')[0];
@@ -57,6 +59,7 @@ export function App() {
   });
   const [mobileOpen, setMobileOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
+  const [timeOpen, setTimeOpen] = useState(false);
   const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
   const [activityDefaults, setActivityDefaults] = useState<Record<string, unknown>>({});
   const [employeeId, setEmployeeId] = useState<string | null>(null);
@@ -149,6 +152,7 @@ export function App() {
           view={view}
           onNavigate={navigate}
           onNewActivity={() => newActivity()}
+          onLogTime={() => setTimeOpen(true)}
           onToggleMobile={() => setMobileOpen(true)}
           onGlobalSearch={() => setPaletteOpen(true)}
         />
@@ -183,6 +187,7 @@ export function App() {
             {view === 'roadmap' ? <RoadmapPage filters={filters} setFilters={setFilters} onOpenActivity={openActivity} /> : null}
             {view === 'timesheet' ? <TimesheetPage filters={filters} setFilters={setFilters} onNewActivity={() => newActivity()} /> : null}
             {view === 'standups' ? <StandupsPage /> : null}
+            {view === 'one-on-ones' ? <OneOnOnesPage onNewActivity={(defaults) => newActivity(defaults)} /> : null}
             {view === 'leave' ? <LeavePage filters={filters} /> : null}
             {view === 'delivery' ? <DeliveryPage onNewActivity={(defaults) => newActivity(defaults)} onNavigate={navigate} /> : null}
             {view === 'effort-reports' ? <EffortReportsPage /> : null}
@@ -206,6 +211,8 @@ export function App() {
           </footer>
         </main>
       </div>
+
+      <TimeEntryLauncher open={timeOpen} onClose={() => setTimeOpen(false)} />
 
       <ActivityModal
         open={activityOpen}
