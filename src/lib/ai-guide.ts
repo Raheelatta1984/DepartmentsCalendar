@@ -884,6 +884,83 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
     ],
   },
 
+  organisation: {
+    title: 'Organisation', subtitle: 'Who reports to whom — and how to change it',
+    blurb:
+      'The reporting-line hierarchy is derived from each person’s manager in the employee register, so there is one tree and every screen reads it the same way. Drag a card onto a colleague to make them the manager, or drop it on the top-of-hierarchy zone to remove their manager.',
+    tips: [
+      'Drag the grip on any card and drop it on the person who should become the manager.',
+      'Use “Change manager” on a card, in the directory or on the selected-person panel for a keyboard-friendly alternative.',
+      'Search to isolate a person; the chart keeps their reporting line above them so nothing is shown out of context.',
+      'Switch to Line changes to see every re-parent with who made it and when.',
+    ],
+    watch:
+      'A move changes the reporting line only. Department, entity, delivery stream, timesheet approvals and calendar access keep their own settings — adjust those in Master setup.',
+    context: [
+      'Cards belonging to the dragged person’s own team are outlined in rose and refuse the drop, so the hierarchy can never loop.',
+      'The audit trail records the previous manager and the new one for every move.',
+    ],
+    sections: [
+      {
+        match: ['reporting hierarchy', 'hierarchy chart'],
+        guide: {
+          title: 'Reporting hierarchy',
+          blurb: 'Top-level people first, then each layer of direct reports beneath them.',
+          tips: [
+            'The Team number on a card counts everybody below that person, not just direct reports.',
+            'Collapse a branch to work on one part of a large organisation.',
+            'Press Hide / Show on a card to fold just that person’s reports.',
+          ],
+        },
+      },
+      {
+        match: ['reporting directory', 'directory'],
+        guide: {
+          title: 'Reporting directory',
+          blurb: 'The same tree as a flat, sortable list of one row per person.',
+          tips: [
+            'The Line column shows the full path from the top to that person.',
+            'Depth counts the layers above the person; depth 0 is the top level.',
+            'Use Change on a row to pick a new manager from a searchable list.',
+          ],
+        },
+      },
+      {
+        match: ['line changes', 'audit'],
+        guide: {
+          title: 'Reporting-line changes',
+          blurb: 'Every move written to the workspace audit trail.',
+          tips: [
+            'The detail records the previous manager and the new one.',
+            'Use this list to explain a structure change months later.',
+          ],
+        },
+      },
+      {
+        match: ['selected person'],
+        guide: {
+          title: 'Selected person',
+          blurb: 'The line above the person and the team beneath them.',
+          tips: [
+            'The reporting line is written top-down, so it reads like an escalation path.',
+            'Direct reports and whole-team counts differ — the whole team includes every layer.',
+          ],
+        },
+      },
+      {
+        match: ['move impact'],
+        guide: {
+          title: 'Move impact',
+          blurb: 'What does and does not travel with a person when you re-parent them.',
+          tips: [
+            'The person’s whole team follows them.',
+            'A move that would place a manager under their own report is refused before it is saved.',
+          ],
+        },
+      },
+    ],
+    subTabs: [],
+  },
   admin: {
     title: 'Master setup',
     subtitle: 'The master data behind every number you see',

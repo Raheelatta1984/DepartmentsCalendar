@@ -4,7 +4,7 @@ A working, deployable prototype of the portal you described: **every department'
 
 **Multiple tenants, one deployment.** The workspace hosts several tenants side by side — each tenant owns its group → company → sub-company → department → people tree. Switching tenant changes every entity, department, person, activity, timesheet, stand-up, project, PTO record and audit event on screen: **no row of another tenant is ever read, written, listed or configured.** A tenant is also the master switch for calendar rollout: **one department, a selected list, or all departments.**
 
-**Harris Farm Markets is the default onboarding tenant.** It contains the `Harris Farm Markets` group, a `HarrisFarm Markets` company entity and just one active department for now: IT. Angus Harris and Luke Harris are both represented as co-CEOs with independently editable department portfolios; job titles, manager relationships, remote/contractor status and nested delivery streams can be changed in Master setup. Warehouse and retail-site departments can be added later without changing the model.
+**Harris Farm Markets is the default onboarding tenant.** It contains the `Harris Farm Markets` group, a `HarrisFarm Markets` company entity and just one active department for now: IT. Angus Harris and Luke Harris are both represented as co-CEOs with independently editable department portfolios. The reporting hierarchy runs Angus Harris → RAM (CIO) and Phil (CTO); delivery sits under the CIO, data and architecture under the CTO, and the PMO, BA Lead and QA Lead lines nest beneath delivery. It is drawn on the **Organisation** screen, where anyone can be re-parented by drag-and-drop. Job titles, remote/contractor status and nested delivery streams are edited in Master setup. Warehouse and retail-site departments can be added later without changing the model.
 
 **Holidays plan, PTO and public holidays.** The **Leave & PTO** tab lets an employee log a tentative date; the line manager approves it and it becomes approved holidays (PTO) on the calendar for the employee, their line manager and up to hire management — and it stays visible to colleagues so a blocker or an assistance request is never a surprise. **PTO hours are counted in their own bucket and always exclude public holidays (PH)**, which are badged PH on every calendar and reported separately.
 
@@ -51,6 +51,7 @@ Adding a release is one edit: append an entry (title, ISO and display date, labe
 | Start/stop times calculate hours and mismatches block submission | **Activity modal** and **Timesheet entry modal** — automatic same-day durations, live reconciliation messages, store/server validation |
 | Staff / worker management at master level | **Master setup → Employees** (access role, linked designation, reporting line, home/supporting streams, work location and engagement type) |
 | Co-CEO portfolios and future department responsibility | **Master setup → Employees → Edit** — explicit department checklist per co-CEO plus editable free-text portfolio; see [`docs/HARRIS_FARM_ONBOARDING.md`](docs/HARRIS_FARM_ONBOARDING.md) |
+| Who reports to whom — a reporting-line org chart you can re-shape | **Organisation** (drag a person onto a new manager or the top-level zone; searchable chart, reporting directory and change history) — the same people tree also sits in **Master setup → Organization hierarchy → Reporting lines** |
 | Entities / companies and sub-companies so a group of companies fits | **Master setup → Entities** (group → company → sub-company tree, each with country & timezone) |
 | Department master with head / responsible assignee | **Master setup → Departments** (head, operations owner, cost centre, calendar colour) |
 | Performance matrix daily / weekly / monthly / quarterly / annual | **Performance & escalation** — identical formula at every grain, 8-period trend |
@@ -74,7 +75,7 @@ Adding a release is one edit: append an entry (title, ISO and display date, labe
 
 Pick the **group of company**, then the **entity** — the profile list then shows only that entity’s employees, never all profiles from multiple entities at once, and never another tenant’s people.
 
-**The portal opens on Harris Farm Markets** with Angus Harris selected and the calendar scoped to its **single IT department (HIT)**. Use the avatar menu to switch between Angus, Luke, CIO RAM, CTO Phil, Data Head Bharat and the rest of the Harris Farm IT roster. In Master setup → Employees, update each person's job title and reporting line; for either co-CEO, assign department responsibility checkboxes as the organisation expands.
+**The portal opens on Harris Farm Markets** with Angus Harris selected and the calendar scoped to its **single IT department (HIT)**. Use the avatar menu to switch between Angus, Luke, CIO RAM, CTO Phil, Data Head Bharat and the rest of the Harris Farm IT roster. Update job titles in Master setup → Employees and reporting lines on the **Organisation** screen; for either co-CEO, assign department responsibility checkboxes as the organisation expands.
 
 | Persona | Role | Sees |
 | --- | --- | --- |
@@ -92,7 +93,7 @@ The workspace contains **three tenants**. Harbourline and Meridian retain illust
 
 ### Harris Farm Markets — default onboarding tenant (IT only)
 
-The entity tree is **Harris Farm Markets (group) → HarrisFarm Markets (company)**. Only the **Information Technology** department is created initially, with DevOps delivery enabled. The roster includes two co-CEOs, CIO RAM, CTO Phil, Data Head Bharat and team, Delivery Head Swechchha, PMO / BA and QA resources, Lead Architect Greg, and DevOps, Architecture Design and D365 streams. Department portfolios, designations, manager relationships, remote/contractor status and supporting streams can be edited in **Master setup → Employees**; streams and leads are configurable in **DevOps delivery → Streams & leads**.
+The entity tree is **Harris Farm Markets (group) → HarrisFarm Markets (company)**. Only the **Information Technology** department is created initially, with DevOps delivery enabled. The roster includes two co-CEOs, CIO RAM, CTO Phil, Data Head Bharat and team, Delivery Head Swechchha, PMO Damien with QA Lead Rahil and BA Lead Natasha, Lead Architect Greg, DevOps Lead Naweesh, Architecture Design Lead Jayden, D365 Lead Ibadur and their teams. Reporting lines are drawn and re-parented on the **Organisation** screen — the whole structure is below in [`docs/HARRIS_FARM_ONBOARDING.md`](docs/HARRIS_FARM_ONBOARDING.md). Department portfolios, designations, remote/contractor status and supporting streams can be edited in **Master setup → Employees**; streams and leads are configurable in **DevOps delivery → Streams & leads**.
 
 Activities are seeded as clearly labelled one-hour planning placeholders for ticket follow-up, requirements gathering, planning, QA, architecture and D365 work. Confirm the schedule and plan with each resource. When work is performed, log actual effort against the linked activity in **Timesheets**; no actual hours are pre-populated.
 
@@ -224,6 +225,7 @@ See [`docs/architecture.svg`](docs/architecture.svg) and [`docs/ARCHITECTURE.md`
 | **Capitalisation pack** | Board pack in AUD: capitalised hours and cost by resource/project, excluded effort reconciliation, AASB 138 evidence, board submission and decision log |
 | **Performance & escalation** | Department matrix across all metrics, employee scorecards, escalation log, rule engine, generated email |
 | **Calendar sync** | Provider cards, per-employee connections, sync queue log, production checklist, troubleshooting |
+| **Organisation** | Reporting-line chart of every person in the workspace, drawn from the employee register. Drag-and-drop re-parenting with cycle and self-report protection, a top-level drop zone, search that keeps the line above a person in view, a keyboard-friendly change-manager picker, a flat reporting directory, move-impact notes and the audited history of every line change |
 | **Master setup** | Editable tenants & calendar scope (single / multiple / all departments, PTO entitlement), entities, departments, sub-departments/streams, designations, employees, holidays/weekends, group settings, audit trail, full JSON backup |
 | **What’s new** | Every user-visible release, newest first, with a link to the screen each change lives on — rendered from the same release log that generates `docs/CHANGELOG.md` |
 

@@ -6,6 +6,7 @@ import { buildStandupPulses } from './standups';
 import { approvalQueue, awayOnDate, ptoSummary } from './leave';
 import { fromISO, humanHours, periodLabel, periodRange, toISO } from './dates';
 import { RELEASES } from '../data/releases';
+import { orgStats } from './org';
 
 /* ------------------------------------------------------------------ */
 /* Live context for the AI guide                                       */
@@ -180,6 +181,16 @@ export function buildLiveFacts({
         { label: 'Mailboxes connected', value: String(connected) },
         { label: 'Failed syncs', value: `${failed} to retry` },
         { label: 'Queued jobs', value: `${state.syncJobs.filter((job) => job.status === 'queued').length} waiting` },
+      ];
+    }
+    case 'organisation': {
+      const treeStats = orgStats(state.employees);
+      return [
+        { label: 'People', value: String(treeStats.headcount) },
+        { label: 'Reporting layers', value: String(treeStats.layers) },
+        { label: 'Managers', value: `${treeStats.managers} · widest span ${treeStats.widestSpan}` },
+        { label: 'Top level', value: `${treeStats.topLevel} unanchored` },
+        { label: 'Line changes', value: String(state.auditLog.filter((entry) => entry.action === 'Reporting line changed').length) },
       ];
     }
     case 'admin': {

@@ -22,6 +22,7 @@ import { EffortReportsPage } from './pages/EffortReportsPage';
 import { CapitalisationPage } from './pages/CapitalisationPage';
 import { IntegrationsPage } from './pages/IntegrationsPage';
 import { AdminPage } from './pages/AdminPage';
+import { OrganisationPage } from './pages/OrganisationPage';
 import { TypeIcon } from './components/activity-ui';
 import { WorkspaceStatus } from './components/WorkspaceStatus';
 import { WhatsNewPage } from './pages/WhatsNewPage';
@@ -29,7 +30,7 @@ import { ThemeStudioPage } from './pages/ThemeStudioPage';
 import { fontStack, getEntityTheme } from './lib/portal-theme';
 import { employeeTitle } from './lib/permissions';
 
-const VIEWS: ViewKey[] = ['dashboard', 'calendar', 'activities', 'roadmap', 'timesheet', 'standups', 'leave', 'delivery', 'effort-reports', 'projects', 'capitalisation', 'performance', 'integrations', 'admin', 'whats-new', 'theme-studio'];
+const VIEWS: ViewKey[] = ['dashboard', 'calendar', 'activities', 'roadmap', 'timesheet', 'standups', 'leave', 'delivery', 'effort-reports', 'projects', 'capitalisation', 'performance', 'integrations', 'organisation', 'admin', 'whats-new', 'theme-studio'];
 
 function viewFromHash(): ViewKey {
   const hash = window.location.hash.replace(/^#\/?/, '').split('?')[0];
@@ -189,6 +190,7 @@ export function App() {
             {view === 'capitalisation' ? <CapitalisationPage /> : null}
             {view === 'performance' ? <PerformancePage filters={filters} setFilters={setFilters} onOpenEmployee={setEmployeeId} /> : null}
             {view === 'integrations' ? <IntegrationsPage /> : null}
+            {view === 'organisation' ? <OrganisationPage /> : null}
             {view === 'admin' ? <AdminPage /> : null}
             {view === 'whats-new' ? <WhatsNewPage onNavigate={navigate} /> : null}
             {view === 'theme-studio' ? <ThemeStudioPage /> : null}

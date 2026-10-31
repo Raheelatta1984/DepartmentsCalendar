@@ -718,7 +718,7 @@ export function createSeedState(): StoreState {
       holidayHorizonYears: 5,
       performanceThreshold: 70,
       weekStartsOn: 1,
-      onboardingVersion: 1,
+      onboardingVersion: 2,
     },
   };
 
