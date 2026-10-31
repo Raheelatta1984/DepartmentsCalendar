@@ -16,6 +16,7 @@ import {
 import { useScopedState, useStore } from '../store';
 import type { AppFilters, TaskStatus } from '../types';
 import { TYPE_LABELS, filterActivities, inRange } from '../lib/analytics';
+import { employeeTitle } from '../lib/permissions';
 import { periodLabel, periodRange, toISO, fromISO, humanHours, shortDate } from '../lib/dates';
 import { activitiesToCSV, downloadICS } from '../lib/export';
 import { Avatar, Badge, Button, Card, EmptyState, PageHeader, Progress, SearchInput, Select, Tabs } from '../components/ui';
@@ -303,7 +304,7 @@ export function ActivitiesPage({
                           <Avatar name={emp.name} color={emp.avatarColor} size={22} />
                           <div className="min-w-0">
                             <div className="max-w-[110px] truncate text-[11px] text-slate-700">{emp.name}</div>
-                            <div className="text-[9px] capitalize text-slate-400">{emp.role.replace('_', ' ')}</div>
+                            <div className="text-[9px] text-slate-400">{employeeTitle(emp)}</div>
                           </div>
                         </div>
                       ) : null}

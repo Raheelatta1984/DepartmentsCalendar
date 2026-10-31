@@ -392,6 +392,10 @@ export function withDeliverySample(state: StoreState): StoreState {
   const activities = state.activities.map((a) => ({ ...a }));
   const now = new Date().toISOString();
   state.departments.filter((d) => d.devopsEnabled).forEach((dept) => {
+    // Departments that already have an intentionally configured stream tree
+    // (for example Harris Farm Markets' CIO/CTO organisation) keep that tree;
+    // the generic demo streams below are only for an empty delivery workspace.
+    if (streams.some((stream) => stream.departmentId === dept.id)) return;
     const prefix = `stream-${dept.id}`;
     const members = employees.filter((e) => e.departmentId === dept.id);
     const leads = members.filter((e) => ['supervisor', 'manager'].includes(e.role));

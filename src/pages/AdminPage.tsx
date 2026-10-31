@@ -19,8 +19,8 @@ import {
   Users,
 } from 'lucide-react';
 import { useStore, newId } from '../store';
-import type { CalendarScopeMode, Department, Employee, Entity, Holiday, Role, Tenant } from '../types';
-import { ROLE_LABELS, ROLE_RANK } from '../lib/permissions';
+import type { CalendarScopeMode, Department, Employee, EmploymentType, Entity, Holiday, Role, Tenant, WorkLocation } from '../types';
+import { employeeTitle, ROLE_LABELS, ROLE_RANK } from '../lib/permissions';
 import {
   CALENDAR_SCOPE_HINTS,
   CALENDAR_SCOPE_LABELS,
@@ -30,7 +30,7 @@ import {
   tenantStats,
 } from '../lib/tenants';
 import { fromISO, horizonYears, toISO } from '../lib/dates';
-import { Avatar, Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, SearchInput, SectionHeader, Select, Tabs, Toggle } from '../components/ui';
+import { Avatar, Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, SearchInput, SectionHeader, Select, Tabs, Textarea, Toggle } from '../components/ui';
 import { useToast } from '../components/toast';
 import { streamPath } from '../lib/delivery';
 
@@ -561,7 +561,7 @@ export function AdminPage() {
                           <Avatar name={empMap.get(d.headId)?.name ?? ''} color={empMap.get(d.headId)?.avatarColor} size={22} />
                           <div>
                             <div className="text-[11px] font-medium text-slate-700">{empMap.get(d.headId)?.name}</div>
-                            <div className="text-[9px] capitalize text-slate-400">{empMap.get(d.headId)?.role.replace('_', ' ')}</div>
+                            <div className="text-[9px] capitalize text-slate-400">{employeeTitle(empMap.get(d.headId))}</div>
                           </div>
                         </div>
                       ) : (
@@ -618,12 +618,15 @@ export function AdminPage() {
                     entityId: state.departments[0]?.entityId ?? state.entities[0].id,
                     departmentId: state.departments[0]?.id ?? '',
                     role: 'employee',
+                    jobTitle: '',
                     managerId: scope.user.id,
-                    countryCode: tenant?.countryCode ?? 'AE',
+                    countryCode: tenant?.countryCode ?? 'AU',
                     weeklyHours: scope.user.weeklyHours,
                     joinDate: toISO(new Date()),
                     status: 'active',
                     avatarColor: COLORS[Math.floor(Math.random() * COLORS.length)],
+                    employmentType: 'employee',
+
                   })
                 }
               >
@@ -635,7 +638,7 @@ export function AdminPage() {
             <table className="w-full min-w-[1040px] border-separate border-spacing-0 text-left">
               <thead>
                 <tr>
-                  {['Employee', 'Role', 'Department', 'Entity', 'Reports to', 'Country', 'Weekly hrs', 'Status', ''].map((h) => (
+                  {['Employee', 'Designation / access tier', 'Department', 'Entity', 'Reports to', 'Country', 'Weekly hrs', 'Status', ''].map((h) => (
                     <th key={h} className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50/95 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500 first:pl-4 last:pr-4 backdrop-blur">
                       {h}
                     </th>
@@ -655,9 +658,15 @@ export function AdminPage() {
                       </div>
                     </td>
                     <td className="border-b border-slate-100 px-3 py-2">
+                      <div className="text-[11px] font-medium text-slate-700">{employeeTitle(e)}</div>
                       <Badge tone={e.role === 'ceo' ? 'purple' : e.role === 'head_operations' ? 'brand' : e.role === 'department_head' ? 'info' : 'neutral'}>
-                        {ROLE_LABELS[e.role]}
+                        {ROLE_LABELS[e.role]} access
                       </Badge>
+                      {e.employmentType === 'contractor' || e.workLocation === 'remote' ? (
+                        <div className="mt-0.5 text-[9px] text-slate-400">
+                          {e.workLocation === 'remote' ? 'Remote' : ''}{e.workLocation === 'remote' && e.employmentType === 'contractor' ? ' · ' : ''}{e.employmentType === 'contractor' ? 'Contractor' : ''}
+                        </div>
+                      ) : null}
                     </td>
                     <td className="border-b border-slate-100 px-3 py-2 text-[11px] text-slate-600">{deptMap.get(e.departmentId)?.name}</td>
                     <td className="border-b border-slate-100 px-3 py-2 text-[10px] text-slate-500">{entityMap.get(e.entityId)?.code}</td>
@@ -1246,7 +1255,7 @@ score            = 40% utilizationScore + 35% onTimeRate + 25% completionRate`}<
         open={!!empDraft}
         onClose={() => setEmpDraft(null)}
         title={state.employees.some((e) => e.id === empDraft?.id) ? 'Edit employee' : 'Add employee'}
-        subtitle="Role drives what this person can see. Reporting line drives whose calendars they can review."
+        subtitle="Role drives access; designation and reporting line are editable. Co-CEO department portfolios can be assigned here without adding unrolled departments yet."
         width="max-w-2xl"
         footer={
           <>
@@ -1277,19 +1286,22 @@ score            = 40% utilizationScore + 35% onTimeRate + 25% completionRate`}<
             <Field label="Employee code">
               <Input value={empDraft.code} onChange={(e) => setEmpDraft({ ...empDraft, code: e.target.value })} />
             </Field>
-            <Field label="Role">
+            <Field label="Role / access tier">
               <Select value={empDraft.role} onChange={(e) => setEmpDraft({ ...empDraft, role: e.target.value as Role })}>
                 {ROLE_OPTIONS.map((r) => (
                   <option key={r} value={r}>{ROLE_LABELS[r]}</option>
                 ))}
               </Select>
             </Field>
+            <Field label="Designation / job title" hint="Editable business title; it does not change the permission tier.">
+              <Input value={empDraft.jobTitle ?? ''} onChange={(e) => setEmpDraft({ ...empDraft, jobTitle: e.target.value })} placeholder="e.g. D365 Stream Lead" />
+            </Field>
             <Field label="Department">
               <Select
                 value={empDraft.departmentId}
                 onChange={(e) => {
                   const dept = deptMap.get(e.target.value);
-                  setEmpDraft({ ...empDraft, departmentId: e.target.value, entityId: dept?.entityId ?? empDraft.entityId, streamId: undefined });
+                  setEmpDraft({ ...empDraft, departmentId: e.target.value, entityId: dept?.entityId ?? empDraft.entityId, streamId: undefined, supportingStreamIds: [] });
                 }}
               >
                 {state.departments.map((d) => (
@@ -1303,6 +1315,75 @@ score            = 40% utilizationScore + 35% onTimeRate + 25% completionRate`}<
                 {state.deliveryStreams.filter((s) => s.departmentId === empDraft.departmentId).map((s) => <option key={s.id} value={s.id}>{streamPath(state.deliveryStreams, s.id).map((x) => x.name).join(' / ')}</option>)}
               </Select>
             </Field>
+            <Field label="Supporting delivery streams" hint="Optional cross-functional work; the home stream stays separate.">
+              <div className="max-h-36 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+                {state.deliveryStreams.filter((s) => s.departmentId === empDraft.departmentId).map((stream) => {
+                  const selected = empDraft.supportingStreamIds ?? [];
+                  const checked = selected.includes(stream.id);
+                  return (
+                    <label key={stream.id} className="flex cursor-pointer items-center gap-2 text-[10px] text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => setEmpDraft({
+                          ...empDraft,
+                          supportingStreamIds: checked ? selected.filter((id) => id !== stream.id) : [...selected, stream.id],
+                        })}
+                      />
+                      {streamPath(state.deliveryStreams, stream.id).map((row) => row.name).join(' / ')}
+                    </label>
+                  );
+                })}
+                {!state.deliveryStreams.some((s) => s.departmentId === empDraft.departmentId) ? <span className="text-[10px] text-slate-400">No streams configured for this department.</span> : null}
+              </div>
+            </Field>
+            <Field label="Engagement type">
+              <Select value={empDraft.employmentType ?? 'employee'} onChange={(e) => setEmpDraft({ ...empDraft, employmentType: e.target.value as EmploymentType })}>
+                <option value="employee">Employee</option>
+                <option value="contractor">Contractor</option>
+              </Select>
+            </Field>
+            <Field label="Work location">
+              <Select value={empDraft.workLocation ?? ''} onChange={(e) => setEmpDraft({ ...empDraft, workLocation: (e.target.value || undefined) as WorkLocation | undefined })}>
+                <option value="">Not specified</option>
+                <option value="on_site">On site</option>
+                <option value="hybrid">Hybrid</option>
+                <option value="remote">Remote</option>
+              </Select>
+            </Field>
+            <Field label="Cross-functional allocation notes" className="sm:col-span-2">
+              <Textarea rows={2} value={empDraft.collaborationNotes ?? ''} onChange={(e) => setEmpDraft({ ...empDraft, collaborationNotes: e.target.value })} placeholder="For example: supports Data and Finance stakeholders" />
+            </Field>
+            {empDraft.role === 'ceo' || empDraft.role === 'head_operations' ? (
+              <>
+                <Field label="Leadership portfolio / responsibilities" className="sm:col-span-2" hint="Free text for future operating areas; create the departments and assign them below when ready.">
+                  <Textarea rows={2} value={empDraft.leadershipPortfolio ?? ''} onChange={(e) => setEmpDraft({ ...empDraft, leadershipPortfolio: e.target.value })} placeholder="Describe the executive's operational portfolio" />
+                </Field>
+                <div className="sm:col-span-2 rounded-lg border border-slate-200 p-3">
+                  <div className="text-[11px] font-medium text-slate-700">Departments in this executive portfolio</div>
+                  <div className="mt-1 text-[10px] text-slate-400">This explicit list drives the co-CEO's department reporting scope. An empty list means no operational departments are assigned yet.</div>
+                  <div className="mt-2 grid gap-1 sm:grid-cols-2">
+                    {state.departments.map((department) => {
+                      const selected = empDraft.responsibleDepartmentIds ?? state.departments.map((row) => row.id);
+                      const checked = selected.includes(department.id);
+                      return (
+                        <label key={department.id} className="flex cursor-pointer items-center gap-2 text-[10px] text-slate-600">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => setEmpDraft({
+                              ...empDraft,
+                              responsibleDepartmentIds: checked ? selected.filter((id) => id !== department.id) : [...selected, department.id],
+                            })}
+                          />
+                          {department.name} · {department.code}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            ) : null}
             <Field label="Legal entity">
               <Select value={empDraft.entityId} onChange={(e) => setEmpDraft({ ...empDraft, entityId: e.target.value })}>
                 {state.entities.map((ent) => (
@@ -1314,7 +1395,7 @@ score            = 40% utilizationScore + 35% onTimeRate + 25% completionRate`}<
               <Select value={empDraft.managerId ?? ''} onChange={(e) => setEmpDraft({ ...empDraft, managerId: e.target.value || null })}>
                 <option value="">None (top of tree)</option>
                 {state.employees.filter((e) => e.id !== empDraft.id).map((e) => (
-                  <option key={e.id} value={e.id}>{e.name} · {ROLE_LABELS[e.role]}</option>
+                  <option key={e.id} value={e.id}>{e.name} · {employeeTitle(e)}</option>
                 ))}
               </Select>
             </Field>

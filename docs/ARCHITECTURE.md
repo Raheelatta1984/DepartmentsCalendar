@@ -317,7 +317,7 @@ The workspace model carries an additive `standups` collection (one `StandupEntry
 - The Neon JSONB document persists the whole collection through the same validated, compare-and-swap workspace write; the strict Zod schema in `server/validation.mjs` whitelists the new shapes, and the relational target design (including row-level policies) is documented in `schema.sql`.
 ## 12. Tenants — the hard isolation boundary
 
-The workspace snapshot can hold several tenants at once (today: **Harbourline Retail Australia**, the IT-first tenant the portal opens on, and **Meridian Group Holdings**). A tenant owns its own entity tree (group → company → sub-company), departments, people, activities, timesheets, stand-ups, projects, capitalisation packs, calendar connections, PTO and audit history.
+The workspace snapshot can hold several tenants at once (today: **Harris Farm Markets**, the default IT-only onboarding tenant; **Harbourline Retail Australia**, a separate retail demo; and **Meridian Group Holdings**, which demonstrates all-department rollout). A tenant owns its own entity tree (group → company → sub-company), departments, people, activities, timesheets, stand-ups, projects, capitalisation packs, calendar connections, PTO and audit history.
 
 Isolation is implemented in `src/lib/tenants.ts` and enforced twice:
 
@@ -332,7 +332,7 @@ The snapshot contract is validated server-side: `server/validation.mjs` whitelis
 
 Each tenant carries `calendarScope: { mode: 'single' | 'multiple' | 'all', departmentIds }`.
 
-- `single` — the calendar is implemented for one department. **The default is the IT department (RIT)**, which is the product’s primary use case.
+- `single` — the calendar is implemented for one department. **Harris Farm Markets is initially scoped to IT (HIT)**; the separate Harbourline example uses RIT.
 - `multiple` — an explicit list of departments.
 - `all` — every department in the tenant (Meridian’s configuration).
 

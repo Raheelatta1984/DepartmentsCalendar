@@ -28,6 +28,9 @@ function Probe() {
 
 const root = createRoot(document.getElementById('root'));
 await act(async () => root.render(React.createElement(StoreProvider, null, React.createElement(Probe))));
+// This regression script exercises the independent Harbourline capex demo;
+// Harris Farm Markets is now the default tenant and has no invented projects.
+await act(async () => latest.setActiveTenant('tnt-harbourline'));
 
 assert.ok(latest.state.projects.length >= 100, 'seed must include 100+ IT projects');
 const retailIt = latest.state.departments.find((dept) => dept.code === 'RIT');

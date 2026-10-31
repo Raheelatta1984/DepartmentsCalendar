@@ -340,6 +340,9 @@ export interface Department {
   devopsEnabled?: boolean;
 }
 
+export type EmploymentType = 'employee' | 'contractor';
+export type WorkLocation = 'on_site' | 'hybrid' | 'remote';
+
 export interface Employee {
   id: string;
   name: string;
@@ -347,13 +350,26 @@ export interface Employee {
   code: string;
   entityId: string;
   departmentId: string;
+  /** Permission tier; jobTitle is the editable business designation shown to people. */
   role: Role;
+  jobTitle?: string;
   managerId: string | null;
   countryCode: string;
   weeklyHours: number;
   joinDate: string;
   status: 'active' | 'on_leave' | 'inactive';
   avatarColor: string;
+  /** Optional employment classification and work arrangement. */
+  employmentType?: EmploymentType;
+  workLocation?: WorkLocation;
+  /** Free-form executive portfolio keeps co-CEO responsibilities easy to revise. */
+  leadershipPortfolio?: string;
+  /** Explicit executive department scope; undefined preserves legacy all-department access. */
+  responsibleDepartmentIds?: string[];
+  /** Additional streams supported alongside the employee's home stream. */
+  supportingStreamIds?: string[];
+  /** Notes for cross-functional allocations that are not a department yet. */
+  collaborationNotes?: string;
   /** Fully-loaded hourly cost used by the capitalisation report. */
   costRateAUD?: number;
   /** Home stream inside the employee's department. */
@@ -531,6 +547,8 @@ export interface Settings {
   holidayHorizonYears: number;
   performanceThreshold: number;
   weekStartsOn: 0 | 1 | 6;
+  /** Additive one-time onboarding data migrations already applied to this workspace. */
+  onboardingVersion?: number;
 }
 
 export interface StoreState {

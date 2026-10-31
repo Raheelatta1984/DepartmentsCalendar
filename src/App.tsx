@@ -27,6 +27,7 @@ import { WorkspaceStatus } from './components/WorkspaceStatus';
 import { WhatsNewPage } from './pages/WhatsNewPage';
 import { ThemeStudioPage } from './pages/ThemeStudioPage';
 import { fontStack, getEntityTheme } from './lib/portal-theme';
+import { employeeTitle } from './lib/permissions';
 
 const VIEWS: ViewKey[] = ['dashboard', 'calendar', 'activities', 'roadmap', 'timesheet', 'standups', 'leave', 'delivery', 'effort-reports', 'projects', 'capitalisation', 'performance', 'integrations', 'admin', 'whats-new', 'theme-studio'];
 
@@ -268,7 +269,7 @@ export function App() {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-xs font-medium text-slate-800">{e.name}</span>
                     <span className="block truncate text-[10px] text-slate-500">
-                      {e.role.replace('_', ' ')} · {state.departments.find((d) => d.id === e.departmentId)?.name}
+                      {employeeTitle(e)} · {state.departments.find((d) => d.id === e.departmentId)?.name}
                     </span>
                   </span>
                   <CornerDownLeft className="h-3 w-3 text-slate-300" />

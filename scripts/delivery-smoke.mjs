@@ -156,6 +156,9 @@ let store; let mode = 'delivery';
 function Probe() { store = useStore(); return React.createElement(React.Fragment, null, mode === 'delivery' ? React.createElement(DeliveryPage, { onNewActivity() {}, onNavigate() {} }) : React.createElement(EffortReportsPage)); }
 const root = createRoot(document.getElementById('root'));
 await act(async () => root.render(React.createElement(StoreProvider, null, React.createElement(Probe))));
+// The legacy stream/sample UI assertions target Harbourline; Harris Farm has
+// its own curated nested IT streams and tickets.
+await act(async () => store.setActiveTenant('tnt-harbourline'));
 assert.match(document.body.textContent, /Connect the backlog to the workday/);
 assert.match(document.body.textContent, /Architecture/);
 assert.match(document.body.textContent, /DevOps platform & release automation/);

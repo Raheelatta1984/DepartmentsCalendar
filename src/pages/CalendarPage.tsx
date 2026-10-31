@@ -19,6 +19,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, Filter, Globe2, Plus, Search, 
 import { useScopedState, useStore } from '../store';
 import type { Activity, AppFilters, Department, Holiday, LeaveRequest } from '../types';
 import { TYPE_LABELS, filterActivities } from '../lib/analytics';
+import { employeeTitle } from '../lib/permissions';
 import { WEEKDAY_LABELS, buildDayMeta, daysBetweenInclusive, fromISO, humanHours, isoWeek, monthName, quarterOf, toISO, type DayMeta } from '../lib/dates';
 import { Avatar, Badge, Button, Card, EmptyState, PageHeader, SectionHeader, Select, Tabs } from '../components/ui';
 import { nextResponsible, awayOnDate, leaveOnDate } from '../lib/leave';
@@ -522,7 +523,7 @@ export function CalendarPage({
                                 {emp.name}
                               </button>
                               <div className="truncate text-[9px] text-slate-400">
-                                {deptMap.get(emp.departmentId)?.code} · {emp.role.replace('_', ' ')}
+                                {deptMap.get(emp.departmentId)?.code} · {employeeTitle(emp)}
                               </div>
                             </div>
                             <span
@@ -816,7 +817,7 @@ export function CalendarPage({
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[11px] font-medium text-slate-800">{emp.name}</span>
                       <span className="block truncate text-[9px] text-slate-400">
-                        {deptMap.get(emp.departmentId)?.code} · {emp.role.replace('_', ' ')}
+                        {deptMap.get(emp.departmentId)?.code} · {employeeTitle(emp)}
                       </span>
                     </span>
                     <span className={`text-[9px] font-semibold tabular-nums ${util.pct > 110 ? 'text-rose-600' : util.pct < 50 ? 'text-amber-600' : 'text-emerald-600'}`}>

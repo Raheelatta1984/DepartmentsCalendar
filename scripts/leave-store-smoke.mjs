@@ -41,12 +41,16 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const root = createRoot(document.getElementById('root'));
 root.render(React.createElement(StoreProvider, null, React.createElement(Probe)));
 await sleep(400);
+// Keep the lifecycle fixture on Harbourline, whose fictional PTO sample is
+// intentionally separate from the clean Harris Farm onboarding roster.
+latest.setActiveTenant('tnt-harbourline');
+await sleep(200);
 
 assert.ok(latest, 'store mounted');
 const results = [];
 const push = (name, value) => results.push([name, value]);
 
-/* ---- 1. The portal opens on the IT-first tenant -------------------- */
+/* ---- 1. Use Harbourline's seeded PTO fixture ----------------------- */
 push('tenant', latest.state.settings.activeTenantId);
 push('tenant name', latest.tenant?.name);
 push('tenant employees', latest.state.employees.length);

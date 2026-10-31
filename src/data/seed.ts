@@ -18,12 +18,13 @@ import type {
 } from '../types';
 import { COUNTRIES, buildHolidayDataset } from './countries';
 import { RETAIL_CAPITALISATION_POLICY, RETAIL_CIO_ID, RETAIL_COMPANY_ID, RETAIL_IT_DEPT_ID, retailSample } from './retail-seed';
-import { DEFAULT_TENANT_ID, HARBOURLINE_TENANT_ID, MERIDIAN_TENANT_ID, TENANTS } from './tenant-seed';
+import { DEFAULT_TENANT_ID, HARRIS_FARM_TENANT_ID, HARBOURLINE_TENANT_ID, MERIDIAN_TENANT_ID, TENANTS } from './tenant-seed';
 import { buildLeaveSeed } from './leave-seed';
 import { buildApproval, capitalisationReport, monthKey, monthScope } from '../lib/capitalisation';
 import { toISO } from '../lib/dates';
 import { buildStandupSeed } from './standup-seed';
 import { withDeliverySample } from './delivery-seed';
+import { harrisFarmSample, HARRIS_FARM_ACTIVE_USER_ID } from './harris-farm-seed';
 
 /* ------------------------------------------------------------------ */
 /* Deterministic pseudo-random generator so the demo is reproducible  */
@@ -598,26 +599,30 @@ export const AUDIT_LOG: AuditEntry[] = [
 export function createSeedState(): StoreState {
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 6 }, (_, i) => currentYear - 1 + i);
-  // Harbourline Retail Australia is seeded as an independent entity tree with
-  // its own IT project portfolio. Existing Meridian data is merged, never replaced.
+  // Harris Farm Markets is the default, IT-only onboarding tenant. Harbourline
+  // and Meridian remain separate examples; no Harris Farm actual hours or PTO
+  // history is invented without user-supplied data.
   const retail = retailSample();
+  const harrisFarm = harrisFarmSample(TODAY);
   const holidayRows = buildHolidayDataset(years, COUNTRIES.map((c) => c.code));
-  const seededEmployees = [...EMPLOYEES, ...retail.employees];
-  const seededDepartments = [...DEPARTMENTS, ...retail.departments];
-  const seededActivities = [...ACTIVITIES, ...retail.activities];
-  const seededLeafEmployees = seededEmployees.filter((employee) => employee.status !== 'inactive');
+  const seededEmployees = [...EMPLOYEES, ...retail.employees, ...harrisFarm.employees];
+  const seededDepartments = [...DEPARTMENTS, ...retail.departments, ...harrisFarm.departments];
+  const seededActivities = [...ACTIVITIES, ...retail.activities, ...harrisFarm.activities];
+  const establishedDemoEmployees = [...EMPLOYEES, ...retail.employees].filter((employee) => employee.status !== 'inactive');
+  const establishedDemoDepartments = [...DEPARTMENTS, ...retail.departments].map((d) => ({ ...d, devopsEnabled: d.devopsEnabled ?? ['RIT', 'ITS'].includes(d.code) }));
+  const establishedDemoActivities = [...ACTIVITIES, ...retail.activities];
   const leaves = buildLeaveSeed({
-    employees: seededLeafEmployees,
-    departments: seededDepartments.map((d) => ({ ...d, devopsEnabled: ['RIT', 'ITS'].includes(d.code) })),
+    employees: establishedDemoEmployees,
+    departments: establishedDemoDepartments,
     holidays: holidayRows,
     countries: COUNTRIES,
   });
   const base: StoreState = {
     tenants: TENANTS,
-    entities: [...ENTITIES, ...retail.entities],
-    departments: seededDepartments.map((d) => ({ ...d, devopsEnabled: ['RIT', 'ITS'].includes(d.code) })),
-    deliveryStreams: [],
-    workItems: [],
+    entities: [...ENTITIES, ...retail.entities, ...harrisFarm.entities],
+    departments: seededDepartments.map((d) => ({ ...d, devopsEnabled: d.devopsEnabled ?? ['RIT', 'ITS'].includes(d.code) })),
+    deliveryStreams: [...harrisFarm.deliveryStreams],
+    workItems: [...harrisFarm.workItems],
     devopsImports: [],
     employees: seededEmployees,
     activities: seededActivities,
@@ -627,10 +632,12 @@ export function createSeedState(): StoreState {
     capitalisationApprovals: [],
     holidays: holidayRows,
     countries: COUNTRIES,
+    // The existing tenants keep their fictional demo stand-ups; leave the new
+    // named Harris Farm roster clean until people submit real updates.
     standups: buildStandupSeed({
-      employees: seededEmployees,
-      departments: seededDepartments,
-      activities: seededActivities,
+      employees: establishedDemoEmployees,
+      departments: establishedDemoDepartments,
+      activities: establishedDemoActivities,
       holidays: holidayRows,
       countries: COUNTRIES,
     }),
@@ -649,6 +656,14 @@ export function createSeedState(): StoreState {
     leaves,
     auditLog: [
       {
+        id: 'aud-hfm-1',
+        tenantId: HARRIS_FARM_TENANT_ID,
+        at: new Date().toISOString(),
+        actorId: HARRIS_FARM_ACTIVE_USER_ID,
+        action: 'Harris Farm Markets IT onboarding seeded',
+        detail: `Group → HarrisFarm Markets entity → IT only; co-CEO department responsibilities are editable; no actual timesheet hours were fabricated.`,
+      },
+      {
         id: 'aud-hra-1',
         tenantId: HARBOURLINE_TENANT_ID,
         at: new Date(Date.now() - 86400000).toISOString(),
@@ -663,16 +678,17 @@ export function createSeedState(): StoreState {
       })),
     ],
     settings: {
-      // The portal opens on the IT-first tenant with the IT department head
-      // signed in; the calendar covers that single department.
-      activeUserId: RETAIL_CIO_ID,
+      // Open on Angus Harris (Co-CEO · Operations) for the Harris Farm IT-only
+      // pilot. Profile and executive-department assignments remain editable.
+      activeUserId: HARRIS_FARM_ACTIVE_USER_ID,
       activeTenantId: DEFAULT_TENANT_ID,
-      groupName: 'Harbourline Retail Australia',
+      groupName: 'Harris Farm Markets',
       workingDayStart: '08:30',
       workingDayEnd: '17:30',
       holidayHorizonYears: 5,
       performanceThreshold: 70,
       weekStartsOn: 1,
+      onboardingVersion: 1,
     },
   };
 

@@ -31,6 +31,7 @@ import {
   workloadBand,
 } from '../lib/analytics';
 import { buildEscalationEmail } from '../lib/export';
+import { employeeTitle } from '../lib/permissions';
 import { fromISO, humanHours, periodLabel, periodRange, toISO } from '../lib/dates';
 import { Avatar, Badge, Button, Card, EmptyState, Modal, PageHeader, Progress, SearchInput, SectionHeader, Select, Tabs } from '../components/ui';
 import { BarList, LineChart, ScoreRing, Sparkline } from '../components/charts';
@@ -510,7 +511,7 @@ export function PerformancePage({
                         </div>
                       </div>
                     </td>
-                    <td className="border-b border-slate-100 px-2.5 py-2 text-[10px] capitalize text-slate-500">{emp.role.replace('_', ' ')}</td>
+                    <td className="border-b border-slate-100 px-2.5 py-2 text-[10px] text-slate-500">{employeeTitle(emp)}</td>
                     <td className="border-b border-slate-100 px-2.5 py-2 text-[11px] tabular-nums text-slate-600">{score.plannedHours}h</td>
                     <td className="border-b border-slate-100 px-2.5 py-2 text-[11px] tabular-nums text-slate-600">{score.loggedHours}h</td>
                     <td className="border-b border-slate-100 px-2.5 py-2">

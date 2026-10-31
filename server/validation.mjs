@@ -58,8 +58,14 @@ export const workspaceSchema = record({
   employees: rows({
     id, name: text, email: text, code: text, entityId: id, departmentId: id,
     role: z.enum(['ceo', 'head_operations', 'department_head', 'unit_head', 'manager', 'supervisor', 'employee']),
+    jobTitle: text.optional(),
     managerId: id.nullable(), countryCode: text, weeklyHours: number.min(1).max(80), joinDate: date,
-    status: z.enum(['active', 'on_leave', 'inactive']), avatarColor: text, costRateAUD: number.min(0).max(10_000).optional(), streamId: id.optional(),
+    status: z.enum(['active', 'on_leave', 'inactive']), avatarColor: text,
+    employmentType: z.enum(['employee', 'contractor']).optional(),
+    workLocation: z.enum(['on_site', 'hybrid', 'remote']).optional(),
+    leadershipPortfolio: text.optional(), responsibleDepartmentIds: z.array(id).max(500).optional(),
+    supportingStreamIds: z.array(id).max(500).optional(), collaborationNotes: text.optional(),
+    costRateAUD: number.min(0).max(10_000).optional(), streamId: id.optional(),
   }).min(1),
   activities: rows({
     id, title: text, description: text,
@@ -128,6 +134,7 @@ export const workspaceSchema = record({
     groupName: text, workingDayStart: time, workingDayEnd: time,
     holidayHorizonYears: z.number().int().min(1).max(20), performanceThreshold: number.min(0).max(100),
     weekStartsOn: z.union([z.literal(0), z.literal(1), z.literal(6)]),
+    onboardingVersion: z.number().int().min(0).optional(),
   }),
   auditLog: rows({ id, tenantId: id.optional(), at: text, actorId: id, action: text, detail: text }),
   projects: rows({
@@ -196,7 +203,19 @@ export const workspaceSchema = record({
     }
   }
   for (const [index, employee] of state.employees.entries()) {
-    if (employee.streamId && streams.get(employee.streamId)?.departmentId !== employee.departmentId) ctx.addIssue({ code: 'custom', path: ['employees', index], message: 'Invalid home stream' });
+    const path = ['employees', index];
+    if (employee.streamId && streams.get(employee.streamId)?.departmentId !== employee.departmentId) ctx.addIssue({ code: 'custom', path, message: 'Invalid home stream' });
+    for (const streamId of employee.supportingStreamIds ?? []) {
+      if (streams.get(streamId)?.departmentId !== employee.departmentId) ctx.addIssue({ code: 'custom', path, message: 'Invalid supporting stream' });
+    }
+    const employeeTenant = entityTenant.get(departments.get(employee.departmentId)?.entityId);
+    for (const departmentId of employee.responsibleDepartmentIds ?? []) {
+      const assignedDepartment = departments.get(departmentId);
+      const assignedTenant = entityTenant.get(assignedDepartment?.entityId);
+      if (!assignedDepartment || (employeeTenant && assignedTenant !== employeeTenant)) {
+        ctx.addIssue({ code: 'custom', path, message: 'Invalid executive department assignment' });
+      }
+    }
   }
   for (const [index, activity] of state.activities.entries()) {
     if (activity.workItemId && (!items.has(activity.workItemId) || !sameDepartment(activity.departmentId, items.get(activity.workItemId)?.departmentId))) ctx.addIssue({ code: 'custom', path: ['activities', index], message: 'Invalid delivery activity link' });

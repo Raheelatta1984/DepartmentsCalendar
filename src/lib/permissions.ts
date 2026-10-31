@@ -20,6 +20,11 @@ export const ROLE_RANK: Record<Role, number> = {
   employee: 1,
 };
 
+/** Business designation when present; the role label is the access-tier fallback. */
+export function employeeTitle(employee: Pick<Employee, 'role' | 'jobTitle'> | undefined): string {
+  return employee?.jobTitle?.trim() || (employee ? ROLE_LABELS[employee.role] : 'Employee');
+}
+
 export interface Scope {
   user: Employee;
   isGroupExecutive: boolean;
@@ -61,12 +66,20 @@ export function getScope(state: StoreState, userId: string): Scope {
 
   let visibleDepartments: Department[];
   if (user.role === 'ceo') {
-    visibleDepartments = state.departments;
+    // Legacy single-CEO profiles without an explicit list retain group-wide
+    // visibility. Co-CEOs can opt into an editable department portfolio; an
+    // explicit empty list means the portfolio has not been rolled out yet.
+    visibleDepartments = user.responsibleDepartmentIds === undefined
+      ? state.departments
+      : state.departments.filter((d) => user.responsibleDepartmentIds!.includes(d.id) || d.headId === user.id);
   } else if (user.role === 'head_operations') {
-    // COO owns every operational department (opsOwnerId) plus their own department
-    visibleDepartments = state.departments.filter(
-      (d) => d.opsOwnerId === user.id || d.headId === user.id || d.id === user.departmentId,
-    );
+    // Operations leaders can either use the legacy ops-owner mapping or an
+    // explicit, editable department portfolio.
+    visibleDepartments = user.responsibleDepartmentIds !== undefined
+      ? state.departments.filter((d) => user.responsibleDepartmentIds!.includes(d.id) || d.headId === user.id)
+      : state.departments.filter(
+          (d) => d.opsOwnerId === user.id || d.headId === user.id || d.id === user.departmentId,
+        );
   } else if (user.role === 'department_head') {
     visibleDepartments = state.departments.filter((d) => d.id === user.departmentId || d.headId === user.id);
   } else {
@@ -136,7 +149,9 @@ export function canResolveSupportRequest(scope: Scope, departmentId: string): bo
 export function describeScope(scope: Scope) {
   switch (scope.user.role) {
     case 'ceo':
-      return `Group-wide visibility · ${scope.visibleDepartments.length} departments · ${scope.visibleEmployeeIds.length} people`;
+      return scope.user.responsibleDepartmentIds === undefined
+        ? `Group-wide visibility · ${scope.visibleDepartments.length} departments · ${scope.visibleEmployeeIds.length} people`
+        : `${scope.visibleDepartments.length} assigned department${scope.visibleDepartments.length === 1 ? '' : 's'} · ${scope.visibleEmployeeIds.length} people`;
     case 'head_operations':
       return `${scope.visibleDepartments.length} operational units across the group`;
     case 'department_head':
