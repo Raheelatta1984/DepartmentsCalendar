@@ -47,7 +47,8 @@ import {
 import { leaveBreakdown } from './lib/leave';
 import { externalKey, linkActivity, linkWorkItemsToParent, normaliseAcceptanceCriteria, validateWorkItem, validStreamParent, workItemDescendants } from './lib/delivery';
 import { devopsSampleWorkItems } from './data/delivery-seed';
-import { DEFAULT_TENANT_ID, HARBOURLINE_TENANT_ID, MERIDIAN_TENANT_ID, TENANTS } from './data/tenant-seed';
+import { DEFAULT_TENANT_ID, HARRIS_FARM_TENANT_ID, HARBOURLINE_TENANT_ID, MERIDIAN_TENANT_ID, TENANTS } from './data/tenant-seed';
+import { HARRIS_FARM_ACTIVE_USER_ID, withHarrisFarmSample } from './data/harris-farm-seed';
 import { fromSharedState, rememberPersona, rememberTenant } from './lib/workspace-api';
 import { useWorkspacePersistence, type SharedConnection, type WorkspacePersistence } from './lib/useWorkspacePersistence';
 
@@ -82,6 +83,7 @@ export function normaliseState(state: StoreState): StoreState {
   );
   const activeUser =
     state.employees?.find((employee) => employee.id === state.settings?.activeUserId && tenantDeptIds.has(employee.departmentId)) ??
+    state.employees?.find((employee) => employee.role === 'ceo' && employee.responsibleDepartmentIds?.some((id) => tenantDeptIds.has(id))) ??
     state.employees?.find((employee) => employee.role === 'department_head' && employee.departmentId === tenant?.calendarScope.departmentIds[0]) ??
     state.employees?.find((employee) => tenantDeptIds.has(employee.departmentId)) ??
     state.employees?.[0];
@@ -115,6 +117,34 @@ export function normaliseState(state: StoreState): StoreState {
   };
 }
 
+/** Apply one-time, additive seed migrations without re-adding user-deleted tenants later. */
+export function initialiseWorkspaceState(state: StoreState): StoreState {
+  if ((state.settings?.onboardingVersion ?? 0) >= 1) return normaliseState(state);
+
+  let migrated = state;
+  const hasHarrisFarm = (state.tenants ?? []).some((row) => row.id === HARRIS_FARM_TENANT_ID);
+  if (!hasHarrisFarm) {
+    migrated = withHarrisFarmSample(state);
+  }
+  const shouldOpenHarrisFarm =
+    !state.settings?.activeTenantId || state.settings.activeTenantId === HARBOURLINE_TENANT_ID;
+  migrated = {
+    ...migrated,
+    settings: {
+      ...migrated.settings,
+      onboardingVersion: 1,
+      ...(shouldOpenHarrisFarm
+        ? {
+            activeTenantId: HARRIS_FARM_TENANT_ID,
+            activeUserId: HARRIS_FARM_ACTIVE_USER_ID,
+            groupName: 'Harris Farm Markets',
+          }
+        : {}),
+    },
+  };
+  return normaliseState(migrated);
+}
+
 function loadState(): StoreState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -124,8 +154,7 @@ function loadState(): StoreState {
     // heals older caches when the demo schema evolves
     if (!parsed.syncJobs || !parsed.connections || !parsed.escalations) return createSeedState();
     if (!parsed.projects || !parsed.capitalisation) return createSeedState();
-    if (!parsed.tenants) return createSeedState();
-    return normaliseState(parsed);
+    return initialiseWorkspaceState(parsed);
   } catch {
     return createSeedState();
   }
@@ -209,7 +238,9 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
   // they receive `state` (the active tenant) or `scopedState` (the tenant cut
   // to the departments the calendar is implemented for).
   const [fullState, setFullState] = useState<StoreState>(() =>
-    normaliseState(shared ? fromSharedState(shared.snapshot.state) : loadState()),
+    shared
+      ? initialiseWorkspaceState(fromSharedState(shared.snapshot.state))
+      : loadState(),
   );
   const workspace = useWorkspacePersistence(fullState, setFullState, shared);
   const writeTimer = useRef<number | null>(null);
@@ -352,6 +383,7 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
             const keepPersona = currentEntity?.tenantId === id;
             const fallback =
               targetState.employees.find((employee) => employee.id === prev.settings.activeUserId) ??
+              targetState.employees.find((employee) => employee.role === 'ceo' && employee.responsibleDepartmentIds !== undefined) ??
               targetState.employees.find((employee) => employee.departmentId === target.calendarScope.departmentIds[0]) ??
               targetState.employees.find((employee) => employee.role === 'department_head') ??
               targetState.employees.find((employee) => employee.role === 'ceo') ??

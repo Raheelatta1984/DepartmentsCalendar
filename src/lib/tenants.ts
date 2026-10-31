@@ -25,8 +25,8 @@ import type {
 /*      every other tenant byte-for-byte untouched.                      */
 /* ------------------------------------------------------------------ */
 
-/** The tenant the portal opens on: the IT department roll-out. */
-export const DEFAULT_TENANT_ID = 'tnt-harbourline';
+/** The tenant the portal opens on: Harris Farm Markets' IT department rollout. */
+export const DEFAULT_TENANT_ID = 'tnt-harris-farm';
 /** Fallback for legacy rows that predate tenancy. */
 export const FALLBACK_TENANT_ID = 'tnt-meridian';
 

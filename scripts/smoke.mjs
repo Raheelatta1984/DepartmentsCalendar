@@ -30,13 +30,13 @@ await new Promise((r) => setTimeout(r, 2500));
 
 const text = document.body.textContent || '';
 console.log('--- rendered length:', text.length);
-/* The portal opens on the IT-first tenant, so the command centre names that
-   tenant — never another tenant’s group name. */
+/* The portal opens on Harris Farm Markets, with its IT-only rollout in scope. */
 const tenantSelect = document.querySelector('select[aria-label="Tenant"]');
 assert.ok(tenantSelect, 'the top bar exposes a tenant switcher');
 console.log('--- active tenant:', tenantSelect.value);
-assert.equal(tenantSelect.value, 'tnt-harbourline', 'the IT-first tenant is the default');
-assert.ok(text.includes('Harbourline Retail Australia'), 'dashboard must render the active tenant');
+assert.equal(tenantSelect.value, 'tnt-harris-farm', 'Harris Farm Markets is the default IT-first tenant');
+assert.ok(text.includes('Harris Farm Markets'), 'dashboard must render the active tenant');
+assert.ok(text.includes('Angus Harris'), 'the default profile is the operations co-CEO');
 /* The switcher lists tenant names only — never their entities, departments
    or people. Isolation is checked against Meridian rows here. */
 assert.ok(!text.includes('Arjun Mehta'), 'another tenant’s people must never be on screen');
@@ -90,7 +90,7 @@ console.log('--- entity picker default:', entityPicker.value, 'options:', entity
 
 /* The single-department master setting is applied to the whole tenant. */
 const departmentOptions = [...document.querySelectorAll('select[aria-label="Department"] option')].map((option) => option.textContent);
-assert.deepEqual(departmentOptions.filter((label) => label && !/all/i.test(label)), ['Information Technology (PMO)'], 'the calendar scope is the IT department only');
+assert.deepEqual(departmentOptions.filter((label) => label && !/all/i.test(label)), ['Information Technology'], 'the calendar scope is the IT department only');
 console.log('--- department options:', departmentOptions.join(' | '));
 
 const stored = localStorage.getItem('orbit.portal.state.v1');

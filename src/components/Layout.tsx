@@ -28,7 +28,7 @@ import {
   X,
 } from 'lucide-react';
 import { useStore } from '../store';
-import { ROLE_LABELS, ROLE_RANK, describeScope, canViewStandupBoard } from '../lib/permissions';
+import { employeeTitle, ROLE_LABELS, ROLE_RANK, describeScope, canViewStandupBoard } from '../lib/permissions';
 import { entityRoot, entitySubtree } from '../lib/entities';
 import { CALENDAR_SCOPE_LABELS, describeCalendarScope } from '../lib/tenants';
 import { toISO } from '../lib/dates';
@@ -175,7 +175,7 @@ export function Sidebar({
             <Avatar name={scope.user.name} color={scope.user.avatarColor} size={32} />
             <div className="min-w-0 flex-1">
               <div className="truncate text-xs font-semibold text-white">{scope.user.name}</div>
-              <div className="truncate text-[10px] text-slate-400">{ROLE_LABELS[scope.user.role]}</div>
+              <div className="truncate text-[10px] text-slate-400">{employeeTitle(scope.user)}</div>
             </div>
             <ShieldCheck className="h-4 w-4 flex-none text-emerald-400/80" />
           </div>
@@ -344,7 +344,7 @@ export function Topbar({
             <Avatar name={scope.user.name} color={scope.user.avatarColor} size={26} />
             <div className="hidden text-left sm:block">
               <div className="max-w-[120px] truncate text-[11px] font-semibold leading-tight text-slate-800">{scope.user.name}</div>
-              <div className="text-[10px] leading-tight text-slate-500">{ROLE_LABELS[scope.user.role]}</div>
+              <div className="text-[10px] leading-tight text-slate-500">{employeeTitle(scope.user)}</div>
             </div>
             <ChevronsUpDown className="h-3.5 w-3.5 text-slate-400" />
           </button>
@@ -395,7 +395,7 @@ export function Topbar({
                     </Field>
                   </div>
                   <p className="mt-2 text-[10px] text-slate-400">
-                    Active profile: <span className="font-medium text-slate-600">{scope.user.name}</span> · {ROLE_LABELS[scope.user.role]}
+                    Active profile: <span className="font-medium text-slate-600">{scope.user.name}</span> · {employeeTitle(scope.user)}
                   </p>
                 </div>
                 <div className="border-b border-slate-100 px-3 py-2">
@@ -424,7 +424,7 @@ export function Topbar({
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[11px] font-medium text-slate-800">{u.name}</span>
                           <span className="block truncate text-[10px] text-slate-500">
-                            {ROLE_LABELS[u.role]} · {dept?.code}
+                            {employeeTitle(u)} · {dept?.code}
                           </span>
                         </span>
                         {u.id === scope.user.id ? <Badge tone="brand">active</Badge> : null}

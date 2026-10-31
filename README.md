@@ -2,7 +2,9 @@
 
 A working, deployable prototype of the portal you described: **every department's daily activity, follow-ups, appointments, meetings, seminars, sessions and tasks exposed up the chain from the newest employee to the CEO**, with workload measured from hours actually spent, a central calendar per department and per person, country-aware public holidays, timesheets, performance scoring and automatic escalation to the department head with the Head of Operations in copy.
 
-**Multiple tenants, one deployment.** The workspace hosts several tenants side by side — a tenant is its own group → companies → sub-companies → departments → people tree. Switching tenant changes every entity, department, person, activity, timesheet, stand-up, project, PTO record and audit event on screen: **no row of another tenant is ever read, written, listed or configured.** A tenant is also the master switch for the calendar roll-out: **one department (the default IT department), a selected list, or all departments.**
+**Multiple tenants, one deployment.** The workspace hosts several tenants side by side — each tenant owns its group → company → sub-company → department → people tree. Switching tenant changes every entity, department, person, activity, timesheet, stand-up, project, PTO record and audit event on screen: **no row of another tenant is ever read, written, listed or configured.** A tenant is also the master switch for calendar rollout: **one department, a selected list, or all departments.**
+
+**Harris Farm Markets is the default onboarding tenant.** It contains the `Harris Farm Markets` group, a `HarrisFarm Markets` company entity and just one active department for now: IT. Angus Harris and Luke Harris are both represented as co-CEOs with independently editable department portfolios; job titles, manager relationships, remote/contractor status and nested delivery streams can be changed in Master setup. Warehouse and retail-site departments can be added later without changing the model.
 
 **Holidays plan, PTO and public holidays.** The **Leave & PTO** tab lets an employee log a tentative date; the line manager approves it and it becomes approved holidays (PTO) on the calendar for the employee, their line manager and up to hire management — and it stays visible to colleagues so a blocker or an assistance request is never a surprise. **PTO hours are counted in their own bucket and always exclude public holidays (PH)**, which are badged PH on every calendar and reported separately.
 
@@ -30,7 +32,8 @@ IT is enabled by default; other departments can opt in through Master setup. See
 | Workload calculated from hours spent on activities | Every score uses **logged timesheet hours ÷ country-aware capacity** (not planned hours, not attendance) |
 | Portal linked to Outlook, Google Calendar optional; an inserted task appears in the calendar | **Calendar sync** tab + sync toggles on every activity + a real **.ics** export that can be imported into Outlook/Google today |
 | Central calendar by department, by employee; managers review a responsible employee's calendar | **Department calendar** (year, quarter, month, team-week swimlanes, day) with employee picker, per-person utilization and multi-task day cells |
-| Staff / worker management at master level | **Master setup → Employees** (role, reporting line, entity, department, country, contracted hours) |
+| Staff / worker management at master level | **Master setup → Employees** (access role, editable designation, reporting line, home/supporting streams, work location and engagement type) |
+| Co-CEO portfolios and future department responsibility | **Master setup → Employees → Edit** — explicit department checklist per co-CEO plus editable free-text portfolio; see [`docs/HARRIS_FARM_ONBOARDING.md`](docs/HARRIS_FARM_ONBOARDING.md) |
 | Entities / companies and sub-companies so a group of companies fits | **Master setup → Entities** (group → company → sub-company tree, each with country & timezone) |
 | Department master with head / responsible assignee | **Master setup → Departments** (head, operations owner, cost centre, calendar colour) |
 | Performance matrix daily / weekly / monthly / quarterly / annual | **Performance & escalation** — identical formula at every grain, 8-period trend |
@@ -54,26 +57,34 @@ IT is enabled by default; other departments can opt in through Master setup. See
 
 Pick the **group of company**, then the **entity** — the profile list then shows only that entity’s employees, never all profiles from multiple entities at once, and never another tenant’s people.
 
-**The portal opens on Harbourline Retail Australia** (the IT-first tenant) with its IT department head signed in, and the calendar implemented for the **single IT department (RIT)**. Switch tenant in the top bar to **Meridian Group Holdings**, which has the calendar rolled out to all of its departments.
+**The portal opens on Harris Farm Markets** with Angus Harris selected and the calendar scoped to its **single IT department (HIT)**. Use the avatar menu to switch between Angus, Luke, CIO RAM, CTO Phil, Data Head Bharat and the rest of the Harris Farm IT roster. In Master setup → Employees, update each person's job title and reporting line; for either co-CEO, assign department responsibility checkboxes as the organisation expands.
 
 | Persona | Role | Sees |
 | --- | --- | --- |
-| Priya Raman | IT department head (default profile) | Harbourline IT calendar, its people, PTO approvals and the default IT calendar scope |
-| Charlotte Whitmore | Harbourline CEO | The departments in the Harbourline calendar scope (plus her own office), portfolio scoring, escalation log |
-| Arjun Mehta | Meridian CEO | Meridian’s 6 entities, 14 departments and its people — never Harbourline rows |
-| Layla Al Mansoori | Head of Operations | All operational departments, portfolio scoring, escalation log |
+| Angus Harris | Co-CEO · Operations | Current IT department portfolio; additional departments can be assigned later |
+| Luke Harris | Co-CEO · Warehouse & Retail Operations | No operational department assigned yet; portfolio note is editable and departments can be added later |
+| RAM / Phil / Bharat | CIO / CTO / Head of Data | Their respective IT leadership and delivery streams |
+| Swechchha / Greg / Naweesh / Jayden / Ibadur | Delivery / Architecture / stream leads | Nested delivery streams and linked DevOps tickets |
+| Harbourline profiles | Separate retail demo tenant | Harbourline entities, IT sample workload and its own tenant-scoped data |
+| Arjun Mehta / Layla Al Mansoori | Meridian CEO / Head of Operations | Meridian’s entities and departments — never Harris Farm or Harbourline rows |
 | Fatima Noor / Ravi Krishnan / … | Department heads | Own department + reporting line |
 | Unit heads / managers / supervisors | Management | Their own reporting tree only |
 | Employees | Self-service | Own calendar, own timesheet, own activity register |
 
-The data deliberately contains a realistic mix across **two tenants**: 1 100+ activities, 6 000+ timesheet entries, 890+ holiday records, 450+ daily stand-up entries (with blockers, internal/cross-functional support callouts and action items), 22 leave requests (approved, pending, PH-crossing, sick and unpaid), calendar connections in connected/pending/disconnected states, and a few departments under the 70-point threshold so the escalation flow has something to act on.
+The workspace contains **three tenants**. Harbourline and Meridian retain illustrative activity, timesheet, holiday, stand-up, leave and escalation data. Harris Farm has the named IT onboarding roster, linked planning activities and a draft DevOps ticket hierarchy, but **no actual timesheet hours, PTO or stand-up history are fabricated** for those people.
 
-### Harbourline Retail Australia — the default tenant (IT-first) and IT capex programme
+### Harris Farm Markets — default onboarding tenant (IT only)
 
-**Harbourline Retail Australia** is the tenant the portal opens on, a retail group that is completely separate from Meridian: its own group → company → sub-company tree, Australian country/timezone rules (AUD reporting currency), retail departments (Store Operations, Merchandising, Finance, Supply Chain, Digital, People & Culture) and a 33-person **Information Technology (PMO)** department.
+The entity tree is **Harris Farm Markets (group) → HarrisFarm Markets (company)**. Only the **Information Technology** department is created initially, with DevOps delivery enabled. The roster includes two co-CEOs, CIO RAM, CTO Phil, Data Head Bharat and team, Delivery Head Swechchha, PMO / BA and QA resources, Lead Architect Greg, and DevOps, Architecture Design and D365 streams. Department portfolios, designations, manager relationships, remote/contractor status and supporting streams can be edited in **Master setup → Employees**; streams and leads are configurable in **DevOps delivery → Streams & leads**.
+
+Activities are seeded as clearly labelled one-hour planning placeholders for ticket follow-up, requirements gathering, planning, QA, architecture and D365 work. Confirm the schedule and plan with each resource. When work is performed, log actual effort against the linked activity in **Timesheets**; no actual hours are pre-populated.
+
+### Harbourline Retail Australia — separate retail demo tenant and IT capex programme
+
+**Harbourline Retail Australia** is a separate example tenant, with its own group → company → sub-company tree, Australian country/timezone rules (AUD reporting currency), retail departments (Store Operations, Merchandising, Finance, Supply Chain, Digital, People & Culture) and a 33-person **Information Technology (PMO)** department.
 
 - **110 IT projects** across delivery, operations, security, data & analytics, infrastructure, integration, digital experience, enterprise apps, network and compliance.
-- **Calendar scope: single department (Information Technology, RIT)** — the default master setting. Change it to *multiple* or *all* in **Master setup → Tenants & calendar scope** and every operational screen follows.
+- **Calendar scope: single department (Information Technology, RIT)** in the Harbourline example tenant. Change it to *multiple* or *all* in **Master setup → Tenants & calendar scope** and every operational screen follows.
 - **30 capital projects** (board-funded capex, AASB 138 development effort) and **80 operational run projects** that are expensed.
 - Project tasks are real activities on the calendar/timesheet, so resources log daily effort against the exact task.
 - The **Capitalisation pack** screen reports only capital-project development effort, converts hours to fully-loaded AUD cost, reconciles every expensed hour, and drives a submit → board decision workflow with an audit trail.
@@ -110,7 +121,7 @@ PTO remaining   = tenant PTO entitlement (working days) × daily hours − appro
                   (sick, unpaid, parental, study and other leave are tracked outside the PTO balance)
 ```
 
-Calendar scope is a per-tenant master setting: `single` (one department — the default IT department), `multiple` (an explicit list) or `all`. It filters departments, people, activities, timesheets, stand-ups, projects, capitalisation packs, PTO and performance on every operational screen and in the AI guide's live context; the signed-in person's own department is always kept so nobody is locked out of their own calendar.
+Calendar scope is a per-tenant master setting: `single` (one department — Harris Farm IT / `HIT` by default), `multiple` (an explicit list) or `all`. It filters departments, people, activities, timesheets, stand-ups, projects, capitalisation packs, PTO and performance on every operational screen and in the AI guide's live context; the signed-in person's own department is always kept so nobody is locked out of their own calendar.
 
 Escalation rule: at the end of every day/week/month/quarter, any department whose score is below the configured threshold (default **70**) produces one escalation record per period. Recipients: **department head (To)**, **Head of Operations (CC)**. Duplicate suppression is by `(department_id, period, period_start)`. The pilot keeps recent editable audit entries and escalation acknowledgement/closure statuses. Immutable, server-attributed audit logging and automatic delivery are future work.
 

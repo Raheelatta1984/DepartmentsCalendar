@@ -41,7 +41,7 @@ const tenantIds = state.tenants.map((tenant) => tenant.id);
 /* 1. Tenant register and ownership                                    */
 /* ------------------------------------------------------------------ */
 check('every entity belongs to a registered tenant', () => {
-  assert.ok(state.tenants.length >= 2, 'the pilot seeds at least two tenants');
+  assert.ok(state.tenants.length >= 3, 'the pilot seeds Harris Farm, Harbourline and Meridian tenants');
   state.entities.forEach((entity) => {
     assert.ok(tenantIds.includes(entity.tenantId), `${entity.id} has no valid tenant`);
   });
@@ -69,6 +69,7 @@ check('departments and people inherit the entity tenant', () => {
 check('tenant scopes are disjoint for every row that matters', () => {
   const harbourline = scopeStateToTenant(state, 'tnt-harbourline');
   const meridian = scopeStateToTenant(state, 'tnt-meridian');
+  const harrisFarm = scopeStateToTenant(state, 'tnt-harris-farm');
 
   const ids = (rows) => new Set(rows.map((row) => row.id));
   const overlap = (a, b, label) => {
@@ -83,11 +84,19 @@ check('tenant scopes are disjoint for every row that matters', () => {
   overlap(harbourline.projects, meridian.projects, 'projects');
   overlap(harbourline.leaves, meridian.leaves, 'leaves');
   overlap(harbourline.standups, meridian.standups, 'standups');
+  for (const [label, key] of [
+    ['entities', 'entities'], ['departments', 'departments'], ['employees', 'employees'],
+    ['activities', 'activities'], ['timeEntries', 'timeEntries'], ['projects', 'projects'],
+    ['leaves', 'leaves'], ['standups', 'standups'],
+  ]) {
+    overlap(harrisFarm[key], harbourline[key], `Harris Farm / Harbourline ${label}`);
+    overlap(harrisFarm[key], meridian[key], `Harris Farm / Meridian ${label}`);
+  }
 
   assert.ok(harbourline.employees.every((employee) => employee.email.includes('harbourlineretail')));
   assert.ok(meridian.employees.every((employee) => !employee.email.includes('harbourlineretail')));
-  assert.equal(harbourline.entities.length + meridian.entities.length, state.entities.length);
-  assert.equal(harbourline.employees.length + meridian.employees.length, state.employees.length);
+  assert.equal(harbourline.entities.length + meridian.entities.length + harrisFarm.entities.length, state.entities.length);
+  assert.equal(harbourline.employees.length + meridian.employees.length + harrisFarm.employees.length, state.employees.length);
 });
 
 check('a tenant never references another tenant’s rows', () => {
@@ -149,7 +158,7 @@ check('removing a tenant removes only its own rows', () => {
 /* ------------------------------------------------------------------ */
 /* 3. Calendar scope master setting                                    */
 /* ------------------------------------------------------------------ */
-check('default IT set-up covers the IT department only', () => {
+check('Harbourline example tenant still covers its IT department only', () => {
   const tenant = findTenant(state.tenants, 'tnt-harbourline');
   assert.equal(tenant.calendarScope.mode, 'single');
   const scoped = scopeStateToTenant(state, tenant.id);
@@ -272,11 +281,12 @@ check('next responsible follows delegate, manager, then department head', () => 
 /* ------------------------------------------------------------------ */
 /* 5. Persona and scope safety                                         */
 /* ------------------------------------------------------------------ */
-check('a persona from another tenant is never the active user', () => {
-  const resolved = resolveTenantId(state.tenants, 'tnt-harbourline');
+check('the default persona belongs to the active tenant and never leaks to another tenant', () => {
+  const resolved = resolveTenantId(state.tenants, state.settings.activeTenantId);
   const scoped = scopeStateToTenant(state, resolved);
   assert.ok(scoped.employees.some((employee) => employee.id === state.settings.activeUserId));
   assert.equal(scoped.employees.find((employee) => employee.id === 'emp-001'), undefined);
+  assert.equal(resolved, 'tnt-harris-farm');
 });
 
 const failures = results.filter((row) => row[0] === 'FAIL');

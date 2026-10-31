@@ -15,7 +15,7 @@ import {
 import { useStore } from '../store';
 import type { Activity } from '../types';
 import { capacityHoursFor, employeeScore, scoreSeries, workloadBand } from '../lib/analytics';
-import { ROLE_LABELS } from '../lib/permissions';
+import { employeeTitle, ROLE_LABELS } from '../lib/permissions';
 import { fromISO, humanHours, toISO } from '../lib/dates';
 import { Avatar, Badge, Button, Modal, Progress, SectionHeader } from './ui';
 import { LEAVE_TYPE_SHORT, leaveOnDate, nextResponsible, ptoSummary } from '../lib/leave';
@@ -130,7 +130,8 @@ export function EmployeeModal({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-1.5">
               <h3 className="text-base font-semibold text-slate-900">{employee.name}</h3>
-              <Badge tone={employee.role === 'ceo' ? 'purple' : 'brand'}>{ROLE_LABELS[employee.role]}</Badge>
+              <Badge tone={employee.role === 'ceo' ? 'purple' : 'brand'}>{employeeTitle(employee)}</Badge>
+              <Badge tone="neutral">{ROLE_LABELS[employee.role]} access</Badge>
               <Badge tone={employee.status === 'active' ? 'good' : 'warn'}>{employee.status.replace('_', ' ')}</Badge>
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10.5px] text-slate-500">
@@ -146,9 +147,17 @@ export function EmployeeModal({
                   {c.provider === 'outlook' ? 'Outlook' : 'Google'} · {c.status}
                 </Badge>
               ))}
+              {employee.employmentType === 'contractor' ? <Badge tone="warn">Contractor</Badge> : null}
+              {employee.workLocation === 'remote' ? <Badge tone="info">Remote</Badge> : employee.workLocation === 'hybrid' ? <Badge tone="neutral">Hybrid</Badge> : employee.workLocation === 'on_site' ? <Badge tone="neutral">On site</Badge> : null}
               <Badge tone="neutral">{employee.weeklyHours}h/week contracted</Badge>
               <Badge tone="neutral">Joined {employee.joinDate}</Badge>
             </div>
+            {employee.leadershipPortfolio || employee.collaborationNotes ? (
+              <div className="mt-2 space-y-1 text-[10px] text-slate-500">
+                {employee.leadershipPortfolio ? <p><span className="font-semibold text-slate-600">Leadership portfolio:</span> {employee.leadershipPortfolio}</p> : null}
+                {employee.collaborationNotes ? <p><span className="font-semibold text-slate-600">Cross-functional:</span> {employee.collaborationNotes}</p> : null}
+              </div>
+            ) : null}
           </div>
           <div className="flex gap-2">
             <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-center">

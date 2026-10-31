@@ -32,6 +32,9 @@ function Probe() {
 
 const root = createRoot(document.getElementById('root'));
 await act(async () => root.render(React.createElement(StoreProvider, null, React.createElement(Probe))));
+// This fixture validates the legacy Harbourline stand-up demo; Harris Farm's
+// new roster intentionally has no fabricated stand-up history.
+await act(async () => latest.setActiveTenant('tnt-harbourline'));
 
 const state = latest.state;
 const today = toISO(new Date());

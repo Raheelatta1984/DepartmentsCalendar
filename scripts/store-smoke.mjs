@@ -33,13 +33,14 @@ function Probe() {
     results.push(['seed holidays', s0.holidays.length]);
     const ceo = s0.employees.find((e) => e.role === 'ceo');
     const emp = s0.employees.find((e) => e.role === 'employee');
-    const score = departmentScore(s0, s0.departments[1], 'week', new Date());
-    results.push(['finance score', score.score, 'util', score.utilization, 'cap', score.capacityHours]);
+    const department = s0.departments[0];
+    const score = departmentScore(s0, department, 'week', new Date());
+    results.push(['active department score', score.score, 'util', score.utilization, 'cap', score.capacityHours]);
     results.push(['employee score', employeeScore(s0, emp, score.periodStart, score.periodEnd).score]);
     results.push(['ceo scope', getScope(s0, ceo.id).visibleDepartments.length, getScope(s0, ceo.id).visibleEmployeeIds.length]);
     results.push(['employee scope', getScope(s0, emp.id).visibleEmployeeIds.length, getScope(s0, emp.id).visibleDepartments.length]);
-    const coo = s0.employees.find((e) => e.role === 'head_operations');
-    results.push(['coo scope', getScope(s0, coo.id).visibleDepartments.length]);
+    const coCeo = s0.employees.filter((e) => e.role === 'ceo')[1];
+    results.push(['unassigned co-CEO scope', getScope(s0, coCeo.id).visibleDepartments.length]);
     const head = s0.employees.find((e) => e.role === 'department_head');
     results.push(['dept head scope', getScope(s0, head.id).visibleDepartments.length, getScope(s0, head.id).visibleEmployeeIds.length]);
 
