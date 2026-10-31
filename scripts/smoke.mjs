@@ -43,7 +43,7 @@ assert.ok(!text.includes('Arjun Mehta'), 'another tenant’s people must never b
 assert.ok(!text.includes('Accounts & Finance'), 'another tenant’s departments must never be on screen');
 assert.ok(!text.includes('Meridian Contracting'), 'another tenant’s entities must never be on screen');
 console.log('--- body sample:', text.slice(0, 400).replace(/\s+/g, ' '));
-for (const v of ['calendar','activities','roadmap','timesheet','standups','leave','delivery','effort-reports','projects','capitalisation','performance','integrations','admin']) {
+for (const v of ['calendar','activities','roadmap','timesheet','standups','leave','delivery','effort-reports','projects','capitalisation','performance','integrations','admin','whats-new']) {
   window.location.hash = '#/' + v;
   window.dispatchEvent(new dom.window.HashChangeEvent('hashchange'));
   await new Promise((r) => setTimeout(r, 900));
@@ -66,6 +66,21 @@ for (const v of ['calendar','activities','roadmap','timesheet','standups','leave
   }
   if (v === 'admin') {
     assert.ok(t.includes('Tenants & calendar scope'), 'master setup exposes the tenant and calendar-scope settings');
+  }
+  if (v === 'whats-new') {
+    /* Release notes must cover what actually shipped, or the tab quietly
+       becomes a museum of old features. */
+    assert.ok(t.includes('You’re up to date'), 'the release tab keeps its up-to-date state');
+    for (const shipped of [
+      'Private calendars, delegation and clear time ownership',
+      'Harris Farm Markets onboarded as the default IT tenant',
+      'DevOps delivery, streams and effort reports',
+      'A portal that feels like your brand',
+    ]) {
+      assert.ok(t.includes(shipped), `what’s new must list: ${shipped}`);
+    }
+    assert.ok(t.includes('31 October 2026'), 'release notes carry a release date');
+    assert.ok(!t.includes('Theme StudioTheme Studio'), 'the release tab renders once, not twice');
   }
 }
 /* The command centre opens on the signed-in person's own entity, and the
