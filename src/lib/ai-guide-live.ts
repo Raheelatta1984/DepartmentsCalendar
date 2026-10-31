@@ -5,6 +5,7 @@ import { filterActivities, filterEntries, groupScore } from './analytics';
 import { buildStandupPulses } from './standups';
 import { approvalQueue, awayOnDate, ptoSummary } from './leave';
 import { fromISO, humanHours, periodLabel, periodRange, toISO } from './dates';
+import { RELEASES } from '../data/releases';
 
 /* ------------------------------------------------------------------ */
 /* Live context for the AI guide                                       */
@@ -191,9 +192,10 @@ export function buildLiveFacts({
     }
     case 'whats-new': {
       return [
+        { label: 'Release notes', value: String(RELEASES.length) },
+        { label: 'Latest release', value: RELEASES[0]?.released ?? 'None logged' },
+        { label: 'New this week', value: String(RELEASES.filter((release) => release.label === 'Just added').length) },
         { label: 'Workspace', value: state.settings.groupName },
-        { label: 'Entities', value: String(state.entities.length) },
-        { label: 'Departments', value: String(state.departments.length) },
       ];
     }
     case 'theme-studio': {

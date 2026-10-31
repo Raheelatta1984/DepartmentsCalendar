@@ -26,6 +26,16 @@ IT is enabled by default; other departments can opt in through Master setup. See
 
 ---
 
+## Release notes, in one place
+
+`src/data/releases.ts` is the single source of truth for what shipped. The **What’s new** tab renders it directly, and `npm run changelog` regenerates [`docs/CHANGELOG.md`](docs/CHANGELOG.md) from the same array — so the screen and the repository changelog cannot describe different releases.
+
+Adding a release is one edit: append an entry (title, ISO and display date, label, tone, icon, description, bullets and an optional link to the screen). Keep the log newest first; titles stay unique.
+
+`npm run changelog:check` runs inside `npm test` and in CI, and fails if the markdown is stale, an entry is out of order, or a label, tone, icon or link target is unknown. The app smoke also renders the tab and asserts the newest notes are present.
+
+---
+
 ## 1. What is in the demo
 
 | Your requirement | Where it lives in the portal |
@@ -215,6 +225,7 @@ See [`docs/architecture.svg`](docs/architecture.svg) and [`docs/ARCHITECTURE.md`
 | **Performance & escalation** | Department matrix across all metrics, employee scorecards, escalation log, rule engine, generated email |
 | **Calendar sync** | Provider cards, per-employee connections, sync queue log, production checklist, troubleshooting |
 | **Master setup** | Editable tenants & calendar scope (single / multiple / all departments, PTO entitlement), entities, departments, sub-departments/streams, designations, employees, holidays/weekends, group settings, audit trail, full JSON backup |
+| **What’s new** | Every user-visible release, newest first, with a link to the screen each change lives on — rendered from the same release log that generates `docs/CHANGELOG.md` |
 
 ---
 
@@ -225,7 +236,7 @@ api/                  Vercel function entry points (config, session, workspace)
 server/               shared Node API, authentication, validation, Neon repository
 src/
   components/         layout, modals, charts, workspace login and save status
-  data/               12-country holiday engine + tenant register, leave seed and retail capex datasets
+  data/               12-country holiday engine, tenant register, leave/retail seeds and the release log (releases.ts)
   lib/                analytics, capitalisation, tenant isolation, leave/PTO, ownership/sharing rules, time reconciliation, exports, dates, shared-state sync
   pages/              one file per screen
   store.tsx           state/actions + local-demo or shared-Neon persistence
@@ -235,6 +246,7 @@ scripts/              UI/store/shared-sync smoke checks + owner seed (db:init) a
 docs/
   DEPLOYMENT.md       existing Vercel + Neon Free setup, verification and recovery
   ARCHITECTURE.md     implemented pilot and production roadmap
+  CHANGELOG.md        release notes generated from src/data/releases.ts (never hand-edited)
   neon.sql            actual runtime pilot schema (auto-created by the API)
   schema.sql          legacy Supabase relational-design reference only
   architecture.svg
