@@ -75,11 +75,14 @@ for (const v of ['calendar','activities','roadmap','timesheet','standups','leave
       'Private calendars, delegation and clear time ownership',
       'Harris Farm Markets onboarded as the default IT tenant',
       'DevOps delivery, streams and effort reports',
+      'A shared workspace behind one password',
+      'Demo mode starts even without a database',
       'A portal that feels like your brand',
     ]) {
       assert.ok(t.includes(shipped), `what’s new must list: ${shipped}`);
     }
     assert.ok(t.includes('31 October 2026'), 'release notes carry a release date');
+    assert.ok(t.includes('notes · newest first'), 'the tab states its ordering');
     assert.ok(!t.includes('Theme StudioTheme Studio'), 'the release tab renders once, not twice');
   }
 }

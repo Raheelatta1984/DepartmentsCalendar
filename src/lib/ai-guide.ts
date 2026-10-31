@@ -1270,7 +1270,7 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
     tips: [
       'Scan the top three entries after each update; “Just added” marks this week’s changes.',
       'Each entry links straight to the screen where the change lives.',
-      'Older entries stay here after release so nothing gets lost between updates.',
+      'This log is generated from one release file, so it always matches docs/CHANGELOG.md.',
     ],
     watch:
       'Release notes describe intent; the engine’s own figures remain the source of truth.',
