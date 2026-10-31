@@ -1265,15 +1265,17 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
   'whats-new': {
     title: 'What’s new',
     subtitle: 'What changed, and what it means for you',
-    blurb: 'Release highlights and recent improvements, kept separate from day-to-day calendar work.',
+    blurb:
+      'Every user-visible change, newest first — private calendar sharing, delegation, DevOps delivery, tenant onboarding and the platform work underneath them.',
     tips: [
-      'Scan here after each update to find capabilities you have not used yet.',
-      'Theme Studio and the capitalisation workflow started life as entries on this page.',
+      'Scan the top three entries after each update; “Just added” marks this week’s changes.',
+      'Each entry links straight to the screen where the change lives.',
+      'Older entries stay here after release so nothing gets lost between updates.',
     ],
     watch:
       'Release notes describe intent; the engine’s own figures remain the source of truth.',
     context: [
-      'Entries stay here after release so nothing gets lost between updates.',
+      'Entries are ordered by release date, not by which tab they belong to.',
     ],
     sections: [
       {
