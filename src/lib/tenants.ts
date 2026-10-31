@@ -218,6 +218,8 @@ export function scopeStateToTenant(state: StoreState, tenantId: string): StoreSt
     connections: state.connections.filter((connection) => employeeIds.has(connection.employeeId)),
     syncJobs: state.syncJobs.filter((job) => activityIds.has(job.activityId)),
     standups: state.standups.filter((entry) => owned(index.departmentTenant, entry.departmentId)),
+    leadershipUpdates: (state.leadershipUpdates ?? []).filter((row) => owned(index.departmentTenant, row.departmentId)),
+    oneOnOnes: (state.oneOnOnes ?? []).filter((row) => owned(index.employeeTenant, row.employeeId)),
     leaves: (state.leaves ?? []).filter((leave) => employeeIds.has(leave.employeeId)),
     settings: state.settings,
     auditLog: (state.auditLog ?? []).filter(
@@ -321,6 +323,10 @@ export function mergeTenantState(full: StoreState, edited: StoreState, tenantId:
       (row) => fullIndex.departmentTenant.get(row.departmentId),
       (row) => editedIndex.departmentTenant.get(row.departmentId),
     ),
+    leadershipUpdates: mergeOwned(full.leadershipUpdates ?? [], edited.leadershipUpdates ?? [],
+      (row) => fullIndex.departmentTenant.get(row.departmentId), (row) => editedIndex.departmentTenant.get(row.departmentId)),
+    oneOnOnes: mergeOwned(full.oneOnOnes ?? [], edited.oneOnOnes ?? [],
+      (row) => fullIndex.employeeTenant.get(row.employeeId), (row) => editedIndex.employeeTenant.get(row.employeeId)),
     projects: mergeOwned(
       full.projects ?? [],
       edited.projects ?? [],
@@ -465,6 +471,8 @@ export function removeTenant(state: StoreState, tenantId: string): StoreState {
     connections: state.connections.filter((connection) => !employees.has(connection.employeeId)),
     syncJobs: state.syncJobs.filter((job) => !activities.has(job.activityId)),
     standups: state.standups.filter((entry) => !departments.has(entry.departmentId)),
+    leadershipUpdates: (state.leadershipUpdates ?? []).filter((row) => !departments.has(row.departmentId)),
+    oneOnOnes: (state.oneOnOnes ?? []).filter((row) => !employees.has(row.employeeId)),
     leaves: (state.leaves ?? []).filter((leave) => !employees.has(leave.employeeId)),
     projects: (state.projects ?? []).filter((project) => !projects.has(project.id)),
     capitalisationApprovals: (state.capitalisationApprovals ?? []).filter(
@@ -530,6 +538,8 @@ export function scopeStateToDepartments(state: StoreState, departmentIds: string
     connections: state.connections.filter((connection) => employeeIds.has(connection.employeeId)),
     syncJobs: state.syncJobs.filter((job) => activityIds.has(job.activityId)),
     standups: state.standups.filter((entry) => allowed.has(entry.departmentId)),
+    leadershipUpdates: (state.leadershipUpdates ?? []).filter((row) => allowed.has(row.departmentId)),
+    oneOnOnes: (state.oneOnOnes ?? []).filter((row) => employeeIds.has(row.employeeId)),
     leaves: (state.leaves ?? []).filter((leave) => employeeIds.has(leave.employeeId)),
     projects: (state.projects ?? []).filter((project) => allowed.has(project.departmentId)),
     capitalisationApprovals: (state.capitalisationApprovals ?? []).filter((approval) =>

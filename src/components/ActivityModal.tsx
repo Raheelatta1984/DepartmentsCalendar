@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowRight, CalendarCheck2, CalendarX2, Check, Plus, Send, ShieldCheck, Trash2, X } from 'lucide-react';
 import { emptyActivity, newId, useScopedState, useStore } from '../store';
-import type { Activity, ActivityType, Priority, TaskStatus } from '../types';
+import type { Activity, ActivityType, Priority, TaskStatus, TimeEntry } from '../types';
 import { TYPE_LABELS } from '../lib/analytics';
 import { linkActivity, workItemPath } from '../lib/delivery';
 import { canAssignActivity, canEditActivity, canLogForEmployee } from '../lib/permissions';
-import { elapsedHours, timeWindowError } from '../lib/time';
+import { addHoursToTime, elapsedHours, timeWindowError } from '../lib/time';
+import { toISO } from '../lib/dates';
 import { Badge, Button, Field, Input, Label, Modal, Select, Textarea, Toggle } from './ui';
 
 const TYPES = Object.keys(TYPE_LABELS) as ActivityType[];
@@ -29,18 +30,27 @@ export function ActivityModal({
   activity?: Activity | null;
   defaults?: Partial<Activity>;
 }) {
-  const { scope, upsertActivity, deleteActivity, pushToCalendars } = useStore();
+  const { scope, state: fullState, upsertActivity, deleteActivity, pushToCalendars, addTimeEntry, deleteTimeEntry } = useStore();
   /* Resources are only assignable inside the tenant's calendar scope. */
   const state = useScopedState();
   const [draft, setDraft] = useState<Activity>(() => emptyActivity(state, defaults));
   const [newSubtask, setNewSubtask] = useState('');
   const [error, setError] = useState('');
+  const [logWithNew, setLogWithNew] = useState(false);
+  const [timeDraft, setTimeDraft] = useState<TimeEntry>(() => freshTime(state, draft));
+  const [timeError, setTimeError] = useState('');
+  const [timeNotice, setTimeNotice] = useState('');
 
   useEffect(() => {
     if (!open) return;
     setError('');
     setNewSubtask('');
-    setDraft(activity ? { ...activity } : emptyActivity(state, defaults));
+    const next = activity ? { ...activity } : emptyActivity(state, defaults);
+    setDraft(next);
+    setTimeDraft(freshTime(state, next));
+    setLogWithNew(false);
+    setTimeError('');
+    setTimeNotice('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, activity?.id]);
 
@@ -116,7 +126,7 @@ export function ActivityModal({
       ...draft,
       title: draft.title.trim(),
       progress: draft.status === 'completed' ? 100 : draft.progress,
-    });
+    }, !activity && logWithNew ? { ...timeDraft, activityId: draft.id, employeeId: draft.assigneeId } : undefined);
     if (result) {
       setError(result);
       return;
@@ -311,6 +321,38 @@ export function ActivityModal({
           </Field>
         </div>
 
+        {canModify ? <div className="rounded-xl border border-brand-200 bg-brand-50/30 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div><div className="text-xs font-semibold text-slate-800">Planned vs logged time</div>
+              <p className="mt-0.5 text-[11px] text-slate-500">{draft.plannedHours}h planned · {fullState.timeEntries.filter((row) => row.activityId === draft.id && canLogForEmployee(fullState, scope.user.id, row.employeeId)).reduce((total, row) => total + row.hours, 0).toFixed(2).replace(/\.00$/, '')}h visible logged · actuals also appear in Timesheets</p></div>
+          </div>
+          {activity && fullState.timeEntries.some((row) => row.activityId === activity.id && canLogForEmployee(fullState, scope.user.id, row.employeeId)) ? <div className="mt-2 space-y-1">
+            {fullState.timeEntries.filter((row) => row.activityId === activity.id && canLogForEmployee(fullState, scope.user.id, row.employeeId)).map((row) => <div key={row.id} className="flex items-center gap-2 rounded-lg bg-white px-2 py-1.5 text-[11px]">
+              <span className="flex-1">{row.date} · {row.hours}h · {fullState.employees.find((person) => person.id === row.employeeId)?.name ?? 'Employee'}</span>
+              <button type="button" className="text-brand-700" onClick={() => { const start = row.startTime ?? state.settings.workingDayStart; setTimeDraft({ ...row, startTime: start, endTime: row.endTime ?? addHoursToTime(start, row.hours) }); setTimeError(''); }}>Edit</button>
+              <button type="button" className="text-rose-600" onClick={() => { if (confirm('Delete this time entry?')) { deleteTimeEntry(row.id); setTimeDraft(freshTime(state, draft)); } }}>Delete</button>
+            </div>)}
+          </div> : null}
+          {!activity ? <label className="mt-3 flex items-center gap-2 text-xs text-slate-700"><input type="checkbox" checked={logWithNew} onChange={(event) => { const checked = event.target.checked; setLogWithNew(checked); if (checked) setTimeDraft(freshTime(state, draft)); }} /> Log actual time when this activity is created</label> : null}
+          {(activity || logWithNew) && canLogForEmployee(fullState, scope.user.id, activity ? timeDraft.employeeId : draft.assigneeId) ? <div className="mt-3 space-y-2">
+            <div className="grid gap-2 sm:grid-cols-4">
+              <Field label="Date"><Input aria-label="Time entry date" type="date" value={timeDraft.date} onChange={(event) => setTimeDraft((row) => ({ ...row, date: event.target.value }))} /></Field>
+              <Field label="Start"><Input aria-label="Time entry start" type="time" value={timeDraft.startTime ?? ''} onChange={(event) => setTimeDraft((row) => { const startTime = event.target.value; const hours = elapsedHours(startTime, row.endTime); return { ...row, startTime, ...(hours !== null ? { hours } : {}) }; })} /></Field>
+              <Field label="End"><Input aria-label="Time entry end" type="time" value={timeDraft.endTime ?? ''} onChange={(event) => setTimeDraft((row) => { const endTime = event.target.value; const hours = elapsedHours(row.startTime, endTime); return { ...row, endTime, ...(hours !== null ? { hours } : {}) }; })} /></Field>
+              <Field label="Actual hours"><Input aria-label="Actual hours" type="number" min={0.01} max={24} step={0.01} value={timeDraft.hours} onChange={(event) => setTimeDraft((row) => ({ ...row, hours: Number(event.target.value), endTime: addHoursToTime(row.startTime ?? state.settings.workingDayStart, Number(event.target.value)) }))} /></Field>
+            </div>
+            <Input aria-label="Time entry note" value={timeDraft.note} onChange={(event) => setTimeDraft((row) => ({ ...row, note: event.target.value }))} placeholder="Time entry note (optional)" />
+            {timeError ? <p role="alert" className="text-xs text-rose-700">{timeError}</p> : null}
+            {timeNotice ? <p role="status" className="text-xs text-emerald-700">{timeNotice}</p> : null}
+            {activity ? <div className="flex gap-2"><Button size="sm" variant="subtle" onClick={() => {
+              const error = addTimeEntry({ ...timeDraft, activityId: activity.id });
+              if (error) { setTimeError(error); setTimeNotice(''); return; }
+              setTimeError(''); setTimeNotice('Time entry saved to Timesheets.'); setTimeDraft(freshTime(state, activity));
+            }}>{fullState.timeEntries.some((row) => row.id === timeDraft.id) ? 'Update time entry' : 'Log actual time'}</Button>
+            {fullState.timeEntries.some((row) => row.id === timeDraft.id) ? <Button size="sm" onClick={() => setTimeDraft(freshTime(state, activity))}>Cancel edit</Button> : null}</div> : <p className="text-[10px] text-slate-500">The activity and this time entry will be saved together.</p>}
+          </div> : (activity || logWithNew) ? <p className="mt-2 text-xs text-slate-500">Only the assignee or their reporting lead can log time.</p> : null}
+        </div> : null}
+
         <Field label="Location / channel" hint="optional">
           <Input value={draft.location ?? ''} onChange={(e) => patch({ location: e.target.value })} placeholder="Teams, Boardroom 2, client site…" />
         </Field>
@@ -456,4 +498,12 @@ export function ActivityModal({
       </fieldset>
     </Modal>
   );
+}
+
+function freshTime(state: import('../types').StoreState, activity: Activity): TimeEntry {
+  const start = activity.startTime ?? state.settings.workingDayStart;
+  const end = activity.endTime ?? addHoursToTime(start, 1);
+  return { id: newId('te'), employeeId: activity.assigneeId, activityId: activity.id,
+    date: toISO(new Date()), startTime: start, endTime: end,
+    hours: elapsedHours(start, end) ?? 1, note: '', billable: true, approved: false };
 }

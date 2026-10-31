@@ -37,7 +37,7 @@ export function prepareSeedState(state, { maxBytes = MAX_BODY_BYTES } = {}) {
     throw new SeedError('The seed dataset failed workspace validation. No database changes were made.');
   }
   if (Buffer.byteLength(JSON.stringify({ version: 0, state: parsed.data })) > maxBytes) {
-    throw new SeedError('The seed dataset exceeds the 3 MB pilot limit. No database changes were made.');
+    throw new SeedError('The seed dataset exceeds the 4 MB pilot limit. No database changes were made.');
   }
   return parsed.data;
 }

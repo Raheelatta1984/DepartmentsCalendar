@@ -186,7 +186,9 @@ One-time setup in your own dashboards:
 
 Until configured, the public site stays an explicitly labelled **browser-only demo**, not a working shared database. Never publish credentials, disable the password gate, or give production database access to arbitrary preview builds.
 
-**Free is conditional:** choose Neon Free and stay within quotas. Vercel Hobby has personal/non-commercial eligibility restrictions; business use may require another plan/provider. No unlimited free usage or production SLA is promised. The snapshot API has a **3 MB pilot limit**, and everyone with the shared password has full workspace access. Account provisioning, sensitive variables and live verification still require access to your provider accounts.
+**One-on-one AI summaries:** a signed-in shared workspace can generate summaries with an optional server-side `OPENAI_API_KEY` and `ONE_ON_ONE_AI_MODEL`. Notes are sent to the provider only after an explicit confirmation. See [one-on-one setup and privacy limits](docs/ONE_ON_ONES.md). The shared password and switchable profiles do not provide per-person confidentiality; do not enter sensitive personnel or health information until individual authentication and server-side access controls are implemented.
+
+**Free is conditional:** choose Neon Free and stay within quotas. Vercel Hobby has personal/non-commercial eligibility restrictions; business use may require another plan/provider. No unlimited free usage or production SLA is promised. The snapshot API has a **4 MB pilot limit**, and everyone with the shared password has full workspace access. Account provisioning, sensitive variables and live verification still require access to your provider accounts.
 
 Full instructions, two-device verification, free-tier caveats, backups/restore, and troubleshooting: **[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)**. GitHub Actions runs verification on PRs and `main`; GitHub Pages deployment is manual and serves only the local demo.
 
@@ -262,7 +264,7 @@ vercel.json           existing Vercel project build/API configuration
 - **Shared storage needs setup.** With no Neon variables, data remains local to the browser. A successful static deployment does not automatically create/connect Neon.
 - **Trusted pilot only.** Shared-password holders can access all records. Employee/persona scope and tenant isolation are enforced by the application over one shared snapshot, not by per-tenant authentication or row-level policies in the database; audit entries are not tamper-proof.
 - **Tenant isolation is application-level.** No screen, calculation or export can read another tenant’s rows, and writes merge back per tenant — but the raw JSONB snapshot is still one trusted workspace protected by one shared password.
-- **Snapshot scale.** One versioned JSONB workspace, 3 MB request limit, full-state saves and explicit conflict handling. Record-level APIs, individual identities and migrations are needed before broad or sensitive production use.
+- **Snapshot scale.** One versioned JSONB workspace, 4 MB request limit, full-state saves and explicit conflict handling. Record-level APIs, individual identities and migrations are needed before broad or sensitive production use.
 - **Calendar sync is simulated.** No OAuth tokens are stored and no external mailbox is touched. `.ics` exports are real downloads, not subscriptions.
 - **Emails are composed, not sent.** Use Copy/Open in mail app. There is no automatic background delivery.
 - **Future holidays are projections.** Lunar-calendar dates remain tentative; verify official announcements.

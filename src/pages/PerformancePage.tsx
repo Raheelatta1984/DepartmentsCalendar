@@ -30,12 +30,13 @@ import {
   shiftAnchor,
   workloadBand,
 } from '../lib/analytics';
-import { buildEscalationEmail } from '../lib/export';
 import { employeeTitle } from '../lib/permissions';
 import { fromISO, humanHours, periodLabel, periodRange, toISO } from '../lib/dates';
 import { Avatar, Badge, Button, Card, EmptyState, Modal, PageHeader, Progress, SearchInput, SectionHeader, Select, Tabs } from '../components/ui';
 import { BarList, LineChart, ScoreRing, Sparkline } from '../components/charts';
 import { useToast } from '../components/toast';
+import { EscalationPanel } from '../components/EscalationPanel';
+import { canViewEscalation } from '../lib/people-workflows';
 
 export function PerformancePage({
   filters,
@@ -46,7 +47,7 @@ export function PerformancePage({
   setFilters: (patch: Partial<AppFilters>) => void;
   onOpenEmployee: (id: string) => void;
 }) {
-  const { scope, upsertEscalation, setEscalationStatus  } = useStore();
+  const { scope, state: tenantState, upsertEscalation } = useStore();
   /* Operational rows come from the active tenant, cut down to the departments
      the calendar is implemented for (master setting: one / several / all). */
   const state = useScopedState();
@@ -54,6 +55,7 @@ export function PerformancePage({
   const [drillDept, setDrillDept] = useState<string | null>(null);
   const [employeeQuery, setEmployeeQuery] = useState('');
   const [emailPreview, setEmailPreview] = useState<Escalation | null>(null);
+  const [createEscalationOpen, setCreateEscalationOpen] = useState(false);
   const [scanResult, setScanResult] = useState<{ created: number; checked: number } | null>(null);
 
   const anchor = fromISO(filters.anchor);
@@ -96,24 +98,25 @@ export function PerformancePage({
   const escalationList = useMemo(
     () =>
       state.escalations
-        .filter((e) => scope.visibleDepartmentIds.includes(e.departmentId))
+        .filter((e) => canViewEscalation(tenantState, scope.user.id, e))
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    [state.escalations, scope.visibleDepartmentIds],
+    [state.escalations, tenantState, scope.user.id],
   );
   const openEscalations = escalationList.filter((e) => e.status === 'open').length;
 
   const scan = () => {
+    if (!scope.user.managerId) { toast.push({ tone: 'error', title: 'Reporting lead required', description: 'Set a reporting lead before raising escalations.' }); return; }
     let created = 0;
+    let failed: string | null = null;
     below.forEach(({ dept, score }) => {
       const existing = state.escalations.find(
-        (e) => e.departmentId === dept.id && e.periodStart === score.periodStart && e.periodEnd === score.periodEnd,
+        (e) => (e.sourceDepartmentId ?? e.departmentId) === dept.id && e.raisedById === scope.user.id && e.periodStart === score.periodStart && e.periodEnd === score.periodEnd,
       );
       if (existing) return;
-      const head = empMap.get(dept.headId ?? '');
-      const coo = state.employees.find((e) => e.role === 'head_operations');
-      upsertEscalation({
+      const error = upsertEscalation({
         id: `esc-${Math.random().toString(36).slice(2, 9)}`,
         departmentId: dept.id,
+        sourceDepartmentId: dept.id,
         period: filters.period,
         periodStart: score.periodStart,
         periodEnd: score.periodEnd,
@@ -121,94 +124,45 @@ export function PerformancePage({
         threshold,
         utilization: score.utilization,
         onTimeRate: score.onTimeRate,
-        recipients: head ? [head.id] : [],
-        cc: coo ? [coo.id] : [],
+        recipients: [],
+        cc: [],
         createdAt: new Date().toISOString(),
         status: 'open',
-        note: `${score.overdueActivities} overdue · ${score.openActivities} open activities · attendance ${score.attendanceRate}%`,
+        note: `${dept.name}: ${score.overdueActivities} overdue · ${score.openActivities} open activities · attendance ${score.attendanceRate}%`,
       });
-      created += 1;
+      if (error) failed = error;
+      else created += 1;
     });
     setScanResult({ created, checked: below.length });
+    if (failed) { toast.push({ tone: 'error', title: 'Some escalations could not be raised', description: failed }); return; }
     toast.push({
       tone: created ? 'success' : 'info',
       title: created ? `${created} escalation${created === 1 ? '' : 's'} created` : 'No new escalations needed',
       description: created
-        ? `Department heads notified, Head of Operations copied. ${below.length} departments were below threshold.`
+        ? `Routed to your reporting lead with urgent follow-up activities. ${below.length} departments were below threshold.`
         : 'Every department below threshold already has an escalation for this period.',
     });
   };
 
-  const preview = emailPreview
-    ? buildEscalationEmail({
-        departmentName: deptMap.get(emailPreview.departmentId)?.name ?? '',
-        periodLabel: `${emailPreview.period} · ${emailPreview.periodStart} → ${emailPreview.periodEnd}`,
-        score: emailPreview.score,
-        threshold: emailPreview.threshold,
-        utilization: emailPreview.utilization,
-        onTimeRate: emailPreview.onTimeRate,
-        overdue: metricsState.activities.filter(
-          (a) =>
-            a.departmentId === emailPreview.departmentId &&
-            a.status !== 'completed' &&
-            a.status !== 'cancelled' &&
-            a.endDate < toISO(new Date()),
-        ).length,
-        headName: empMap.get(emailPreview.recipients[0] ?? '')?.name,
-        headEmail: empMap.get(emailPreview.recipients[0] ?? '')?.email,
-        cooName: empMap.get(emailPreview.cc[0] ?? '')?.name,
-        cooEmail: empMap.get(emailPreview.cc[0] ?? '')?.email,
-        note: emailPreview.note,
-      })
-    : null;
+  const preview = emailPreview ? {
+    to: tenantState.employees.find((person) => person.id === emailPreview.recipients[0])?.email ?? '',
+    subject: `Urgent follow-up · ${tenantState.employees.find((person) => person.id === emailPreview.raisedById)?.name ?? 'Reporting-line escalation'}`,
+    body: `Hello ${tenantState.employees.find((person) => person.id === emailPreview.recipients[0])?.name ?? 'reporting lead'},\n\n${emailPreview.note}\n\nAn urgent follow-up activity has been recorded in the portal. Please use the escalation thread to coordinate next steps.`,
+  } : null;
 
   return (
     <div>
       <PageHeader
         eyebrow="Governance"
         title="Department performance & escalation"
-        description="Country-aware capacity, logged effort, on-time delivery and attendance rolled into one score per department. Anything under threshold is routed to the department head with the Head of Operations in copy."
+        description="Country-aware delivery scores and reporting-line escalations. Every new concern goes to your reporting lead with an urgent follow-up activity."
         actions={
           <>
             <Button size="sm" onClick={scan}>
               <Play className="h-3.5 w-3.5" /> Run performance scan
             </Button>
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={() => {
-                if (below[0]) {
-                  const dept = below[0].dept;
-                  const s = below[0].score;
-                  const head = empMap.get(dept.headId ?? '');
-                  const coo = state.employees.find((e) => e.role === 'head_operations');
-                  upsertEscalation({
-                    id: `esc-${Math.random().toString(36).slice(2, 9)}`,
-                    departmentId: dept.id,
-                    period: filters.period,
-                    periodStart: s.periodStart,
-                    periodEnd: s.periodEnd,
-                    score: s.score,
-                    threshold,
-                    utilization: s.utilization,
-                    onTimeRate: s.onTimeRate,
-                    recipients: head ? [head.id] : [],
-                    cc: coo ? [coo.id] : [],
-                    createdAt: new Date().toISOString(),
-                    status: 'open',
-                    note: `${s.overdueActivities} overdue activities · attendance ${s.attendanceRate}%`,
-                  });
-                  toast.push({
-                    tone: 'success',
-                    title: `Escalated ${dept.name}`,
-                    description: `To ${head?.name ?? 'department head'}${coo ? ` · CC ${coo.name}` : ''}`,
-                  });
-                } else {
-                  toast.push({ tone: 'info', title: 'Nothing to escalate', description: 'All departments are at or above the threshold.' });
-                }
-              }}
-            >
-              <Mail className="h-3.5 w-3.5" /> Escalate weakest department
+            <Button size="sm" variant="primary" onClick={() => setCreateEscalationOpen(true)}>
+              <Mail className="h-3.5 w-3.5" /> Raise escalation
             </Button>
           </>
         }
@@ -293,7 +247,7 @@ export function PerformancePage({
           <div className="mt-1 text-2xl font-semibold tabular-nums text-amber-600">{openEscalations}</div>
           <div className="mt-0.5 text-[10px] text-slate-500">{escalationList.length} logged in total</div>
           <div className="mt-2 flex items-center gap-1 text-[10px] text-slate-500">
-            <Mail className="h-3 w-3" /> Dept head + CC Head of Operations
+            <Mail className="h-3 w-3" /> Routed to your reporting lead
           </div>
         </Card>
       </div>
@@ -442,11 +396,10 @@ export function PerformancePage({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            const head = empMap.get(dept.headId ?? '');
-                            const coo = state.employees.find((x) => x.role === 'head_operations');
-                            upsertEscalation({
+                            const error = upsertEscalation({
                               id: `esc-${Math.random().toString(36).slice(2, 9)}`,
                               departmentId: dept.id,
+                              sourceDepartmentId: dept.id,
                               period: filters.period,
                               periodStart: score.periodStart,
                               periodEnd: score.periodEnd,
@@ -454,13 +407,14 @@ export function PerformancePage({
                               threshold,
                               utilization: score.utilization,
                               onTimeRate: score.onTimeRate,
-                              recipients: head ? [head.id] : [],
-                              cc: coo ? [coo.id] : [],
+                              recipients: [],
+                              cc: [],
                               createdAt: new Date().toISOString(),
                               status: 'open',
-                              note: `${score.overdueActivities} overdue · attendance ${score.attendanceRate}%`,
+                              note: `${dept.name}: ${score.overdueActivities} overdue · attendance ${score.attendanceRate}%`,
                             });
-                            toast.push({ tone: 'success', title: `${dept.name} escalated`, description: `To ${head?.name} · CC ${coo?.name}` });
+                            if (error) toast.push({ tone: 'error', title: 'Escalation not raised', description: error });
+                            else toast.push({ tone: 'success', title: `${dept.name} escalated`, description: `Routed to your reporting lead with an urgent follow-up activity.` });
                           }}
                           className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-1.5 py-1 text-[9px] font-semibold text-rose-600 hover:bg-rose-100"
                         >
@@ -551,64 +505,7 @@ export function PerformancePage({
           </div>
         </Card>
 
-        <Card padded={false}>
-          <div className="px-4 pt-4">
-            <SectionHeader title="Escalation log" subtitle="Audit trail with recipients and status" action={<Badge tone="warn">{escalationList.length}</Badge>} />
-          </div>
-          <div className="mt-2 max-h-[380px] divide-y divide-slate-100 overflow-y-auto">
-            {escalationList.map((esc) => {
-              const dept = deptMap.get(esc.departmentId);
-              const head = empMap.get(esc.recipients[0] ?? '');
-              const coo = empMap.get(esc.cc[0] ?? '');
-              return (
-                <div key={esc.id} className="p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate text-[11px] font-semibold text-slate-800">{dept?.name}</span>
-                        <Badge tone={esc.status === 'open' ? 'danger' : esc.status === 'acknowledged' ? 'warn' : 'good'}>{esc.status}</Badge>
-                      </div>
-                      <div className="mt-0.5 text-[9px] text-slate-400">
-                        {esc.period} · {esc.periodStart} → {esc.periodEnd}
-                      </div>
-                      <div className="mt-1 text-[10px] text-slate-600">
-                        Score <strong className="text-rose-600">{esc.score}</strong> vs threshold {esc.threshold} · utilization {esc.utilization}%
-                      </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2 text-[9px] text-slate-500">
-                        <span className="flex items-center gap-0.5">
-                          <Mail className="h-2.5 w-2.5" /> {head?.name ?? 'unassigned'}
-                        </span>
-                        <span>CC {coo?.name ?? 'Head of Operations'}</span>
-                      </div>
-                      {esc.note ? <p className="mt-1 line-clamp-2 text-[9.5px] leading-snug text-slate-500">{esc.note}</p> : null}
-                    </div>
-                    <ScoreRing value={esc.score} size={30} stroke={4} />
-                  </div>
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    <button onClick={() => setEmailPreview(esc)} className="inline-flex items-center gap-1 rounded border border-slate-200 px-1.5 py-0.5 text-[9px] font-medium text-slate-600 hover:bg-slate-50">
-                      <Mail className="h-2.5 w-2.5" /> Email
-                    </button>
-                    {esc.status === 'open' ? (
-                      <button onClick={() => setEscalationStatus(esc.id, 'acknowledged')} className="inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-medium text-amber-700 hover:bg-amber-100">
-                        <CheckCheck className="h-2.5 w-2.5" /> Acknowledge
-                      </button>
-                    ) : null}
-                    {esc.status !== 'closed' ? (
-                      <button onClick={() => setEscalationStatus(esc.id, 'closed')} className="inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700 hover:bg-emerald-100">
-                        <Check className="h-2.5 w-2.5" /> Close
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
-            {escalationList.length === 0 ? (
-              <div className="p-4">
-                <EmptyState icon={<Radar className="h-5 w-5" />} title="No escalations" description="Run the performance scan to find departments under threshold." />
-              </div>
-            ) : null}
-          </div>
-        </Card>
+        <EscalationPanel createOpen={createEscalationOpen} onCreateChange={setCreateEscalationOpen} onEmail={setEmailPreview} />
       </div>
 
       <Modal
@@ -626,7 +523,7 @@ export function PerformancePage({
               size="sm"
               onClick={() => {
                 if (!preview) return;
-                navigator.clipboard?.writeText(`To: ${preview.to}\nCc: ${preview.cc}\nSubject: ${preview.subject}\n\n${preview.body}`);
+                navigator.clipboard?.writeText(`To: ${preview.to}\nSubject: ${preview.subject}\n\n${preview.body}`);
                 toast.push({ tone: 'success', title: 'Email copied', description: 'Paste into Outlook or Google Mail.' });
               }}
             >
@@ -637,7 +534,7 @@ export function PerformancePage({
               variant="primary"
               onClick={() => {
                 if (!preview) return;
-                window.location.href = `mailto:${preview.to}?cc=${preview.cc}&subject=${encodeURIComponent(preview.subject)}&body=${encodeURIComponent(preview.body)}`;
+                window.location.href = `mailto:${preview.to}?subject=${encodeURIComponent(preview.subject)}&body=${encodeURIComponent(preview.body)}`;
               }}
             >
               <Send className="h-3.5 w-3.5" /> Open in mail app
@@ -651,8 +548,6 @@ export function PerformancePage({
               <div className="grid grid-cols-[56px_1fr] gap-x-2 gap-y-1 border-b border-slate-100 px-3 py-2 text-[11px]">
                 <span className="text-slate-400">To</span>
                 <span className="text-slate-800">{preview.to || '—'}</span>
-                <span className="text-slate-400">Cc</span>
-                <span className="text-slate-800">{preview.cc || '—'}</span>
                 <span className="text-slate-400">Subject</span>
                 <span className="font-medium text-slate-900">{preview.subject}</span>
               </div>

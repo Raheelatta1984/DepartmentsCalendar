@@ -18,6 +18,8 @@ import type {
   Holiday,
   LeaveRequest,
   LeaveStatus,
+  LeadershipUpdate,
+  OneOnOneSession,
   Project,
   Settings,
   StandupEntry,
@@ -41,6 +43,7 @@ import {
   type Scope,
 } from './lib/permissions';
 import { addHoursToTime, timeWindowError } from './lib/time';
+import { toISO } from './lib/dates';
 import { withDesignationDefaults } from './lib/master-data';
 import {
   FALLBACK_TENANT_ID,
@@ -56,7 +59,8 @@ import {
   tenantDepartments,
 } from './lib/tenants';
 import { leaveBreakdown } from './lib/leave';
-import { reparentEmployees, validateOrgMove } from './lib/org';
+import { orgChain, reparentEmployees, validateOrgMove } from './lib/org';
+import { canPublishLeadershipUpdate, canReadOneOnOneNotes, canViewEscalation, escalationActivity, escalationChain } from './lib/people-workflows';
 import { externalKey, linkActivity, linkWorkItemsToParent, normaliseAcceptanceCriteria, validateWorkItem, validStreamParent, workItemDescendants } from './lib/delivery';
 import { devopsSampleWorkItems } from './data/delivery-seed';
 import { DEFAULT_TENANT_ID, HARRIS_FARM_TENANT_ID, HARBOURLINE_TENANT_ID, MERIDIAN_TENANT_ID, TENANTS } from './data/tenant-seed';
@@ -132,6 +136,8 @@ export function normaliseState(state: StoreState): StoreState {
     capitalisation: state.capitalisation ?? RETAIL_CAPITALISATION_POLICY,
     capitalisationApprovals: Array.isArray(state.capitalisationApprovals) ? state.capitalisationApprovals : [],
     standups: Array.isArray(state.standups) ? state.standups : [],
+    leadershipUpdates: Array.isArray(state.leadershipUpdates) ? state.leadershipUpdates : [],
+    oneOnOnes: Array.isArray(state.oneOnOnes) ? state.oneOnOnes : [],
     leaves: Array.isArray(state.leaves) ? state.leaves : [],
     settings: {
       ...state.settings,
@@ -226,29 +232,32 @@ interface StoreContextValue {
   decideLeave: (id: string, decision: Extract<LeaveStatus, 'approved' | 'rejected'>, note: string) => void;
   cancelLeave: (id: string) => void;
   deleteLeave: (id: string) => void;
-  upsertActivity: (activity: Activity) => string | null;
+  upsertActivity: (activity: Activity, timeEntry?: TimeEntry) => string | null;
   deleteActivity: (id: string) => void;
   updateActivityStatus: (id: string, status: Activity['status'], progress?: number) => void;
   toggleSubtask: (activityId: string, subtaskId: string) => void;
   upsertEmployee: (employee: Employee) => void;
-  deleteEmployee: (id: string) => void;
+  deleteEmployee: (id: string) => string | null;
   /** Re-parents one person's reporting line; returns a message when refused. */
   moveReportingLine: (employeeId: string, managerId: string | null) => string | null;
   upsertDepartment: (department: Department) => void;
-  deleteDepartment: (id: string) => void;
+  deleteDepartment: (id: string) => string | null;
   upsertDesignation: (designation: Designation) => string | null;
   deleteDesignation: (id: string) => string | null;
   shareCalendar: (share: CalendarShare) => string | null;
   revokeCalendarShare: (id: string) => void;
   upsertEntity: (entity: Entity) => void;
-  deleteEntity: (id: string) => void;
+  deleteEntity: (id: string) => string | null;
   addTimeEntry: (entry: TimeEntry) => string | null;
   deleteTimeEntry: (id: string) => void;
   toggleEntryApproved: (id: string) => void;
   addHoliday: (holiday: Holiday) => void;
   deleteHoliday: (id: string) => void;
   generateHolidays: (countryCode: string, year: number) => number;
-  upsertEscalation: (escalation: Escalation) => void;
+  upsertEscalation: (escalation: Escalation) => string | null;
+  addEscalationFollowUp: (id: string, targetId: string, note: string, createTask: boolean) => string | null;
+  publishLeadershipUpdate: (message: string) => string | null;
+  upsertOneOnOne: (session: OneOnOneSession) => string | null;
   setEscalationStatus: (id: string, status: Escalation['status']) => void;
   upsertStandup: (entry: StandupEntry) => void;
   deleteStandup: (id: string) => void;
@@ -272,6 +281,16 @@ interface StoreContextValue {
 }
 
 const StoreContext = createContext<StoreContextValue | null>(null);
+
+/** Preserve recorded people history if a master record is removed. */
+function hasPeopleHistory(state: StoreState, employeeId: string): boolean {
+  return state.oneOnOnes.some((row) => row.employeeId === employeeId || row.managerId === employeeId)
+    || state.leadershipUpdates.some((row) => row.authorId === employeeId)
+    || state.escalations.some((row) => Boolean(row.raisedById) && (
+      row.raisedById === employeeId || row.recipients.includes(employeeId)
+      || (row.followUps ?? []).some((follow) => follow.authorId === employeeId || follow.targetId === employeeId)
+    ));
+}
 
 export function StoreProvider({ children, shared }: { children: React.ReactNode; shared?: SharedConnection }) {
   // `fullState` holds every tenant in the workspace. Screens never see it:
@@ -521,7 +540,7 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
           (prev) => ({ ...prev, settings: { ...prev.settings, ...patch } }),
           { action: 'Settings updated', detail: Object.entries(patch).map(([k, v]) => `${k}=${v}`).join(', ') },
         ),
-      upsertActivity: (inputActivity) => {
+      upsertActivity: (inputActivity, timeEntry) => {
         const current = latestStateRef.current;
         const actorId = current.settings.activeUserId;
         const existing = current.activities.find((row) => row.id === inputActivity.id);
@@ -543,6 +562,13 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
         }
         if (inputActivity.plannedHours <= 0) return 'Planned hours must be greater than zero for workload calculations.';
 
+        if (timeEntry) {
+          if (!canLogForEmployee(current, actorId, inputActivity.assigneeId) || timeEntry.employeeId !== inputActivity.assigneeId || timeEntry.activityId !== inputActivity.id) return 'Time can be logged only for the activity assignee in your reporting team.';
+          if (!timeEntry.date || !Number.isFinite(timeEntry.hours) || timeEntry.hours <= 0 || timeEntry.hours > 24) return 'Enter a date and actual hours between zero and 24.';
+          const actualMismatch = timeWindowError(timeEntry.hours, timeEntry.startTime, timeEntry.endTime, { requireWindow: true });
+          if (actualMismatch) return actualMismatch;
+          if (current.timeEntries.some((row) => row.id === timeEntry.id)) return 'This time entry already exists; edit it in the time panel.';
+        }
         const now = new Date().toISOString();
         const delegationHistory = [...(existing?.delegationHistory ?? inputActivity.delegationHistory ?? [])];
         const changedOwner = Boolean(existing && existing.assigneeId !== inputActivity.assigneeId);
@@ -577,7 +603,7 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
             if (activity.sync.outlook) providers.push('outlook');
             if (activity.sync.google) providers.push('google');
             const withSync = queueSync(prev, activity, existing ? 'update' : 'create', providers);
-            return { ...withSync, activities };
+            return { ...withSync, activities, timeEntries: timeEntry ? [{ ...timeEntry, loggedById: actorId, approved: false, createdAt: now, updatedAt: now }, ...prev.timeEntries] : prev.timeEntries };
           },
           {
             action: changedOwner || newPeerDelegation ? 'Task delegated' : 'Activity saved',
@@ -685,7 +711,8 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
         );
         return null;
       },
-      deleteEmployee: (id) =>
+      deleteEmployee: (id) => {
+        if (hasPeopleHistory(latestStateRef.current, id)) return 'This person has one-on-one, escalation or leadership history. Mark them inactive instead of deleting their records.';
         save(
           (prev) => ({
             ...prev,
@@ -698,7 +725,9 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
               prev.settings.activeUserId === id ? { ...prev.settings, activeUserId: prev.employees[0]?.id ?? id } : prev.settings,
           }),
           { action: 'Employee removed', detail: id },
-        ),
+        );
+        return null;
+      },
       upsertDepartment: (department) =>
         save(
           (prev) => ({
@@ -709,7 +738,9 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
           }),
           { action: 'Department saved', detail: department.name },
         ),
-      deleteDepartment: (id) =>
+      deleteDepartment: (id) => {
+        const current = latestStateRef.current;
+        if (current.oneOnOnes.some((row) => row.departmentId === id) || current.leadershipUpdates.some((row) => row.departmentId === id) || current.escalations.some((row) => row.raisedById && (row.departmentId === id || row.sourceDepartmentId === id)) || current.employees.some((row) => row.departmentId === id && hasPeopleHistory(current, row.id))) return 'This department has people-workflow history. Retain it to preserve those records.';
         save(
           (prev) => ({
             ...prev,
@@ -721,7 +752,9 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
             calendarShares: prev.calendarShares.filter((share) => share.departmentId !== id),
           }),
           { action: 'Department removed', detail: id },
-        ),
+        );
+        return null;
+      },
       upsertDesignation: (designation) => {
         const current = latestStateRef.current;
         if (!scope.canManageMaster) return 'Only department leadership can modify designations.';
@@ -794,7 +827,10 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
           }),
           { action: 'Entity saved', detail: entity.name },
         ),
-      deleteEntity: (id) =>
+      deleteEntity: (id) => {
+        const current = latestStateRef.current;
+        const departmentIds = new Set(current.departments.filter((row) => row.entityId === id).map((row) => row.id));
+        if (current.oneOnOnes.some((row) => departmentIds.has(row.departmentId)) || current.leadershipUpdates.some((row) => departmentIds.has(row.departmentId)) || current.escalations.some((row) => row.raisedById && (departmentIds.has(row.departmentId) || (row.sourceDepartmentId && departmentIds.has(row.sourceDepartmentId)))) || current.employees.some((row) => row.entityId === id && hasPeopleHistory(current, row.id))) return 'This entity has people-workflow history. Retain it to preserve those records.';
         save(
           (prev) => ({
             ...prev,
@@ -804,7 +840,9 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
             activities: prev.activities.filter((a) => a.entityId !== id),
           }),
           { action: 'Entity removed', detail: id },
-        ),
+        );
+        return null;
+      },
       addTimeEntry: (entry) => {
         const current = latestStateRef.current;
         const actorId = current.settings.activeUserId;
@@ -901,27 +939,90 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
         }
         return generated.length;
       },
-      upsertEscalation: (escalation) =>
-        save(
-          (prev) => ({
-            ...prev,
-            escalations: prev.escalations.some((e) => e.id === escalation.id)
-              ? prev.escalations.map((e) => (e.id === escalation.id ? escalation : e))
-              : [escalation, ...prev.escalations],
-          }),
-          { action: 'Escalation raised', detail: `${escalation.departmentId} · score ${escalation.score}` },
-        ),
+      upsertEscalation: (input) => {
+        const current = latestStateRef.current;
+        const actor = current.employees.find((employee) => employee.id === current.settings.activeUserId);
+        const manager = current.employees.find((employee) => employee.id === actor?.managerId && employee.status !== 'inactive');
+        if (!actor || !manager || actor.id === manager.id) return 'A current reporting lead is required before you can raise an escalation.';
+        if (current.escalations.some((row) => row.id === input.id)) return 'This escalation already exists; use its follow-up thread instead.';
+        if (input.sourceDepartmentId && !getScope(current, actor.id).visibleDepartmentIds.includes(input.sourceDepartmentId)) return 'This department is outside your visible scope.';
+        if (input.sourceDepartmentId && current.escalations.some((row) => (row.sourceDepartmentId ?? row.departmentId) === input.sourceDepartmentId && row.raisedById === actor.id && row.periodStart === input.periodStart && row.periodEnd === input.periodEnd)) return 'A performance escalation for this department and period already exists.';
+        if (!input.note.trim()) return 'Describe what needs attention.';
+        const now = new Date().toISOString();
+        const activity = escalationActivity(uid('act'), manager, actor.id,
+          `Urgent escalation follow-up · ${actor.name}`, input.note.trim(), now);
+        const escalation: Escalation = {
+          ...input, departmentId: actor.departmentId, raisedById: actor.id, recipients: [manager.id], cc: [],
+          followUpActivityId: activity.id, followUps: [], createdAt: now, status: 'open', note: input.note.trim(),
+        };
+        save((prev) => ({ ...prev, escalations: [escalation, ...prev.escalations], activities: [activity, ...prev.activities] }),
+          { action: 'Escalation raised', detail: `${actor.id} → ${manager.id} · ${escalation.id}` });
+        return null;
+      },
+      addEscalationFollowUp: (id, targetId, note, createTask) => {
+        const current = latestStateRef.current;
+        const escalation = current.escalations.find((row) => row.id === id);
+        const actorId = current.settings.activeUserId;
+        if (!escalation || !canViewEscalation(current, actorId, escalation)) return 'This escalation is outside your reporting line.';
+        const chain = escalationChain(current, escalation);
+        const target = chain.find((person) => person.id === targetId);
+        if (!target || !chain.some((person) => person.id === actorId)) return 'Choose a person on the escalation reporting line.';
+        if (!note.trim()) return 'Add a follow-up note or action.';
+        if (note.length > 10000) return 'Follow-up notes must be at most 10,000 characters.';
+        const now = new Date().toISOString();
+        const activity = createTask ? escalationActivity(uid('act'), target, actorId, 'Escalation follow-up action', note.trim(), now) : null;
+        const followUp = { id: uid('ef'), authorId: actorId, targetId, note: note.trim(), createdAt: now, ...(activity ? { activityId: activity.id } : {}) };
+        save((prev) => ({ ...prev,
+          escalations: prev.escalations.map((row) => row.id === id ? { ...row, followUps: [...(row.followUps ?? []), followUp] } : row),
+          activities: activity ? [activity, ...prev.activities] : prev.activities,
+        }), { action: 'Escalation followed up', detail: `${id} · ${actorId} → ${targetId}` });
+        return null;
+      },
       setEscalationStatus: (id, status) =>
-        save(
-          (prev) => ({
-            ...prev,
-            escalations: prev.escalations.map((e) => (e.id === id ? { ...e, status } : e)),
-          }),
-          { action: 'Escalation updated', detail: `${id} → ${status}` },
-        ),
+        save((prev) => {
+          const escalation = prev.escalations.find((row) => row.id === id);
+          if (!escalation || !canViewEscalation(prev, prev.settings.activeUserId, escalation)) return prev;
+          return { ...prev, escalations: prev.escalations.map((row) => row.id === id ? { ...row, status } : row) };
+        }, { action: 'Escalation updated', detail: `${id} → ${status}` }),
+      publishLeadershipUpdate: (message) => {
+        const current = latestStateRef.current;
+        const actor = current.employees.find((row) => row.id === current.settings.activeUserId);
+        if (!actor || !canPublishLeadershipUpdate(current, actor.id)) return 'Only department heads and leads can publish cascade updates.';
+        if (!message.trim() || message.length > 10000) return 'Enter a leadership update of at most 10,000 characters.';
+        const update: LeadershipUpdate = { id: uid('lu'), authorId: actor.id, departmentId: actor.departmentId, message: message.trim(), createdAt: new Date().toISOString() };
+        save((prev) => ({ ...prev, leadershipUpdates: [update, ...prev.leadershipUpdates] }),
+          { action: 'Leadership update published', detail: update.id });
+        return null;
+      },
+      upsertOneOnOne: (input) => {
+        const current = latestStateRef.current;
+        const actorId = current.settings.activeUserId;
+        const person = current.employees.find((row) => row.id === input.employeeId);
+        const existing = current.oneOnOnes.find((row) => row.id === input.id);
+        const manager = current.employees.find((row) => row.id === (existing?.managerId ?? person?.managerId));
+        if (!person || !manager || person.id === manager.id || (!existing && manager.status === 'inactive')) return 'A current reporting lead is required for this session.';
+        if (existing && (existing.employeeId !== person.id || existing.managerId !== input.managerId)) return 'Session participants cannot be changed.';
+        if (actorId !== person.id && actorId !== manager.id) return 'Only the employee and their reporting lead can edit the discussion.';
+        if (!existing && input.managerId !== person.managerId) return 'One-on-ones must be with the employee’s direct reporting lead.';
+        if (!input.date || (input.feeling !== null && ![1, 2, 3, 4, 5].includes(input.feeling))) return 'Choose a date and a valid feeling rating.';
+        const fields = ['workLifeBalance', 'support', 'escalation', 'discussion', 'improvement', 'careerProgression'] as const;
+        if (fields.some((field) => input[field].length > 10000) || input.summary.length > 10000) return 'Session fields must be at most 10,000 characters.';
+        const changed = existing && (fields.some((field) => existing[field] !== input[field]) || existing.feeling !== input.feeling);
+        const summaryWasRegenerated = input.summaryGeneratedAt && input.summaryGeneratedAt !== existing?.summaryGeneratedAt;
+        const now = new Date().toISOString();
+        const session: OneOnOneSession = {
+          ...input, managerId: manager.id, departmentId: person.departmentId, createdAt: existing?.createdAt ?? now, updatedAt: now,
+          ...(changed && !summaryWasRegenerated ? { summary: '', summaryModel: '', summaryGeneratedAt: null } : {}),
+        };
+        save((prev) => ({ ...prev, oneOnOnes: existing ? prev.oneOnOnes.map((row) => row.id === session.id ? session : row) : [session, ...prev.oneOnOnes] }),
+          { action: session.summaryGeneratedAt ? 'One-on-one summary shared' : 'One-on-one saved', detail: `${person.id} · ${session.id}` });
+        return null;
+      },
       upsertStandup: (entry) =>
         save(
           (prev) => {
+            if (entry.employeeId !== prev.settings.activeUserId || !prev.employees.some((person) => person.id === entry.employeeId && person.departmentId === entry.departmentId)) return prev;
+            if ((entry.feeling != null && ![1, 2, 3, 4, 5].includes(entry.feeling)) || (entry.status === 'submitted' && !entry.feeling)) return prev;
             // One stand-up per member per working day — re-saves replace that row.
             const duplicate = prev.standups.find(
               (row) => row.id === entry.id || (row.date === entry.date && row.employeeId === entry.employeeId),
@@ -938,7 +1039,7 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
         ),
       deleteStandup: (id) =>
         save(
-          (prev) => ({ ...prev, standups: prev.standups.filter((row) => row.id !== id) }),
+          (prev) => ({ ...prev, standups: prev.standups.filter((row) => row.id !== id || row.employeeId !== prev.settings.activeUserId) }),
           { action: 'Stand-up deleted', detail: id },
         ),
       setSupportRequestStatus: (entryId, requestId, status) =>
@@ -946,7 +1047,7 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
           (prev) => ({
             ...prev,
             standups: prev.standups.map((row) =>
-              row.id !== entryId
+              row.id !== entryId || !orgChain(prev.employees, row.employeeId).some((person) => person.id === prev.settings.activeUserId)
                 ? row
                 : {
                     ...row,
@@ -1193,7 +1294,7 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
       importWorkItems: (preview, filename) => {
         if (!scope.canManageMaster) return 'Only department leadership can import backlog data in this pilot.';
         if (preview.errors.length || !preview.items.length) return 'Resolve the preview errors before importing.';
-        if (new TextEncoder().encode(JSON.stringify(latestFullStateRef.current)).length + new TextEncoder().encode(JSON.stringify(preview.items)).length > 3 * 1024 * 1024) return 'This batch would exceed the 3 MB shared-workspace limit. Import a smaller batch or move to record-level storage.';
+        if (new TextEncoder().encode(JSON.stringify(latestFullStateRef.current)).length + new TextEncoder().encode(JSON.stringify(preview.items)).length > 4 * 1024 * 1024) return 'This batch would exceed the 4 MB shared-workspace limit. Import a smaller batch or move to record-level storage.';
         const current = latestStateRef.current;
         const merged = new Map(current.workItems.map((i) => [i.id, i]));
         preview.items.forEach((i) => merged.set(i.id, i));
@@ -1408,6 +1509,7 @@ export function emptyStandup(state: StoreState, date: string): StandupEntry {
     date,
     departmentId: me.departmentId,
     employeeId: me.id,
+    feeling: null,
     lastDayUpdate: '',
     progressUpdate: '',
     blockers: '',
@@ -1422,9 +1524,9 @@ export function emptyStandup(state: StoreState, date: string): StandupEntry {
 
 export function emptyEscalation(state: StoreState, departmentId: string): Escalation {
   const dept = state.departments.find((d) => d.id === departmentId) ?? state.departments[0];
-  const head = state.employees.find((e) => e.id === dept.headId);
-  const coo = state.employees.find((e) => e.role === 'head_operations');
-  const today = new Date().toISOString().slice(0, 10);
+  const person = state.employees.find((e) => e.id === state.settings.activeUserId);
+  const manager = state.employees.find((e) => e.id === person?.managerId);
+  const today = toISO(new Date());
   return {
     id: uid('esc'),
     departmentId: dept.id,
@@ -1435,8 +1537,8 @@ export function emptyEscalation(state: StoreState, departmentId: string): Escala
     threshold: state.settings.performanceThreshold,
     utilization: 0,
     onTimeRate: 0,
-    recipients: head ? [head.id] : [],
-    cc: coo ? [coo.id] : [],
+    recipients: manager ? [manager.id] : [],
+    cc: [],
     createdAt: new Date().toISOString(),
     status: 'open',
     note: '',

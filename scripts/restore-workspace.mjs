@@ -17,7 +17,7 @@ if (!file || confirmation !== '--confirm' || extra.length) {
     const parsed = workspaceSchema.safeParse(backup);
     if (!parsed.success) throw new Error('Backup validation failed. No database changes were made.');
     if (Buffer.byteLength(JSON.stringify({ version: 0, state: parsed.data })) > MAX_BODY_BYTES) {
-      throw new Error('Backup exceeds the 3 MB pilot limit. Migrate to record-level storage before restoring it.');
+      throw new Error('Backup exceeds the 4 MB pilot limit. Migrate to record-level storage before restoring it.');
     }
     const repository = createNeonRepository(config.databaseUrl);
     await repository.initialize();

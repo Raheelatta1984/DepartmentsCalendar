@@ -41,7 +41,7 @@
   <text x="811" y="214" class="body">Persistent sign-in attempt limits</text>
   <text x="811" y="246" class="body">Atomic revision checks</text>
   <text x="811" y="268" class="body">Stale saves return HTTP 409</text>
-  <text x="811" y="290" class="body">3 MB API snapshot limit</text>
+  <text x="811" y="290" class="body">4 MB API snapshot limit</text>
 
   <path d="M281 198 H370" stroke="#2563eb" stroke-width="1.7" marker-end="url(#arrow)"/>
   <text x="298" y="185" class="label">HTTPS</text>

@@ -52,7 +52,7 @@ export function orgDescendantIds(employees: Employee[], rootId: string): Set<str
   const stack = [...(children.get(rootId) ?? [])];
   while (stack.length) {
     const person = stack.pop()!;
-    if (out.has(person.id)) continue;
+    if (person.id === rootId || out.has(person.id)) continue;
     out.add(person.id);
     stack.push(...(children.get(person.id) ?? []));
   }

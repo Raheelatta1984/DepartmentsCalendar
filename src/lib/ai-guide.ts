@@ -69,7 +69,7 @@ const grainSubTabs = (label: string): GuideRule[] => [
       tips: [
         'Monthly utilization smooths day-to-day scheduling noise.',
         'Tie this view to the timesheet approval queue before publishing numbers.',
-        'Escalations here copy the Head of Operations by design.',
+        'Escalations go only to your immediate reporting lead.',
       ],
     },
   },
@@ -100,6 +100,12 @@ const grainSubTabs = (label: string): GuideRule[] => [
 ];
 
 export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
+  'one-on-ones': {
+    title: 'One-on-one sessions', subtitle: 'A structured conversation with your direct reporting lead',
+    blurb: 'Capture work-life balance, feelings, support, escalations, feedback and career development. Participants can request a provider-generated summary for the leadership chain.',
+    tips: ['Create a session for yourself or your direct report.', 'Save a draft or explicitly request an AI summary after agreeing to send the notes to the configured provider.', 'Use Create career task to turn progression advice into an activity.'],
+    watch: 'The pilot uses a shared workspace password and switchable profiles, not individual authentication. Do not use it for confidential personnel information until per-user access control is in place.', sections: [], subTabs: [],
+  },
   delivery: {
     title: 'DevOps delivery', subtitle: 'One backlog, connected to real calendar effort',
     blurb: 'Epics contain features, features contain tickets. Streams organise the department; project and funding links connect delivery to the existing capex workflow.',
@@ -171,7 +177,7 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
           title: 'Attention queue',
           blurb: 'Departments scoring under the configured threshold this period.',
           tips: [
-            'Escalation emails go to the department head (To) with the Head of Operations (CC).',
+            'Escalations go to your immediate reporting lead and create an urgent follow-up activity.',
             'Scores recover as timesheets are logged and activities complete.',
             'Adjust the threshold in Master setup → Group settings if needed.',
           ],
@@ -710,17 +716,17 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
     title: 'Performance & escalation',
     subtitle: 'One formula, at every grain, for every person',
     blurb:
-      'The identical score formula at every grain, 8-period trends, capacity pressure, per-person scorecards and the escalation log with To/CC recipients.',
+      'The identical score formula at every grain, 8-period trends, capacity pressure, per-person scorecards and reporting-line escalation threads.',
     tips: [
       'Score = 40% utilization score + 35% on-time + 25% completion.',
       'Utilization score = 100 − |utilization − 85| × 1.3, clamped 0–100 — idle and overload both hurt.',
       'Drill into a department to score each person with the same math.',
-      'Escalations: department head (To), Head of Operations (CC).',
+      'Raise an escalation to your reporting lead; follow-ups can move down the same reporting chain.',
     ],
     watch:
       'High hours with a falling score is rework, not effort.',
     context: [
-      'Escalations go to the department head, with the Head of Operations copied.',
+      'Every new escalation goes to the reporter’s immediate reporting lead.',
       'Utilization score = 100 − |utilization − 85| × 1.3, clamped 0–100: idle and overload both hurt.',
     ],
     sections: [
@@ -774,8 +780,8 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
           title: 'Escalation log',
           blurb: 'Audit trail of every generated escalation with recipients and status.',
           tips: [
-            'Duplicate suppression is per department, period and period start.',
-            'Acknowledge or close with a note — the trail is kept for audit.',
+            'Performance scans suppress duplicates for the same reporter, department and period.',
+            'Add follow-up notes and urgent actions for people on the reporting line; acknowledge or close the escalation.',
           ],
         },
       },
@@ -968,7 +974,7 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
       'Entities, departments, people, holiday calendars, group settings and the audit trail — the masters every calculation in the portal reads.',
     tips: [
       'Entities form a group → company → sub-company tree with country and timezone rules.',
-      'Departments need an accountable head and an ops owner for escalation routing.',
+      'Departments need an accountable head and operations owner; escalations follow each reporter’s reporting line.',
       'Holiday generation covers a multi-year horizon across 12 countries.',
       'Every master change writes an audit entry.',
     ],
@@ -995,7 +1001,7 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
         match: ['departments with', 'accountable heads', 'departments'],
         guide: {
           title: 'Departments with accountable heads',
-          blurb: 'The head owns the calendar and the score; the Head of Operations is the default escalation copy.',
+          blurb: 'The head owns the calendar and the score; escalations go to the reporter’s own reporting lead.',
           tips: [
             'Calendar colour identifies the department across every screen.',
             'Cost centre feeds finance reporting.',
@@ -1091,7 +1097,7 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
         guide: {
           title: 'Master setup · departments',
           blurb: 'Department master with accountable heads.',
-          tips: ['Every department belongs to exactly one entity.', 'Head and ops owner drive escalation routing.'],
+          tips: ['Every department belongs to exactly one entity.', 'Reporting lines drive escalation routing.'],
         },
       },
       {
@@ -1246,17 +1252,17 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
   },
   standups: {
     title: 'Daily stand-up',
-    subtitle: 'One check-in a day, visible only to authorised leadership',
+    subtitle: 'One check-in a day, visible within your reporting line',
     blurb:
-      'Every member records one stand-up per working day: what was completed on the last working day, a progress update, any blockers, support callouts (internal or cross-functional) and the action items for the day. Supervisors, managers and department heads track their own department; the CEO and COO start from an executive pulse and drill department by department, top to bottom through every employee layer. Plain employees only ever see their own form.',
+      'Every member records a daily feeling rating, progress, blockers, support requests and actions. Personal stand-ups are visible only to the author, their reporting lead and people above them in the reporting line. You can view your immediate lead, but not higher personal stand-ups. Leadership messages cascade separately through department heads and leads.',
     tips: [
-      'Submit both the last-working-day update and the progress update — the form blocks submission until both are filled.',
+      'Submit a 1–5 feeling rating, the last-working-day update and the progress update.',
       'Raise cross-functional support against the department that needs to help; it appears as a violet callout on the board and the dashboard pulse.',
       'Department leadership can acknowledge and resolve support callouts, and tick action items while tracking the team.',
       'Use the date navigator to review any previous working day; future days are closed by design.',
     ],
     watch:
-      'A stand-up is department-scoped: nobody can read another department’s entries unless their role already scopes that department.',
+      'A stand-up board follows reporting relationships, not department membership or calendar sharing. Drafts remain visible only to their author.',
     context: [
       'One row per employee per working day — re-saving replaces that day’s entry.',
       'Pending means no row exists yet; a draft is saved but not yet submitted.',
@@ -1279,7 +1285,7 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
         match: ['department board', 'stand-up pulse'],
         guide: {
           title: 'Department board',
-          blurb: 'The department read top to bottom: head, unit heads and managers, supervisors, then team members.',
+          blurb: 'Your visible reporting-line members, grouped by their business designations: Department Heads, PMO, BA & QA Leads, BA Leads, QA Leads and team members.',
           tips: [
             'Expand a person to read their full update, blockers, action items and support callouts.',
             'The pulse tiles reconcile to the rows below — submitted, pending, blockers, open support and open actions.',
@@ -1324,7 +1330,7 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
         match: ['executive pulse'],
         guide: {
           title: 'Sub-tab · Executive pulse',
-          blurb: 'CEO/COO summary across every department in their scope.',
+          blurb: 'Summary across the executive’s visible reporting line.',
           tips: ['Drill from any department card into its detailed board.'],
         },
       },
@@ -1332,8 +1338,8 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
         match: ['department board'],
         guide: {
           title: 'Sub-tab · Department board',
-          blurb: 'Layered tracking for supervisors through department heads.',
-          tips: ['Only departments inside your role scope appear in the picker.'],
+          blurb: 'Layered tracking for your immediate reporting lead and downstream reports.',
+          tips: ['The picker includes departments with visible reporting-line members.'],
         },
       },
     ],

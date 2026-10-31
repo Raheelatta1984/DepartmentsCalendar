@@ -33,6 +33,12 @@ export interface CalendarScopeSettings {
   departmentIds: string[];
 }
 
+export interface FeelingOption {
+  value: 1 | 2 | 3 | 4 | 5;
+  label: string;
+  color: string;
+}
+
 export interface Tenant {
   id: string;
   name: string;
@@ -47,6 +53,8 @@ export interface Tenant {
   calendarScope: CalendarScopeSettings;
   /** Paid time off entitlement, in working days per year (public holidays excluded). */
   ptoAnnualEntitlementDays: number;
+  /** Tenant-specific stand-up / one-on-one labels and colours. */
+  feelingScale?: FeelingOption[];
   createdAt?: string;
 }
 
@@ -504,6 +512,21 @@ export interface Escalation {
   createdAt: string;
   status: 'open' | 'acknowledged' | 'closed';
   note: string;
+  /** New escalations are raised by an employee to their direct reporting lead. */
+  raisedById?: string;
+  /** Department being reviewed can differ from the reporter's home department. */
+  sourceDepartmentId?: string;
+  followUpActivityId?: string;
+  followUps?: EscalationFollowUp[];
+}
+
+export interface EscalationFollowUp {
+  id: string;
+  authorId: string;
+  targetId: string;
+  note: string;
+  createdAt: string;
+  activityId?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -547,6 +570,8 @@ export interface StandupEntry {
   date: string;
   departmentId: string;
   employeeId: string;
+  /** Optional on older stand-ups; required when submitting a new check-in. */
+  feeling?: 1 | 2 | 3 | 4 | 5 | null;
   /** Share on last working day's activity. */
   lastDayUpdate: string;
   /** Progress update against current deliverables. */
@@ -557,6 +582,37 @@ export interface StandupEntry {
   supportRequests: SupportRequest[];
   status: StandupStatus;
   submittedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A deliberate cascade message, separate from private personal stand-ups. */
+export interface LeadershipUpdate {
+  id: string;
+  authorId: string;
+  departmentId: string;
+  message: string;
+  createdAt: string;
+}
+
+/** Discussion is visible to the two participants; leadership receives the summary. */
+export interface OneOnOneSession {
+  id: string;
+  employeeId: string;
+  managerId: string;
+  departmentId: string;
+  date: string;
+  feeling: 1 | 2 | 3 | 4 | 5 | null;
+  workLifeBalance: string;
+  support: string;
+  escalation: string;
+  discussion: string;
+  improvement: string;
+  careerProgression: string;
+  /** Genuine provider-generated text; absent until the participants request it. */
+  summary: string;
+  summaryModel: string;
+  summaryGeneratedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -613,6 +669,8 @@ export interface StoreState {
   connections: CalendarConnection[];
   syncJobs: SyncJob[];
   standups: StandupEntry[];
+  leadershipUpdates: LeadershipUpdate[];
+  oneOnOnes: OneOnOneSession[];
   leaves: LeaveRequest[];
   settings: Settings;
   auditLog: AuditEntry[];
@@ -681,6 +739,7 @@ export type ViewKey =
   | 'roadmap'
   | 'timesheet'
   | 'standups'
+  | 'one-on-ones'
   | 'leave'
   | 'projects'
   | 'delivery'

@@ -3,6 +3,7 @@ import type { Scope } from './permissions';
 import { departmentsInEntityScope, entityScopeLabel, entitySubtreeIds } from './entities';
 import { filterActivities, filterEntries, groupScore } from './analytics';
 import { buildStandupPulses } from './standups';
+import { canViewEscalation, canViewOneOnOne, standupStateForViewer } from './people-workflows';
 import { approvalQueue, awayOnDate, ptoSummary } from './leave';
 import { fromISO, humanHours, periodLabel, periodRange, toISO } from './dates';
 import { RELEASES } from '../data/releases';
@@ -55,7 +56,7 @@ export function buildLiveFacts({
     case 'dashboard': {
       const summary = groupScore(state, departmentIds, filters.period, anchor);
       const escalations = state.escalations.filter(
-        (escalation) => escalation.status === 'open' && departmentIds.includes(escalation.departmentId),
+        (escalation) => escalation.status === 'open' && departmentIds.includes(escalation.departmentId) && canViewEscalation(state, scope.user.id, escalation),
       ).length;
       return [
         ...periodFacts,
@@ -145,7 +146,7 @@ export function buildLiveFacts({
       ];
     }
     case 'standups': {
-      const pulses = buildStandupPulses(state, departmentIds, today);
+      const pulses = buildStandupPulses(standupStateForViewer(state, scope.user.id), departmentIds, today);
       const submitted = pulses.reduce((total, pulse) => total + pulse.submittedCount, 0);
       const members = pulses.reduce((total, pulse) => total + pulse.memberCount, 0);
       const blockers = pulses.reduce((total, pulse) => total + pulse.blockerCount, 0);
@@ -158,6 +159,10 @@ export function buildLiveFacts({
         { label: 'Blockers', value: String(blockers) },
         { label: 'Open support', value: `${support} (${cross} cross-functional)` },
       ];
+    }
+    case 'one-on-ones': {
+      const sessions = state.oneOnOnes.filter((row) => canViewOneOnOne(state, scope.user.id, row));
+      return [{ label: 'Visible sessions', value: String(sessions.length) }, { label: 'Shared summaries', value: String(sessions.filter((row) => row.summaryGeneratedAt).length) }];
     }
     case 'leave': {
       const tenant = state.tenants.find((row) => row.id === state.settings.activeTenantId);
@@ -188,7 +193,7 @@ export function buildLiveFacts({
       return [
         { label: 'People', value: String(treeStats.headcount) },
         { label: 'Reporting layers', value: String(treeStats.layers) },
-        { label: 'Managers', value: `${treeStats.managers} · widest span ${treeStats.widestSpan}` },
+        { label: 'Reporting leads', value: `${treeStats.managers} · widest span ${treeStats.widestSpan}` },
         { label: 'Top level', value: `${treeStats.topLevel} unanchored` },
         { label: 'Line changes', value: String(state.auditLog.filter((entry) => entry.action === 'Reporting line changed').length) },
       ];

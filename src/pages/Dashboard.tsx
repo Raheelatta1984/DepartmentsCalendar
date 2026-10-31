@@ -46,6 +46,7 @@ import { BarList, Donut, LineChart, ScoreRing, Sparkline } from '../components/c
 import { ActivityLine, TYPE_COLORS, TypeIcon } from '../components/activity-ui';
 import { useToast } from '../components/toast';
 import { buildStandupPulses, entryFor } from '../lib/standups';
+import { canViewEscalation, standupStateForViewer } from '../lib/people-workflows';
 import { canViewStandupBoard } from '../lib/permissions';
 import { awayOnDate, leaveOnDate, nextResponsible, ptoTotals } from '../lib/leave';
 import {
@@ -168,8 +169,8 @@ export function Dashboard({
      into the full top-to-bottom board on the Daily stand-up tab.       */
   const isStandupViewer = canViewStandupBoard(scope);
   const standupPulses = useMemo(
-    () => (isStandupViewer ? buildStandupPulses(state, deptIds, today) : []),
-    [isStandupViewer, state, deptIds, today],
+    () => (isStandupViewer ? buildStandupPulses(standupStateForViewer(state, scope.user.id), deptIds, today) : []),
+    [isStandupViewer, state, deptIds, today, scope.user.id],
   );
   const myStandup = entryFor(state.standups, today, scope.user.id);
   const openStandupDepartment = (departmentId: string) => {
@@ -204,12 +205,11 @@ export function Dashboard({
 
   const raiseEscalation = (department: Department) => {
     const score = departmentScore(analyticsState, department, filters.period, anchor);
-    const head = empMap.get(department.headId ?? '');
-    const coo = state.employees.find((e) => e.role === 'head_operations');
     setEscalating(department.id);
-    upsertEscalation({
+    const escalationError = upsertEscalation({
       id: `esc-${Math.random().toString(36).slice(2, 9)}`,
       departmentId: department.id,
+      sourceDepartmentId: department.id,
       period: filters.period,
       periodStart: score.periodStart,
       periodEnd: score.periodEnd,
@@ -217,23 +217,23 @@ export function Dashboard({
       threshold,
       utilization: score.utilization,
       onTimeRate: score.onTimeRate,
-      recipients: head ? [head.id] : [],
-      cc: coo ? [coo.id] : [],
+      recipients: [],
+      cc: [],
       createdAt: new Date().toISOString(),
       status: 'open',
       note:
         score.overdueActivities > 0
-          ? `${score.overdueActivities} overdue activities and utilization at ${score.utilization}%. Review required.`
-          : `Performance score ${score.score} is below the ${threshold} threshold for this ${filters.period}.`,
+          ? `${department.name}: ${score.overdueActivities} overdue activities and utilization at ${score.utilization}%. Review required.`
+          : `${department.name}: performance score ${score.score} is below the ${threshold} threshold for this ${filters.period}.`,
     });
     setEscalating(null);
-    toast.push({
-      tone: 'success',
-      title: `Escalation raised for ${department.name}`,
-      description: head
-        ? `Notified ${head.name}${coo ? ` · CC ${coo.name} (Head of Operations)` : ''}. The record is in Performance & escalation.`
-        : 'Recorded in the escalation log.',
-    });
+    if (escalationError) {
+      toast.push({ tone: 'error', title: 'Escalation not raised', description: escalationError });
+      return;
+    }
+    const reportingLead = empMap.get(scope.user.managerId ?? '');
+    toast.push({ tone: 'success', title: `Escalation raised for ${department.name}`,
+      description: `Routed to ${reportingLead?.name ?? 'your reporting lead'} with an urgent follow-up activity.` });
   };
 
   return (
@@ -379,7 +379,7 @@ export function Dashboard({
         />
         <StatCard
           label="Escalations open"
-          value={state.escalations.filter((e) => e.status === 'open' && deptIds.includes(e.departmentId)).length}
+          value={state.escalations.filter((e) => e.status === 'open' && deptIds.includes(e.departmentId) && canViewEscalation(state, scope.user.id, e)).length}
           hint={`${summary.overdueActivities} overdue activities · ${overloaded.length} people over capacity`}
           icon={<BellRing className="h-4 w-4" />}
           tone="danger"
@@ -751,8 +751,7 @@ export function Dashboard({
                           </div>
                           <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-500">
                             <Mail className="h-2.5 w-2.5" />
-                            To {head?.name ?? 'Dept head'}
-                            {coo ? ` · CC ${coo.name}` : ''}
+                            To {empMap.get(scope.user.managerId ?? '')?.name ?? 'No reporting lead configured'}
                           </div>
                         </div>
                         <ScoreRing value={score.score} size={32} stroke={4} />

@@ -217,3 +217,19 @@ test('db:init never shares the device tenant or persona', () => {
 test('an over-sized seed is refused before any write', () => {
   assert.throws(() => prepareSeedState(baseState, { maxBytes: 32 }), SeedError);
 });
+
+test('feeling scales, cascade updates and one-on-one records have strict compatible shapes', () => {
+  const scale = [1, 2, 3, 4, 5].map((value) => ({ value, label: `Level ${value}`, color: '#123456' }));
+  const session = {
+    id: 'one-1', employeeId: 'employee', managerId: 'employee', departmentId: 'dept-it', date: '2026-10-31', feeling: 4,
+    workLifeBalance: 'Balance', support: 'Support', escalation: '', discussion: 'Discussion', improvement: 'Feedback', careerProgression: 'Task',
+    summary: 'Summary', summaryModel: 'model', summaryGeneratedAt: '2026-10-31T00:00:00Z', createdAt: '2026-10-31T00:00:00Z', updatedAt: '2026-10-31T00:00:00Z',
+  };
+  const data = { ...baseState, tenants: [{ ...baseState.tenants[0], feelingScale: scale }], oneOnOnes: [session], leadershipUpdates: [{ id: 'update', authorId: 'employee', departmentId: 'dept-it', message: 'Message', createdAt: '2026-10-31T00:00:00Z' }] };
+  assert.equal(parse(data).success, true);
+  assert.equal(parse({ ...data, tenants: [{ ...data.tenants[0], feelingScale: [...scale.slice(0, 4), scale[0]] }] }).success, false, 'duplicate scale values are invalid');
+  assert.equal(parse({ ...data, tenants: [{ ...data.tenants[0], feelingScale: scale.map((row) => ({ ...row, color: 'url(unsafe)' })) }] }).success, false, 'colours are strict hex values');
+  assert.equal(parse({ ...data, oneOnOnes: [{ ...session, feeling: 0 }] }).success, false);
+  assert.equal(parse({ ...data, oneOnOnes: [{ ...session, accidentalSecret: 'no' }] }).success, false);
+  assert.equal(parse({ ...baseState, standups: [{ id: 's', date: '2026-10-31', departmentId: 'dept-it', employeeId: 'employee', feeling: 6, lastDayUpdate: '', progressUpdate: '', blockers: '', actionItems: [], supportRequests: [], status: 'draft', submittedAt: null, createdAt: '', updatedAt: '' }] }).success, false);
+});

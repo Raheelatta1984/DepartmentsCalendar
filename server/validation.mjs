@@ -27,6 +27,7 @@ export const workspaceSchema = record({
       departmentIds: z.array(id).max(500),
     }),
     ptoAnnualEntitlementDays: number.min(0).max(365),
+    feelingScale: z.array(record({ value: z.number().int().min(1).max(5), label: z.string().trim().min(1).max(80), color: z.string().regex(/^#[0-9a-fA-F]{6}$/) })).length(5).refine((rows) => new Set(rows.map((row) => row.value)).size === 5).optional(),
     createdAt: text.optional(),
   }).min(1).optional(),
   entities: rows({
@@ -104,6 +105,8 @@ export const workspaceSchema = record({
     score: number, threshold: number, utilization: number, onTimeRate: number,
     recipients: z.array(id), cc: z.array(id), createdAt: text,
     status: z.enum(['open', 'acknowledged', 'closed']), note: text,
+    raisedById: id.optional(), sourceDepartmentId: id.optional(), followUpActivityId: id.optional(),
+    followUps: rows({ id, authorId: id, targetId: id, note: text, createdAt: text, activityId: id.optional() }).optional(),
   }),
   connections: rows({
     id, employeeId: id, provider, accountEmail: text,
@@ -126,6 +129,7 @@ export const workspaceSchema = record({
   }).optional(),
   standups: rows({
     id, date, departmentId: id, employeeId: id,
+    feeling: z.number().int().min(1).max(5).nullable().optional(),
     lastDayUpdate: text, progressUpdate: text, blockers: text,
     actionItems: rows({
       id, title: text, ownerId: id.nullable(), dueDate: date.nullable(),
@@ -139,6 +143,13 @@ export const workspaceSchema = record({
     }),
     status: z.enum(['draft', 'submitted']),
     submittedAt: text.nullable(), createdAt: text, updatedAt: text,
+  }).optional(),
+  leadershipUpdates: rows({ id, authorId: id, departmentId: id, message: text, createdAt: text }).optional(),
+  oneOnOnes: rows({
+    id, employeeId: id, managerId: id, departmentId: id, date,
+    feeling: z.number().int().min(1).max(5).nullable(),
+    workLifeBalance: text, support: text, escalation: text, discussion: text, improvement: text, careerProgression: text,
+    summary: text, summaryModel: text, summaryGeneratedAt: text.nullable(), createdAt: text, updatedAt: text,
   }).optional(),
   settings: record({
     groupName: text, workingDayStart: time, workingDayEnd: time,

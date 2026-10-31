@@ -6,8 +6,9 @@ import { createRequestGuard, etagFor } from './request-guard.mjs';
 import { applyHeaders, apiSecurityHeaders } from './security-headers.mjs';
 import { loginSchema, saveSchema } from './validation.mjs';
 import { devopsLookupSchema, lookupDevopsWorkItem } from './devops.mjs';
+import { oneOnOneSummarySchema, generateOneOnOneSummary } from './one-on-one-ai.mjs';
 
-export const MAX_BODY_BYTES = 3 * 1024 * 1024;
+export const MAX_BODY_BYTES = 4 * 1024 * 1024;
 // `extra` carries the retry contract the browser uses to decide between an
 // automatic refresh and a message that needs a human: { retryable, retryAfter }.
 const fail = (status, message, extra) => Object.assign(new Error(message), { status }, extra);
@@ -32,7 +33,7 @@ async function jsonBody(request, limit = MAX_BODY_BYTES) {
         size += chunk.length;
         if (size <= limit) chunks.push(chunk);
       });
-      request.on('end', () => size > limit ? reject(fail(413, 'Workspace exceeds the 3 MB pilot limit. Export a backup and migrate to record-level storage.')) : resolve(Buffer.concat(chunks)));
+      request.on('end', () => size > limit ? reject(fail(413, 'Workspace exceeds the 4 MB pilot limit. Export a backup and migrate to record-level storage.')) : resolve(Buffer.concat(chunks)));
       request.on('error', reject);
     });
   }
@@ -57,6 +58,7 @@ const ROUTES = {
   '/api/session': { POST: 'session:login', DELETE: 'session:logout' },
   '/api/workspace': { GET: 'workspace:read', PUT: 'workspace:write' },
   '/api/devops': { POST: 'devops:lookup' },
+  '/api/one-on-one-summary': { POST: 'one-on-one:summary' },
 };
 
 const fingerprint = (config, label, value) => createHmac('sha256', config.sessionSecret).update(label).update('\0').update(value).digest('base64url');
@@ -203,6 +205,13 @@ export function createHandler({ env = process.env, repository, logger = console,
           return response.end();
         }
         return send(response, 200, snapshot);
+      }
+
+      if (routeClass === 'one-on-one:summary') {
+        const parsed = oneOnOneSummarySchema.safeParse(await jsonBody(request, 32_768));
+        if (!parsed.success) throw fail(400, 'Add valid session notes before generating a summary.');
+        const result = await generateOneOnOneSummary(parsed.data, { apiKey: env.OPENAI_API_KEY, model: env.ONE_ON_ONE_AI_MODEL || 'gpt-4o-mini' });
+        return send(response, 200, result);
       }
 
       if (routeClass === 'devops:lookup') {

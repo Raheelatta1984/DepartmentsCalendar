@@ -39,6 +39,8 @@ const SCREENS = {
   timesheet: 'Timesheets',
   leave: 'Leave & PTO',
   standups: 'Daily stand-up',
+  'one-on-ones': 'One-on-ones',
+  performance: 'Performance & escalation',
 };
 
 const problems = [];

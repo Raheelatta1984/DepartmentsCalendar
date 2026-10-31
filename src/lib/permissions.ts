@@ -4,9 +4,9 @@ export const ROLE_LABELS: Record<Role, string> = {
   ceo: 'Chief Executive Officer',
   head_operations: 'Head of Operations',
   department_head: 'Department Head',
-  unit_head: 'Unit Head',
-  manager: 'Manager',
-  supervisor: 'Supervisor',
+  unit_head: 'Department Lead',
+  manager: 'Department Lead',
+  supervisor: 'Team Lead',
   employee: 'Employee',
 };
 
@@ -22,7 +22,8 @@ export const ROLE_RANK: Record<Role, number> = {
 
 /** Business designation when present; the role label is the access-tier fallback. */
 export function employeeTitle(employee: Pick<Employee, 'role' | 'jobTitle'> | undefined): string {
-  return employee?.jobTitle?.trim() || (employee ? ROLE_LABELS[employee.role] : 'Employee');
+  const title = employee?.jobTitle?.trim();
+  return title && !/^(supervisor|manager|unit head)$/i.test(title) ? title : (employee ? ROLE_LABELS[employee.role] : 'Employee');
 }
 
 export interface Scope {
@@ -58,7 +59,7 @@ export function reportingTree(employees: Employee[], rootId: string): string[] {
   const stack = [...(children.get(rootId) ?? [])];
   while (stack.length) {
     const id = stack.pop()!;
-    if (out.includes(id)) continue;
+    if (id === rootId || out.includes(id)) continue;
     out.push(id);
     stack.push(...(children.get(id) ?? []));
   }
@@ -148,7 +149,7 @@ export function getScope(state: StoreState, userId: string): Scope {
     canManageMaster: user.role === 'ceo' || user.role === 'head_operations' || user.role === 'department_head',
     canManageReportingLines: ROLE_RANK[user.role] >= ROLE_RANK.unit_head,
     canConfigureGroup: user.role === 'ceo' || user.role === 'head_operations',
-    canEscalate: ['ceo', 'head_operations', 'department_head'].includes(user.role),
+    canEscalate: Boolean(user.managerId),
     canApproveTimesheets: ROLE_RANK[user.role] >= ROLE_RANK.supervisor,
     canViewAllEntities: user.role === 'ceo',
   };
@@ -241,34 +242,17 @@ export function compareOrganisationEmployees(
   return bandOrder || a.name.localeCompare(b.name);
 }
 
-/* ------------------------------------------------------------------ */
-/* Daily stand-up authorization                                        */
-/*                                                                     */
-/* Every member writes their own stand-up. Progress and activity       */
-/* tracking is restricted to the leadership layer of the relevant      */
-/* department (supervisor → manager → unit head → department head),    */
-/* while the CEO/COO see every department they are responsible for.    */
-/* Plain employees never open another person's stand-up.               */
-/* ------------------------------------------------------------------ */
-
-/** Supervisors and above can open the department stand-up board. */
-export function canViewStandupBoard(scope: Scope): boolean {
-  return ROLE_RANK[scope.user.role] >= ROLE_RANK.supervisor;
-}
-
-/** Leadership may only track stand-ups for departments inside their scope. */
+/* Every employee can open the reporting-line board; row visibility is
+   separately restricted by standupStateForViewer. */
+export function canViewStandupBoard(_scope: Scope): boolean { return true; }
 export function canViewDepartmentStandups(scope: Scope, departmentId: string): boolean {
-  return canViewStandupBoard(scope) && scope.visibleDepartmentIds.includes(departmentId);
+  return scope.visibleDepartmentIds.includes(departmentId);
 }
-
-/** A stand-up entry is editable by its author; leadership tracks but does not rewrite. */
 export function canEditStandupEntry(scope: Scope, employeeId: string): boolean {
   return scope.user.id === employeeId;
 }
-
-/** Department leadership and group executives can acknowledge/resolve support callouts. */
 export function canResolveSupportRequest(scope: Scope, departmentId: string): boolean {
-  return canViewDepartmentStandups(scope, departmentId);
+  return scope.visibleDepartmentIds.includes(departmentId) && scope.directReportIds.length > 0;
 }
 
 export function describeScope(scope: Scope) {
