@@ -3,7 +3,24 @@
 
 The portal’s **What’s new** tab renders this same log from `src/data/releases.ts`, so the screen and this file can never disagree. Newest first.
 
-**19 releases · last updated 31 October 2026**
+**20 releases · last updated 31 October 2026**
+
+---
+
+## Organization hierarchy with drag-and-drop setup
+
+**31 October 2026 · Just added**
+
+Master setup gained an Organization hierarchy tab beside Entities, so the group → company → sub-company → department tree can be set up and re-organized by hand. Drag any company, sub-company or department onto a new parent — or to the top level — and the move is saved, audited and reflected on every screen immediately. Roles that cannot manage master data see the tree read-only, and the validator blocks any drop that would loop a parent beneath its own child.
+
+- New Organization hierarchy tab in Master setup, next to Entities & group
+- Drag-and-drop re-parenting for companies, sub-companies and departments
+- Top-level drop zone to make an entity a group of companies
+- Every move is saved and audited the moment it is dropped
+- Cycle protection stops a parent being dropped beneath its own child
+- Read-only tree for roles without master-data access
+
+_Where to look: **Master setup** (`#/admin`) — Open master setup._
 
 ---
 
