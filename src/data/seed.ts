@@ -25,6 +25,7 @@ import { toISO } from '../lib/dates';
 import { buildStandupSeed } from './standup-seed';
 import { withDeliverySample } from './delivery-seed';
 import { harrisFarmSample, HARRIS_FARM_ACTIVE_USER_ID } from './harris-farm-seed';
+import { withDesignationDefaults } from '../lib/master-data';
 
 /* ------------------------------------------------------------------ */
 /* Deterministic pseudo-random generator so the demo is reproducible  */
@@ -48,12 +49,18 @@ const TODAY = new Date();
 const iso = (d: Date) => format(d, 'yyyy-MM-dd');
 
 const SLOTS = ['08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '13:00', '13:30', '14:00', '15:00', '16:00'];
-function slotFor(): { startTime: string; endTime: string } {
-  const start = pick(SLOTS);
-  const [h, m] = start.split(':').map(Number);
-  const total = h * 60 + m + between(30, 120);
-  const endTime = `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
-  return { startTime: start, endTime };
+const clockTime = (minutes: number) =>
+  `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+function slotFor(hours: number): { startTime: string; endTime: string } {
+  const duration = Math.max(30, Math.round(hours * 60));
+  const latestEnd = 17 * 60 + 30;
+  const candidates = SLOTS.filter((start) => {
+    const [startHours, startMinutes] = start.split(':').map(Number);
+    return startHours * 60 + startMinutes + duration <= latestEnd;
+  });
+  const startTime = pick(candidates.length ? candidates : [SLOTS[0]]);
+  const [startHours, startMinutes] = startTime.split(':').map(Number);
+  return { startTime, endTime: clockTime(startHours * 60 + startMinutes + duration) };
 }
 
 /* ------------------------------------------------------------------ */
@@ -310,7 +317,7 @@ function addActivity(input: Partial<Activity> & {
     input.startTime && input.endTime
       ? { startTime: input.startTime, endTime: input.endTime }
       : timed
-        ? slotFor()
+        ? slotFor(input.startDate === input.endDate ? input.plannedHours : Math.min(2, Math.max(1, input.plannedHours)))
         : { startTime: undefined, endTime: undefined };
   const activity: Activity = {
     id: `act-${String(activitySeq).padStart(4, '0')}`,
@@ -433,9 +440,23 @@ workingEmployees.forEach((emp) => {
   }
 });
 
-/* keep timeline realistic: no end before start */
+/* Keep the final timeline realistic after any end-date correction. If a
+   multi-day draft becomes same-day here, reconcile its clock window to the
+   planned duration as well (within the demo working day). */
 ACTIVITIES.forEach((a) => {
   if (a.endDate < a.startDate) a.endDate = a.startDate;
+  if (a.startDate !== a.endDate || !a.startTime || !a.endTime) return;
+  const [startHours, startMinutes] = a.startTime.split(':').map(Number);
+  const duration = Math.max(30, Math.round(a.plannedHours * 60));
+  const latestEnd = 17 * 60 + 30;
+  let start = startHours * 60 + startMinutes;
+  let end = start + duration;
+  if (end > latestEnd) {
+    end = latestEnd;
+    start = end - duration;
+  }
+  a.startTime = clockTime(start);
+  a.endTime = clockTime(end);
 });
 
 /* ------------------------------------------------------------------ */
@@ -457,16 +478,23 @@ EMPLOYEES.forEach((emp) => {
     const pool = candidates.length ? candidates : myActivities;
     const entries = between(2, 3);
     let remaining = 9;
+    let nextStartMinutes = 8 * 60;
     for (let i = 0; i < entries && remaining > 0.5; i++) {
       const act = pick(pool);
       const hours = Math.min(remaining, pick([2, 2.5, 2.5, 3, 3, 3.5, 4]));
       if (hours <= 0) continue;
       entrySeq += 1;
+      const startTime = clockTime(nextStartMinutes);
+      nextStartMinutes += Math.round(hours * 60);
+      const endTime = clockTime(nextStartMinutes);
+      nextStartMinutes += 15; // a short break before the next block of work
       TIME_ENTRIES.push({
         id: `te-${String(entrySeq).padStart(5, '0')}`,
         employeeId: emp.id,
         activityId: act.id,
         date: iso(day),
+        startTime,
+        endTime,
         hours,
         note: pick(['Executed as planned.', 'Coordination completed.', 'Pending client approval.', 'Draft shared for review.', 'Follow-up scheduled.', 'Issues logged in tracker.']),
         billable: rnd() > 0.35,
@@ -622,6 +650,8 @@ export function createSeedState(): StoreState {
     entities: [...ENTITIES, ...retail.entities, ...harrisFarm.entities],
     departments: seededDepartments.map((d) => ({ ...d, devopsEnabled: d.devopsEnabled ?? ['RIT', 'ITS'].includes(d.code) })),
     deliveryStreams: [...harrisFarm.deliveryStreams],
+    designations: [],
+    calendarShares: [],
     workItems: [...harrisFarm.workItems],
     devopsImports: [],
     employees: seededEmployees,
@@ -718,7 +748,7 @@ export function createSeedState(): StoreState {
   submitted.submittedById = RETAIL_CIO_ID;
   submitted.submittedAt = new Date(now.getFullYear(), now.getMonth(), Math.min(now.getDate(), 5), 10, 15).toISOString();
 
-  return withDeliverySample({ ...base, capitalisationApprovals: [submitted, approved] });
+  return withDesignationDefaults(withDeliverySample({ ...base, capitalisationApprovals: [submitted, approved] }));
 }
 
 export const CEO_ID = ceo.id;

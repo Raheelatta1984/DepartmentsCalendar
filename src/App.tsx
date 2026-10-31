@@ -134,7 +134,7 @@ export function App() {
       .filter((e) => (q ? `${e.name} ${e.email} ${e.code}`.toLowerCase().includes(q) : true))
       .slice(0, q ? 6 : 4);
     const activities = state.activities
-      .filter((a) => scope.visibleDepartmentIds.includes(a.departmentId))
+      .filter((a) => scope.visibleDepartmentIds.includes(a.departmentId) && scope.visibleEmployeeIds.includes(a.assigneeId))
       .filter((a) => (q ? `${a.title} ${a.description}`.toLowerCase().includes(q) : true))
       .slice(0, q ? 8 : 4);
     return { employees, activities };
@@ -143,7 +143,7 @@ export function App() {
   return (
     <div className="portal-theme min-h-screen bg-slate-100/70" style={portalStyle} inert={workspace.status === 'refreshing'}>
       <Sidebar view={view} onNavigate={navigate} mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} />
-      <div className="lg:pl-[248px]">
+      <div className="min-w-0 lg:pl-[248px]">
         <Topbar
           view={view}
           onNavigate={navigate}
@@ -151,7 +151,7 @@ export function App() {
           onToggleMobile={() => setMobileOpen(true)}
           onGlobalSearch={() => setPaletteOpen(true)}
         />
-        <main className="mx-auto max-w-[1560px] px-3 py-4 sm:px-5 sm:py-5">
+        <main className="mx-auto w-full min-w-0 max-w-[1560px] px-3 py-4 sm:px-5 sm:py-5">
           <WorkspaceStatus />
           {/* The guide is pinned to the top of the tab it explains, above the
               section it is describing — never a bubble in the bottom corner. */}

@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useScopedState, useStore, newId } from '../store';
 import type { CalendarProvider, SyncJob } from '../types';
+import { canLogForEmployee } from '../lib/permissions';
 import { Avatar, Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, SearchInput, SectionHeader, Select, Tabs, Toggle } from '../components/ui';
 import { downloadICS } from '../lib/export';
 import { useToast } from '../components/toast';
@@ -59,16 +60,20 @@ export function IntegrationsPage() {
 
   const empMap = useMemo(() => new Map(state.employees.map((e) => [e.id, e])), [state.employees]);
   const activityMap = useMemo(() => new Map(state.activities.map((a) => [a.id, a])), [state.activities]);
+  const manageableEmployeeIds = useMemo(
+    () => state.employees.filter((employee) => canLogForEmployee(state, scope.user.id, employee.id)).map((employee) => employee.id),
+    [state, scope.user.id],
+  );
 
   const connections = useMemo(
     () =>
       state.connections
-        .filter((c) => scope.visibleEmployeeIds.includes(c.employeeId))
+        .filter((c) => manageableEmployeeIds.includes(c.employeeId))
         .filter((c) => (filterProvider === 'all' ? true : c.provider === filterProvider))
         .filter((c) => (filterStatus === 'all' ? true : c.status === filterStatus))
         .filter((c) => (query ? `${empMap.get(c.employeeId)?.name} ${c.accountEmail}`.toLowerCase().includes(query.toLowerCase()) : true))
         .sort((a, b) => (a.status === 'connected' ? -1 : 1) - (b.status === 'connected' ? -1 : 1)),
-    [state.connections, scope.visibleEmployeeIds, filterProvider, filterStatus, query, empMap],
+    [state.connections, manageableEmployeeIds, filterProvider, filterStatus, query, empMap],
   );
 
   const jobs = useMemo(
@@ -76,22 +81,22 @@ export function IntegrationsPage() {
       state.syncJobs
         .filter((j) => {
           const act = activityMap.get(j.activityId);
-          return act ? scope.visibleEmployeeIds.includes(act.assigneeId) : false;
+          return act ? manageableEmployeeIds.includes(act.assigneeId) : false;
         })
         .filter((j) => (jobFilter === 'all' ? true : j.status === jobFilter))
         .slice(0, 50),
-    [state.syncJobs, activityMap, scope.visibleEmployeeIds, jobFilter],
+    [state.syncJobs, activityMap, manageableEmployeeIds, jobFilter],
   );
 
   const stats = (provider: CalendarProvider) => {
-    const all = state.connections.filter((c) => c.provider === provider && scope.visibleEmployeeIds.includes(c.employeeId));
+    const all = state.connections.filter((c) => c.provider === provider && manageableEmployeeIds.includes(c.employeeId));
     const connected = all.filter((c) => c.status === 'connected');
     return { total: all.length, connected: connected.length, pending: all.filter((c) => c.status === 'pending').length, last: connected.map((c) => c.lastSync).filter(Boolean).sort().reverse()[0] };
   };
 
   const outlookStats = stats('outlook');
   const googleStats = stats('google');
-  const coverage = Math.round((outlookStats.connected / Math.max(1, scope.visibleEmployeeIds.length)) * 100);
+  const coverage = Math.round((outlookStats.connected / Math.max(1, manageableEmployeeIds.length)) * 100);
 
   return (
     <div>
@@ -466,7 +471,7 @@ export function IntegrationsPage() {
                     setConnectDraft({ ...connectDraft, employeeId: e.target.value, email: emp?.email ?? connectDraft.email });
                   }}
                 >
-                  {state.employees.filter((e) => scope.visibleEmployeeIds.includes(e.id)).map((e) => (
+                  {state.employees.filter((e) => manageableEmployeeIds.includes(e.id)).map((e) => (
                     <option key={e.id} value={e.id}>{e.name}</option>
                   ))}
                 </Select>

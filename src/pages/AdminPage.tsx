@@ -19,7 +19,7 @@ import {
   Users,
 } from 'lucide-react';
 import { useStore, newId } from '../store';
-import type { CalendarScopeMode, Department, Employee, EmploymentType, Entity, Holiday, Role, Tenant, WorkLocation } from '../types';
+import type { CalendarScopeMode, DeliveryStream, Department, Designation, Employee, EmploymentType, Entity, Holiday, Role, Tenant, WorkLocation } from '../types';
 import { employeeTitle, ROLE_LABELS, ROLE_RANK } from '../lib/permissions';
 import {
   CALENDAR_SCOPE_HINTS,
@@ -34,7 +34,7 @@ import { Avatar, Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeade
 import { useToast } from '../components/toast';
 import { streamPath } from '../lib/delivery';
 
-type Tab = 'tenants' | 'entities' | 'departments' | 'employees' | 'holidays' | 'settings' | 'audit';
+type Tab = 'tenants' | 'entities' | 'departments' | 'subdepartments' | 'designations' | 'employees' | 'holidays' | 'settings' | 'audit';
 
 const ROLE_OPTIONS = Object.keys(ROLE_LABELS) as Role[];
 const COLORS = ['#3b82f6', '#f59e0b', '#8b5cf6', '#10b981', '#ef4444', '#06b6d4', '#ec4899', '#eab308', '#6366f1', '#14b8a6', '#f97316', '#84cc16'];
@@ -56,6 +56,10 @@ export function AdminPage() {
     deleteEntity,
     upsertDepartment,
     deleteDepartment,
+    upsertStream,
+    deleteStream,
+    upsertDesignation,
+    deleteDesignation,
     upsertEmployee,
     deleteEmployee,
     addHoliday,
@@ -71,6 +75,8 @@ export function AdminPage() {
   const [scopeDraft, setScopeDraft] = useState(calendarScope);
   const [entityDraft, setEntityDraft] = useState<Entity | null>(null);
   const [deptDraft, setDeptDraft] = useState<Department | null>(null);
+  const [streamDraft, setStreamDraft] = useState<DeliveryStream | null>(null);
+  const [designationDraft, setDesignationDraft] = useState<Designation | null>(null);
   const [empDraft, setEmpDraft] = useState<Employee | null>(null);
   const [holidayDraft, setHolidayDraft] = useState<Holiday | null>(null);
   const [query, setQuery] = useState('');
@@ -163,6 +169,8 @@ export function AdminPage() {
             { id: 'tenants', label: 'Tenants & calendar scope' },
             { id: 'entities', label: 'Entities & group' },
             { id: 'departments', label: 'Departments' },
+            { id: 'subdepartments', label: 'Sub-departments', count: state.deliveryStreams.length },
+            { id: 'designations', label: 'Designations', count: state.designations.length },
             { id: 'employees', label: 'Employees' },
             { id: 'holidays', label: 'Holidays & weekends' },
             { id: 'settings', label: 'Group settings' },
@@ -479,7 +487,7 @@ export function AdminPage() {
                       {state.employees.filter((e) => e.entityId === ent.id).length}
                     </td>
                     <td className="border-b border-slate-100 py-2.5 pl-2 pr-4 text-right">
-                      <div className="flex justify-end gap-1 opacity-0 transition group-hover:opacity-100">
+                      <div className="flex justify-end gap-1 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100">
                         <button disabled={!canEdit} onClick={() => setEntityDraft(ent)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30">
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
@@ -573,7 +581,7 @@ export function AdminPage() {
                     <td className="border-b border-slate-100 px-3 py-2.5 text-[11px] tabular-nums text-slate-600">{state.employees.filter((e) => e.departmentId === d.id).length}</td>
                     <td className="border-b border-slate-100 px-3 py-2.5 text-[11px] tabular-nums text-slate-600">{state.activities.filter((a) => a.departmentId === d.id).length}</td>
                     <td className="border-b border-slate-100 py-2.5 pl-2 pr-4 text-right">
-                      <div className="flex justify-end gap-1 opacity-0 transition group-hover:opacity-100">
+                      <div className="flex justify-end gap-1 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100">
                         <button disabled={!canEdit} onClick={() => setDeptDraft(d)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30">
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
@@ -593,6 +601,111 @@ export function AdminPage() {
               </tbody>
             </table>
           </div>
+        </Card>
+      ) : null}
+
+      {tab === 'subdepartments' ? (
+        <Card>
+          <SectionHeader
+            title="Sub-departments & delivery streams"
+            subtitle="Editable nested teams for every department — not only DevOps. Assign each team’s lead, parent, code and calendar colour, then link employees in the employee master."
+            action={
+              <Button
+                size="sm"
+                variant="primary"
+                disabled={!canEdit || !state.departments.length}
+                onClick={() => setStreamDraft({
+                  id: newId('stream'), departmentId: state.departments[0]?.id ?? '', parentId: null,
+                  name: '', code: '', leadId: null, color: COLORS[state.deliveryStreams.length % COLORS.length],
+                })}
+              >
+                <Plus className="h-3.5 w-3.5" /> Add sub-department
+              </Button>
+            }
+          />
+          <div className="mt-4 grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+            {[...state.deliveryStreams]
+              .sort((a, b) => (deptMap.get(a.departmentId)?.name ?? '').localeCompare(deptMap.get(b.departmentId)?.name ?? '') || streamPath(state.deliveryStreams, a.id).map((row) => row.name).join('/').localeCompare(streamPath(state.deliveryStreams, b.id).map((row) => row.name).join('/')))
+              .map((stream) => {
+                const lead = empMap.get(stream.leadId ?? '');
+                const members = state.employees.filter((employee) => employee.streamId === stream.id || employee.supportingStreamIds?.includes(stream.id));
+                const children = state.deliveryStreams.filter((row) => row.parentId === stream.id);
+                return (
+                  <div key={stream.id} className="rounded-xl border border-slate-200 p-3" style={{ borderLeft: `4px solid ${stream.color}` }}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-[10px] text-slate-400">{deptMap.get(stream.departmentId)?.name} · {streamPath(state.deliveryStreams, stream.id).slice(0, -1).map((row) => row.name).join(' / ') || 'Top level'}</div>
+                        <h3 className="truncate text-sm font-semibold text-slate-800">{stream.name}</h3>
+                        <div className="font-mono text-[10px] text-slate-400">{stream.code}</div>
+                      </div>
+                      <div className="flex flex-none gap-1">
+                        <button disabled={!canEdit} aria-label={`Edit ${stream.name}`} onClick={() => setStreamDraft(stream)} className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"><Pencil className="h-3.5 w-3.5" /></button>
+                        <button
+                          disabled={!canEdit}
+                          aria-label={`Delete ${stream.name}`}
+                          onClick={() => {
+                            const result = deleteStream(stream.id);
+                            toast.push(result
+                              ? { tone: 'error', title: 'Sub-department is still in use', description: result }
+                              : { tone: 'success', title: 'Sub-department deleted' });
+                          }}
+                          className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30"
+                        ><Trash2 className="h-3.5 w-3.5" /></button>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center gap-2">
+                      {lead ? <Avatar name={lead.name} color={lead.avatarColor} size={26} /> : <Users className="h-5 w-5 text-slate-300" />}
+                      <div><div className="text-[11px] font-medium text-slate-700">{lead?.name ?? 'No lead assigned'}</div><div className="text-[9px] text-slate-400">{lead ? employeeTitle(lead) : 'Select a lead when editing'}</div></div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-1.5"><Badge tone="neutral">{members.length} members</Badge><Badge tone="neutral">{children.length} child teams</Badge></div>
+                  </div>
+                );
+              })}
+          </div>
+          {!state.deliveryStreams.length ? <div className="mt-4"><EmptyState title="No sub-departments configured" description="Add nested teams such as PMO, Data, QA or Store Operations. They can be modified at any time." /></div> : null}
+        </Card>
+      ) : null}
+
+      {tab === 'designations' ? (
+        <Card>
+          <SectionHeader
+            title="Designation master"
+            subtitle="Reusable business titles stay separate from access roles. Editing a linked designation updates every employee who uses it; employees can also retain a custom title."
+            action={
+              <Button size="sm" variant="primary" disabled={!canEdit} onClick={() => setDesignationDraft({ id: newId('des'), tenantId: tenant?.id ?? '', title: '', code: '', description: '' })}>
+                <Plus className="h-3.5 w-3.5" /> Add designation
+              </Button>
+            }
+          />
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {[...state.designations].sort((a, b) => a.title.localeCompare(b.title)).map((designation) => {
+              const assigned = state.employees.filter((employee) => employee.designationId === designation.id);
+              return (
+                <div key={designation.id} className="rounded-xl border border-slate-200 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0"><h3 className="truncate text-xs font-semibold text-slate-800">{designation.title}</h3><div className="mt-0.5 font-mono text-[10px] text-slate-400">{designation.code || 'NO CODE'}</div></div>
+                    <div className="flex flex-none gap-1">
+                      <button disabled={!canEdit} aria-label={`Edit ${designation.title}`} onClick={() => setDesignationDraft(designation)} className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"><Pencil className="h-3.5 w-3.5" /></button>
+                      <button
+                        disabled={!canEdit}
+                        aria-label={`Delete ${designation.title}`}
+                        onClick={() => {
+                          const result = deleteDesignation(designation.id);
+                          toast.push(result
+                            ? { tone: 'error', title: 'Designation is still assigned', description: result }
+                            : { tone: 'success', title: 'Designation deleted' });
+                        }}
+                        className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30"
+                      ><Trash2 className="h-3.5 w-3.5" /></button>
+                    </div>
+                  </div>
+                  <p className="mt-2 min-h-8 text-[10px] leading-relaxed text-slate-500">{designation.description || 'No description recorded.'}</p>
+                  <Badge tone={assigned.length ? 'info' : 'neutral'}>{assigned.length} employee{assigned.length === 1 ? '' : 's'} linked</Badge>
+                </div>
+              );
+            })}
+          </div>
+          {!state.designations.length ? <div className="mt-4"><EmptyState title="No designations yet" description="Add a reusable title, or edit an employee with a custom designation to link it into the master." /></div> : null}
         </Card>
       ) : null}
 
@@ -679,7 +792,7 @@ export function AdminPage() {
                       <Badge tone={e.status === 'active' ? 'good' : e.status === 'on_leave' ? 'warn' : 'neutral'}>{e.status.replace('_', ' ')}</Badge>
                     </td>
                     <td className="border-b border-slate-100 py-2 pl-2 pr-4 text-right">
-                      <div className="flex justify-end gap-1 opacity-0 transition group-hover:opacity-100">
+                      <div className="flex justify-end gap-1 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100">
                         <button disabled={!canEdit} onClick={() => setEmpDraft(e)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30">
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
@@ -781,13 +894,17 @@ export function AdminPage() {
                           <Badge tone={h.type === 'public_holiday' ? 'danger' : h.type === 'company_holiday' ? 'warn' : 'neutral'}>{h.type.replace('_', ' ')}</Badge>
                         </td>
                         <td className="border-b border-slate-100 py-2 pl-2 pr-4 text-right">
-                          <button
-                            disabled={!canEdit}
-                            onClick={() => deleteHoliday(h.id)}
-                            className="rounded p-1 text-slate-300 opacity-0 transition hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100 disabled:opacity-0"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                          <div className="flex justify-end gap-1">
+                            <button disabled={!canEdit} aria-label={`Edit ${h.name}`} onClick={() => setHolidayDraft(h)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"><Pencil className="h-3.5 w-3.5" /></button>
+                            <button
+                              disabled={!canEdit}
+                              aria-label={`Delete ${h.name}`}
+                              onClick={() => deleteHoliday(h.id)}
+                              className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1250,6 +1367,90 @@ score            = 40% utilizationScore + 35% onTimeRate + 25% completionRate`}<
         ) : null}
       </Modal>
 
+      {/* Sub-department modal */}
+      <Modal
+        open={!!streamDraft}
+        onClose={() => setStreamDraft(null)}
+        title={state.deliveryStreams.some((row) => row.id === streamDraft?.id) ? 'Edit sub-department' : 'Add sub-department'}
+        subtitle="Nested teams are master data for every department and can also own a DevOps backlog."
+        width="max-w-xl"
+        footer={
+          <>
+            <Button size="sm" onClick={() => setStreamDraft(null)}>Cancel</Button>
+            <Button size="sm" variant="primary" onClick={() => {
+              if (!streamDraft) return;
+              const result = upsertStream(streamDraft);
+              if (result) {
+                toast.push({ tone: 'error', title: 'Sub-department not saved', description: result });
+                return;
+              }
+              setStreamDraft(null);
+              toast.push({ tone: 'success', title: 'Sub-department saved', description: 'Employee and roadmap groupings now use the updated structure.' });
+            }}><Check className="h-3.5 w-3.5" /> Save sub-department</Button>
+          </>
+        }
+      >
+        {streamDraft ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Sub-department name" className="sm:col-span-2"><Input autoFocus value={streamDraft.name} onChange={(event) => setStreamDraft({ ...streamDraft, name: event.target.value })} /></Field>
+            <Field label="Unique code"><Input value={streamDraft.code} onChange={(event) => setStreamDraft({ ...streamDraft, code: event.target.value.toUpperCase() })} /></Field>
+            <Field label="Department">
+              <Select value={streamDraft.departmentId} onChange={(event) => setStreamDraft({ ...streamDraft, departmentId: event.target.value, parentId: null, leadId: null })}>
+                {state.departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}
+              </Select>
+            </Field>
+            <Field label="Parent sub-department">
+              <Select value={streamDraft.parentId ?? ''} onChange={(event) => setStreamDraft({ ...streamDraft, parentId: event.target.value || null })}>
+                <option value="">Top level</option>
+                {state.deliveryStreams.filter((row) => row.departmentId === streamDraft.departmentId && row.id !== streamDraft.id).map((row) => <option key={row.id} value={row.id}>{streamPath(state.deliveryStreams, row.id).map((item) => item.name).join(' / ')}</option>)}
+              </Select>
+            </Field>
+            <Field label="Accountable lead">
+              <Select value={streamDraft.leadId ?? ''} onChange={(event) => setStreamDraft({ ...streamDraft, leadId: event.target.value || null })}>
+                <option value="">Unassigned</option>
+                {state.employees.filter((employee) => employee.departmentId === streamDraft.departmentId && employee.status !== 'inactive').map((employee) => <option key={employee.id} value={employee.id}>{employee.name} · {employeeTitle(employee)}</option>)}
+              </Select>
+            </Field>
+            <Field label="Calendar colour" className="sm:col-span-2">
+              <div className="flex flex-wrap gap-1.5 pt-1">{COLORS.map((color) => <button type="button" key={color} onClick={() => setStreamDraft({ ...streamDraft, color })} className={`h-6 w-6 rounded-full ring-offset-1 ${streamDraft.color === color ? 'ring-2 ring-slate-800' : ''}`} style={{ background: color }} aria-label={`Colour ${color}`} />)}</div>
+            </Field>
+          </div>
+        ) : null}
+      </Modal>
+
+      {/* Designation modal */}
+      <Modal
+        open={!!designationDraft}
+        onClose={() => setDesignationDraft(null)}
+        title={state.designations.some((row) => row.id === designationDraft?.id) ? 'Edit designation' : 'Add designation'}
+        subtitle="This changes the business title only; employee access roles remain separate."
+        width="max-w-xl"
+        footer={
+          <>
+            <Button size="sm" onClick={() => setDesignationDraft(null)}>Cancel</Button>
+            <Button size="sm" variant="primary" onClick={() => {
+              if (!designationDraft) return;
+              const result = upsertDesignation(designationDraft);
+              if (result) {
+                toast.push({ tone: 'error', title: 'Designation not saved', description: result });
+                return;
+              }
+              setDesignationDraft(null);
+              toast.push({ tone: 'success', title: 'Designation saved', description: 'Linked employee titles were updated automatically.' });
+            }}><Check className="h-3.5 w-3.5" /> Save designation</Button>
+          </>
+        }
+      >
+        {designationDraft ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Designation title" className="sm:col-span-2"><Input autoFocus value={designationDraft.title} onChange={(event) => setDesignationDraft({ ...designationDraft, title: event.target.value })} placeholder="e.g. D365 Stream Lead" /></Field>
+            <Field label="Short code"><Input value={designationDraft.code} onChange={(event) => setDesignationDraft({ ...designationDraft, code: event.target.value.toUpperCase() })} placeholder="D365-LEAD" /></Field>
+            <Field label="Employees linked"><Input value={String(state.employees.filter((employee) => employee.designationId === designationDraft.id).length)} disabled readOnly /></Field>
+            <Field label="Description" className="sm:col-span-2"><Textarea rows={3} value={designationDraft.description} onChange={(event) => setDesignationDraft({ ...designationDraft, description: event.target.value })} placeholder="Purpose, grade or responsibilities (optional)" /></Field>
+          </div>
+        ) : null}
+      </Modal>
+
       {/* Employee modal */}
       <Modal
         open={!!empDraft}
@@ -1293,8 +1494,24 @@ score            = 40% utilizationScore + 35% onTimeRate + 25% completionRate`}<
                 ))}
               </Select>
             </Field>
-            <Field label="Designation / job title" hint="Editable business title; it does not change the permission tier.">
-              <Input value={empDraft.jobTitle ?? ''} onChange={(e) => setEmpDraft({ ...empDraft, jobTitle: e.target.value })} placeholder="e.g. D365 Stream Lead" />
+            <Field label="Designation / job title" hint="Business title; access stays separate">
+              <div className="space-y-2">
+                <Select
+                  value={empDraft.designationId ?? 'custom'}
+                  onChange={(event) => {
+                    const designation = state.designations.find((row) => row.id === event.target.value);
+                    setEmpDraft({
+                      ...empDraft,
+                      designationId: designation?.id,
+                      jobTitle: designation?.title ?? empDraft.jobTitle ?? '',
+                    });
+                  }}
+                >
+                  <option value="custom">Custom designation</option>
+                  {[...state.designations].sort((a, b) => a.title.localeCompare(b.title)).map((designation) => <option key={designation.id} value={designation.id}>{designation.title}</option>)}
+                </Select>
+                {!empDraft.designationId ? <Input value={empDraft.jobTitle ?? ''} onChange={(e) => setEmpDraft({ ...empDraft, jobTitle: e.target.value, designationId: undefined })} placeholder="Enter a custom business title" /> : null}
+              </div>
             </Field>
             <Field label="Department">
               <Select
@@ -1440,7 +1657,7 @@ score            = 40% utilizationScore + 35% onTimeRate + 25% completionRate`}<
       <Modal
         open={!!holidayDraft}
         onClose={() => setHolidayDraft(null)}
-        title="Add non-working day"
+        title={state.holidays.some((row) => row.id === holidayDraft?.id) ? 'Edit non-working day' : 'Add non-working day'}
         width="max-w-lg"
         footer={
           <>
@@ -1452,10 +1669,10 @@ score            = 40% utilizationScore + 35% onTimeRate + 25% completionRate`}<
                 if (!holidayDraft?.name.trim()) return;
                 addHoliday(holidayDraft);
                 setHolidayDraft(null);
-                toast.push({ tone: 'success', title: 'Holiday added', description: 'Calendars and capacity recalculate.' });
+                toast.push({ tone: 'success', title: 'Holiday saved', description: 'Calendars and capacity recalculate.' });
               }}
             >
-              <Check className="h-3.5 w-3.5" /> Add
+              <Check className="h-3.5 w-3.5" /> Save
             </Button>
           </>
         }

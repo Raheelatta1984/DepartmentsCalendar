@@ -12,6 +12,10 @@ Built with React + TypeScript, with a deterministic product demo and an optional
 
 **Pilot access model:** anyone with the workspace password can view and edit the entire shared workspace. Persona switching and tenant switching preview employee and tenant scopes but are **not individual authentication or server-enforced authorization**. Do not store sensitive real employee/payroll data yet. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for what is implemented versus planned.
 
+**Private work calendars, delegation and time ownership.** Ordinary employees see their own work, not their manager’s or teammates’ unshared activities. Owners can share a calendar with their department or a specific employee; grants are one-way and read-only, never permission to edit, log time, approve, push sync or manage connections. Reporting leads retain downstream review and are the only users who can log or approve on a team member’s behalf. Same-department tasks can be delegated to a colleague: current ownership moves to the assignee across calendars, roadmaps and timesheets, while historical time stays with its original logger.
+
+**Reconciled working windows and responsive layouts.** Same-day activity and timesheet start/end times calculate hours automatically. Partial, overnight or manually mismatched durations show an explanation and are held by the modal, store and snapshot validator until reconciled; legacy all-day rows remain readable. The shell, filters, menus and modals adapt across mobile, tablet and desktop, with dense calendars/tables scrolling inside their own containers rather than widening the page.
+
 ---
 
 ## DevOps delivery and effort reporting
@@ -32,17 +36,20 @@ IT is enabled by default; other departments can opt in through Master setup. See
 | Workload calculated from hours spent on activities | Every score uses **logged timesheet hours ÷ country-aware capacity** (not planned hours, not attendance) |
 | Portal linked to Outlook, Google Calendar optional; an inserted task appears in the calendar | **Calendar sync** tab + sync toggles on every activity + a real **.ics** export that can be imported into Outlook/Google today |
 | Central calendar by department, by employee; managers review a responsible employee's calendar | **Department calendar** (year, quarter, month, team-week swimlanes, day) with employee picker, per-person utilization and multi-task day cells |
-| Staff / worker management at master level | **Master setup → Employees** (access role, editable designation, reporting line, home/supporting streams, work location and engagement type) |
+| Employees cannot see unshared manager/teammate activity; owners control read access | **Department calendar → Share my calendar** — department or specific-person grants, revocation, one-way read-only scope in calendar/register/search/dashboard/timesheet queries |
+| Delegate tasks and count them under the assigned member | **Activity modal → Assigned to** — same-department task delegation, delegation note/history, current-assignee ownership; only reporting leads can otherwise log on another member’s behalf |
+| Start/stop times calculate hours and mismatches block submission | **Activity modal** and **Timesheet entry modal** — automatic same-day durations, live reconciliation messages, store/server validation |
+| Staff / worker management at master level | **Master setup → Employees** (access role, linked designation, reporting line, home/supporting streams, work location and engagement type) |
 | Co-CEO portfolios and future department responsibility | **Master setup → Employees → Edit** — explicit department checklist per co-CEO plus editable free-text portfolio; see [`docs/HARRIS_FARM_ONBOARDING.md`](docs/HARRIS_FARM_ONBOARDING.md) |
 | Entities / companies and sub-companies so a group of companies fits | **Master setup → Entities** (group → company → sub-company tree, each with country & timezone) |
 | Department master with head / responsible assignee | **Master setup → Departments** (head, operations owner, cost centre, calendar colour) |
 | Performance matrix daily / weekly / monthly / quarterly / annual | **Performance & escalation** — identical formula at every grain, 8-period trend |
 | Low-performing department reported to department head, CC Head of Operations | **Attention queue → Escalate** and the **rule engine**; generates a ready-to-send email with To/CC and full audit record |
 | Head of Operations sees only the departments he is responsible for | Preview role scope: COO sees every operational department (owner field), not the rest of the group |
-| Daily timesheet by activity, review where time was spent vs the planned task | **Timesheets** — team week grid, entry history, approvals, plan-vs-actual |
+| Daily timesheet by activity, review where time was spent vs the planned task | **Timesheets** — expandable department → head/lead/member → activity Team week, entry history, reporting-lead approvals, plan-vs-actual |
 | Daily department stand-up: last working day update, progress, blockers, support requests, action items of the day | **Daily stand-up** tab — one check-in per member per working day, department board layered head → manager → supervisor → employee, internal & cross-functional support callouts |
 | Only department heads / managers / supervisors track their department's stand-up progress; CEO/COO see a high-level summary and drill in department by department | **Role-scoped stand-up board** (supervisor rank and above) + **Executive pulse** for CEO/COO; plain employees only see their own form; a **stand-up pulse card** on the command centre shows per-department submission, blockers and support callouts |
-| Roadmap with department/employee/task/subtask rows, columns for year, quarter, month, week number, day and date | **Roadmap timeline** with all six header rows, collapsible hierarchy, holiday shading and today marker |
+| Roadmap with department/employee/task/subtask rows, columns for year, quarter, month, week number, day and date | **Roadmap timeline** with all six header rows, department → heads → leads → members → activities/subtasks drill-down, holiday shading and today marker |
 | Country-specific weekly off + public holidays for the next 5 years, with reason shown | **Master setup → Holidays & weekends** (12 countries, multi-year generation, per-country weekend toggles) and shading in calendar/roadmap |
 | Track IT effort by project/task and capitalise it for the board | **IT projects & capex** portfolio (110 projects) + **Capitalisation pack** (AASB 138, AUD) with monthly board approval of resource hours |
 | AI guide that helps on every screen, toggleable on/off | **AI guide panel at the top of every tab and section** — GUIDE badge, italic promise, prose explanation, numbered **Do this** steps, one **Watch** caution and a collapsible **Live context** block computed from the same live snapshot the screen reads. It follows the section / sub-tab in focus, folds to a single line, and hides with × or the top-bar toggle |
@@ -146,8 +153,9 @@ Without database variables, the app explicitly uses browser-only `localStorage`.
 Individual checks:
 
 ```bash
-npm test              # embedded PostgreSQL + real API tests + shared React store/sync tests
-npm run smoke         # all 8 screens inside jsdom
+npm test              # embedded PostgreSQL + real API + workforce rules + shared React store/sync tests
+npm run test:workforce # privacy, delegation, duration, hierarchy and real store ownership checks
+npm run smoke         # all screens inside jsdom
 npm run smoke:store   # store CRUD, time entries, holiday generation, escalation and personas
 npm run smoke:tenancy # tenant isolation, PTO/PH maths, calendar-scope master setting
 npm run smoke:leave   # store-level tenant switching and the leave request → approval lifecycle
@@ -198,15 +206,15 @@ See [`docs/architecture.svg`](docs/architecture.svg) and [`docs/ARCHITECTURE.md`
 | **Command centre** | Portfolio KPIs, 8-period trend, department scorecard, attention queue with one-click escalation, today across the group, sync health |
 | **Department calendar** | Year board (12 mini months), quarter (3 month grids), month grid, team-week swimlanes per employee, day timeline; every day cell holds every task with an inline “+N more”; public holidays with reason; right rail for the selected day, employee review and upcoming non-working days |
 | **Activity register** | Filterable register of every activity with inline status changes, progress, sync state, CSV and .ics export |
-| **Roadmap timeline** | Hierarchical rows (department → employee → activity → subtask) against year/quarter/month/ISO-week/day/date columns, 13/26/52-week horizon |
-| **Timesheets** | Team week grid (click a cell to log), entry history with approvals, approval queue, plan-vs-actual; optional project/task link for capitalisation |
+| **Roadmap timeline** | Hierarchical rows (department → heads → leads → members → activity → subtask) against year/quarter/month/ISO-week/day/date columns, 13/26/52-week horizon |
+| **Timesheets** | Expandable Team week (department/head/lead/member/person/activity, click a permitted cell to log), entry history, reporting-lead approval queue, plan-vs-actual; optional project/task link for capitalisation |
 | **Leave & PTO** | Plan a holiday (tentative date → line manager approval → approved PTO), PTO balance excluding public holidays (PH), approval queue for line managers and above, team leave calendar with PH badges, who is away and who is next responsible |
 | **Daily stand-up** | Member check-in form (last working day, progress, blockers, action items, internal/cross-functional support), department board grouped top-to-bottom by reporting layer with acknowledge/resolve callout lifecycle, executive pulse for CEO/COO, and a per-department pulse card on the command centre |
 | **IT projects & capex** | 110-project register with portfolio, category, stage, capex, capitalisation rate, delivery progress and task-level effort |
 | **Capitalisation pack** | Board pack in AUD: capitalised hours and cost by resource/project, excluded effort reconciliation, AASB 138 evidence, board submission and decision log |
 | **Performance & escalation** | Department matrix across all metrics, employee scorecards, escalation log, rule engine, generated email |
 | **Calendar sync** | Provider cards, per-employee connections, sync queue log, production checklist, troubleshooting |
-| **Master setup** | Tenants & calendar scope (single / multiple / all departments, PTO entitlement), entities, departments, employees, holidays/weekends, group settings, audit trail, full JSON backup |
+| **Master setup** | Editable tenants & calendar scope (single / multiple / all departments, PTO entitlement), entities, departments, sub-departments/streams, designations, employees, holidays/weekends, group settings, audit trail, full JSON backup |
 
 ---
 
@@ -218,7 +226,7 @@ server/               shared Node API, authentication, validation, Neon reposito
 src/
   components/         layout, modals, charts, workspace login and save status
   data/               12-country holiday engine + tenant register, leave seed and retail capex datasets
-  lib/                analytics, capitalisation engine, tenant isolation, leave/PTO engine, permissions preview, exports, dates, shared-state sync
+  lib/                analytics, capitalisation, tenant isolation, leave/PTO, ownership/sharing rules, time reconciliation, exports, dates, shared-state sync
   pages/              one file per screen
   store.tsx           state/actions + local-demo or shared-Neon persistence
   types.ts            domain model

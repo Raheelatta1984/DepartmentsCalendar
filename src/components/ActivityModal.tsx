@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarCheck2, CalendarX2, Check, Plus, Send, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CalendarCheck2, CalendarX2, Check, Plus, Send, ShieldCheck, Trash2, X } from 'lucide-react';
 import { emptyActivity, newId, useScopedState, useStore } from '../store';
 import type { Activity, ActivityType, Priority, TaskStatus } from '../types';
 import { TYPE_LABELS } from '../lib/analytics';
 import { linkActivity, workItemPath } from '../lib/delivery';
+import { canAssignActivity, canEditActivity, canLogForEmployee } from '../lib/permissions';
+import { elapsedHours, timeWindowError } from '../lib/time';
 import { Badge, Button, Field, Input, Label, Modal, Select, Textarea, Toggle } from './ui';
 
 const TYPES = Object.keys(TYPE_LABELS) as ActivityType[];
@@ -42,13 +44,23 @@ export function ActivityModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, activity?.id]);
 
+  const canModify = !activity || canEditActivity(state, scope.user.id, activity);
   const assignable = useMemo(() => {
-    const rows = state.employees.filter((e) => scope.visibleEmployeeIds.includes(e.id) && e.status !== 'inactive');
-    // Never silently re-assign an existing activity whose owner is no longer
-    // in the calendar scope.
+    const ownerId = activity?.assigneeId ?? scope.user.id;
+    // Use the mutation rule itself: self/reporting-line assignment, plus
+    // same-department delegation only when the actor owns a task. A calendar
+    // grant alone never makes another employee a valid target.
+    const rows = state.employees.filter((employee) =>
+      employee.status !== 'inactive' && canAssignActivity(
+        state,
+        scope.user.id,
+        { type: draft.type, assigneeId: ownerId },
+        employee.id,
+      ),
+    );
     const current = activity ? state.employees.find((e) => e.id === activity.assigneeId) : undefined;
     return current && !rows.some((e) => e.id === current.id) ? [current, ...rows] : rows;
-  }, [state.employees, scope.visibleEmployeeIds, activity]);
+  }, [state, scope.user.id, activity, draft.type]);
   const assignee = state.employees.find((e) => e.id === draft.assigneeId) ?? assignable[0] ?? state.employees[0];
   const department = state.departments.find((d) => d.id === assignee?.departmentId);
   const entity = state.entities.find((e) => e.id === assignee?.entityId);
@@ -58,7 +70,24 @@ export function ActivityModal({
   const deliveryItems = state.workItems.filter((i) => state.departments.some((d) => d.id === i.departmentId && d.devopsEnabled));
   const linkedItem = state.workItems.find((i) => i.id === draft.workItemId);
 
-  const patch = (p: Partial<Activity>) => setDraft((prev) => ({ ...prev, ...p }));
+  const patch = (p: Partial<Activity>) => {
+    setError('');
+    setDraft((prev) => ({ ...prev, ...p }));
+  };
+
+  const setTimeWindow = (startTime: string, endTime: string) => {
+    const calculated = draft.startDate === draft.endDate ? elapsedHours(startTime, endTime) : null;
+    patch({ startTime, endTime, ...(calculated !== null ? { plannedHours: calculated } : {}) });
+  };
+
+  const timeMismatch = draft.startDate === draft.endDate
+    ? timeWindowError(draft.plannedHours, draft.startTime, draft.endTime)
+    : null;
+  const isDelegation = Boolean(
+    draft.assigneeId !== (activity?.assigneeId ?? scope.user.id) &&
+    (activity || !canLogForEmployee(state, scope.user.id, draft.assigneeId)),
+  );
+  const latestDelegation = activity?.delegationHistory?.at(-1);
 
   const setAssignee = (id: string) => {
     const emp = state.employees.find((e) => e.id === id);
@@ -79,11 +108,19 @@ export function ActivityModal({
       setError('Planned hours must be greater than zero for workload calculations.');
       return;
     }
-    upsertActivity({
+    if (timeMismatch) {
+      setError(timeMismatch);
+      return;
+    }
+    const result = upsertActivity({
       ...draft,
       title: draft.title.trim(),
       progress: draft.status === 'completed' ? 100 : draft.progress,
     });
+    if (result) {
+      setError(result);
+      return;
+    }
     onClose();
   };
 
@@ -91,12 +128,14 @@ export function ActivityModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={activity ? 'Edit activity' : 'Schedule new activity'}
-      subtitle="Anything saved here appears on the department calendar, the roadmap and — when enabled — the assignee's Outlook / Google calendar."
+      title={activity ? (canModify ? 'Edit activity' : 'View shared activity') : 'Schedule new activity'}
+      subtitle={canModify
+        ? 'The current assignee owns the activity on calendars, roadmaps and timesheets. Reassigning a task records its delegation history.'
+        : 'This calendar was shared with you as read-only. Only the assignee or their reporting lead can change it.'}
       width="max-w-3xl"
       footer={
         <>
-          {activity ? (
+          {activity && canModify ? (
             <Button
               variant="danger"
               size="sm"
@@ -114,7 +153,7 @@ export function ActivityModal({
           <Button size="sm" onClick={onClose}>
             Cancel
           </Button>
-          {activity ? (
+          {activity && canModify ? (
             <Button
               size="sm"
               variant="subtle"
@@ -126,13 +165,20 @@ export function ActivityModal({
               <Send className="h-3.5 w-3.5" /> Push to calendars
             </Button>
           ) : null}
-          <Button size="sm" variant="primary" onClick={handleSave}>
-            <Check className="h-3.5 w-3.5" /> {activity ? 'Save changes' : 'Create activity'}
-          </Button>
+          {canModify ? (
+            <Button size="sm" variant="primary" onClick={handleSave}>
+              <Check className="h-3.5 w-3.5" /> {activity ? (isDelegation ? 'Delegate task' : 'Save changes') : 'Create activity'}
+            </Button>
+          ) : null}
         </>
       }
     >
-      <div className="space-y-4">
+      <fieldset disabled={!canModify} className="space-y-4 disabled:opacity-90">
+        {!canModify ? (
+          <div className="flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] text-sky-800">
+            <ShieldCheck className="mt-0.5 h-3.5 w-3.5 flex-none" /> Read-only calendar grant. Activity and time-entry ownership stays with {assignee?.name}.
+          </div>
+        ) : null}
         {error ? (
           <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</div>
         ) : null}
@@ -183,6 +229,26 @@ export function ActivityModal({
           </Field>
         </div>
 
+        {isDelegation ? (
+          <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3">
+            <div className="flex items-start gap-2 text-[11px] text-indigo-800">
+              <ArrowRight className="mt-0.5 h-3.5 w-3.5 flex-none" />
+              <span><strong>Delegate to {assignee?.name}.</strong> The activity and future time logging move to their calendar and timesheet. Existing historical time stays with the person who logged it.</span>
+            </div>
+            <Field label="Delegation note" className="mt-2">
+              <Input value={draft.delegationNote ?? ''} onChange={(event) => patch({ delegationNote: event.target.value })} placeholder="Context, expected handover or support needed…" />
+            </Field>
+          </div>
+        ) : null}
+
+        {latestDelegation ? (
+          <div className="rounded-lg bg-slate-50 px-3 py-2 text-[10px] leading-relaxed text-slate-600">
+            <span className="font-semibold text-slate-700">Last delegated:</span>{' '}
+            {state.employees.find((employee) => employee.id === latestDelegation.fromEmployeeId)?.name ?? 'Previous owner'} → {state.employees.find((employee) => employee.id === latestDelegation.toEmployeeId)?.name ?? assignee?.name} by {state.employees.find((employee) => employee.id === latestDelegation.byEmployeeId)?.name ?? 'reporting lead'} · {new Date(latestDelegation.at).toLocaleDateString()}.
+            {latestDelegation.note ? ` ${latestDelegation.note}` : ''}
+          </div>
+        ) : null}
+
         <div className="grid gap-3 sm:grid-cols-4">
           <Field label="Start date">
             <Input type="date" value={draft.startDate} onChange={(e) => patch({ startDate: e.target.value })} />
@@ -190,20 +256,27 @@ export function ActivityModal({
           <Field label="End date">
             <Input type="date" value={draft.endDate} onChange={(e) => patch({ endDate: e.target.value })} />
           </Field>
-          <Field label="Start time" hint="optional">
-            <Input type="time" value={draft.startTime ?? ''} onChange={(e) => patch({ startTime: e.target.value })} />
+          <Field label="Start time" hint="same-day auto-calculates">
+            <Input type="time" value={draft.startTime ?? ''} onChange={(e) => setTimeWindow(e.target.value, draft.endTime ?? '')} />
           </Field>
-          <Field label="End time" hint="optional">
-            <Input type="time" value={draft.endTime ?? ''} onChange={(e) => patch({ endTime: e.target.value })} />
+          <Field label="End time" hint="same-day auto-calculates">
+            <Input type="time" value={draft.endTime ?? ''} onChange={(e) => setTimeWindow(draft.startTime ?? '', e.target.value)} />
           </Field>
         </div>
 
+        {timeMismatch ? (
+          <div role="alert" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-none" />
+            <span>{timeMismatch} Saving is on hold until planned hours and the time window agree.</span>
+          </div>
+        ) : null}
+
         <div className="grid gap-3 sm:grid-cols-4">
-          <Field label="Planned hours" hint="drives workload">
+          <Field label="Planned hours" hint={draft.startDate === draft.endDate && draft.startTime && draft.endTime ? 'must match time window' : 'drives workload'}>
             <Input
               type="number"
-              min={0.5}
-              step={0.5}
+              min={0.01}
+              step={0.01}
               value={draft.plannedHours}
               onChange={(e) => patch({ plannedHours: Number(e.target.value) })}
             />
@@ -380,7 +453,7 @@ export function ActivityModal({
             )}
           </div>
         </div>
-      </div>
+      </fieldset>
     </Modal>
   );
 }

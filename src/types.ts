@@ -225,6 +225,29 @@ export interface DeliveryStream {
   color: string;
 }
 
+/** A reusable business designation, independent of the employee's access role. */
+export interface Designation {
+  id: string;
+  tenantId: string;
+  title: string;
+  code: string;
+  description: string;
+}
+
+/**
+ * One-way access granted by an employee to their own working calendar.
+ * Department shares are limited to the owner's home department; person shares
+ * can name any employee in the same tenant. Reporting-line access is separate.
+ */
+export interface CalendarShare {
+  id: string;
+  ownerId: string;
+  audience: 'department' | 'employee';
+  departmentId: string | null;
+  employeeId: string | null;
+  createdAt: string;
+}
+
 export interface WorkItem {
   id: string;
   kind: WorkItemKind;
@@ -353,6 +376,8 @@ export interface Employee {
   /** Permission tier; jobTitle is the editable business designation shown to people. */
   role: Role;
   jobTitle?: string;
+  /** Links the title to Master setup → Designations so renames cascade safely. */
+  designationId?: string;
   managerId: string | null;
   countryCode: string;
   weeklyHours: number;
@@ -381,6 +406,14 @@ export interface Subtask {
   title: string;
   done: boolean;
   plannedHours: number;
+}
+
+export interface ActivityDelegation {
+  fromEmployeeId: string;
+  toEmployeeId: string;
+  byEmployeeId: string;
+  at: string;
+  note: string;
 }
 
 export interface Activity {
@@ -415,6 +448,10 @@ export interface Activity {
   workItemId?: string;
   /** Executing stream; the resource keeps their own home department/stream. */
   streamId?: string;
+  /** Current assignee owns the activity. History preserves every delegation. */
+  delegationHistory?: ActivityDelegation[];
+  /** Optional reason captured while reassigning; also copied into history. */
+  delegationNote?: string;
 }
 
 export interface TimeEntry {
@@ -422,10 +459,17 @@ export interface TimeEntry {
   employeeId: string;
   activityId: string;
   date: string;
+  /** Actual work window. When present, hours must match endTime − startTime. */
+  startTime?: string;
+  endTime?: string;
   hours: number;
   note: string;
   billable: boolean;
   approved: boolean;
+  /** Normally the employee; a reporting lead is recorded when logging on their behalf. */
+  loggedById?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Holiday {
@@ -556,6 +600,8 @@ export interface StoreState {
   entities: Entity[];
   departments: Department[];
   deliveryStreams: DeliveryStream[];
+  designations: Designation[];
+  calendarShares: CalendarShare[];
   workItems: WorkItem[];
   devopsImports: DevopsImportBatch[];
   employees: Employee[];

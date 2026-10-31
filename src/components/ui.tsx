@@ -59,14 +59,14 @@ export function PageHeader({
 }) {
   return (
     <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-      <div>
+      <div className="min-w-0 flex-1 basis-[min(100%,32rem)]">
         {eyebrow ? (
           <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-600">{eyebrow}</div>
         ) : null}
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{title}</h1>
-        {description ? <p className="mt-1 max-w-3xl text-sm text-slate-500">{description}</p> : null}
+        <h1 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">{title}</h1>
+        {description ? <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-500 sm:text-sm">{description}</p> : null}
       </div>
-      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+      {actions ? <div className="flex max-w-full flex-wrap items-center gap-2">{actions}</div> : null}
     </div>
   );
 }
@@ -374,14 +374,14 @@ export function Modal({
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/45 p-4 backdrop-blur-sm sm:p-8">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/45 p-2 backdrop-blur-sm sm:p-8">
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`animate-fade-up w-full ${width} overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl`}
+        className={`animate-fade-up flex max-h-[calc(100dvh-1rem)] w-full ${width} flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl sm:max-h-[calc(100dvh-4rem)] sm:rounded-2xl`}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-3 py-3 sm:px-5 sm:py-4">
           <div>
             <h3 className="text-base font-semibold text-slate-900">{title}</h3>
             {subtitle ? <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p> : null}
@@ -390,8 +390,8 @@ export function Modal({
             <X className="h-4 w-4" />
           </IconButton>
         </div>
-        <div className="max-h-[calc(100vh-14rem)] overflow-y-auto px-5 py-4">{children}</div>
-        {footer ? <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50/70 px-5 py-3">{footer}</div> : null}
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5">{children}</div>
+        {footer ? <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50/70 px-3 py-3 sm:px-5">{footer}</div> : null}
       </div>
     </div>
   );
@@ -521,7 +521,7 @@ export function Tabs<T extends string>({
   guideSkip?: boolean;
 }) {
   return (
-    <div className={`flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1 ${className}`}>
+    <div className={`flex max-w-full flex-nowrap gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1 sm:flex-wrap sm:overflow-visible ${className}`}>
       {tabs.map((t) => (
         <button
           key={t.id}
@@ -530,7 +530,7 @@ export function Tabs<T extends string>({
           data-guide-skip={guideSkip ? 'true' : undefined}
           data-guide-label={t.label}
           data-guide-active={value === t.id ? 'true' : undefined}
-          className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
+          className={`inline-flex flex-none items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
             value === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
           }`}
         >

@@ -15,7 +15,7 @@ import {
 import { useStore } from '../store';
 import type { Activity } from '../types';
 import { capacityHoursFor, employeeScore, scoreSeries, workloadBand } from '../lib/analytics';
-import { employeeTitle, ROLE_LABELS } from '../lib/permissions';
+import { canLogForEmployee, employeeTitle, ROLE_LABELS } from '../lib/permissions';
 import { fromISO, humanHours, toISO } from '../lib/dates';
 import { Avatar, Badge, Button, Modal, Progress, SectionHeader } from './ui';
 import { LEAVE_TYPE_SHORT, leaveOnDate, nextResponsible, ptoSummary } from '../lib/leave';
@@ -102,11 +102,8 @@ export function EmployeeModal({
   const todayISO = toISO(new Date());
   const leaveToday = leaveOnDate(state, employee.id, todayISO);
   const cover = nextResponsible(state, employee.id, todayISO);
-  const canReview =
-    scope.user.id === employee.id ||
-    scope.user.role === 'ceo' ||
-    scope.user.role === 'head_operations' ||
-    scope.directReportIds.includes(employee.id);
+  const canReview = scope.visibleEmployeeIds.includes(employee.id);
+  const canSchedule = canLogForEmployee(state, scope.user.id, employee.id);
 
   return (
     <Modal
@@ -118,9 +115,11 @@ export function EmployeeModal({
       footer={
         <>
           <Button size="sm" onClick={onClose}>Close</Button>
-          <Button size="sm" variant="primary" onClick={onNewActivity}>
-            <CalendarDays className="h-3.5 w-3.5" /> Schedule for {employee.name.split(' ')[0]}
-          </Button>
+          {canSchedule ? (
+            <Button size="sm" variant="primary" onClick={onNewActivity}>
+              <CalendarDays className="h-3.5 w-3.5" /> Schedule for {employee.name.split(' ')[0]}
+            </Button>
+          ) : null}
         </>
       }
     >

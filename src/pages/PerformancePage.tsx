@@ -66,25 +66,31 @@ export function PerformancePage({
   const empMap = useMemo(() => new Map(state.employees.map((e) => [e.id, e])), [state.employees]);
   const range = periodRange(anchor, filters.period, state.settings.weekStartsOn);
   const threshold = state.settings.performanceThreshold;
+  const metricsState = useMemo(() => ({
+    ...state,
+    employees: state.employees.filter((employee) => scope.visibleEmployeeIds.includes(employee.id)),
+    activities: state.activities.filter((activity) => scope.visibleEmployeeIds.includes(activity.assigneeId)),
+    timeEntries: state.timeEntries.filter((entry) => scope.visibleEmployeeIds.includes(entry.employeeId)),
+  }), [state, scope.visibleEmployeeIds]);
 
   const scores = useMemo(
-    () => scopedDepts.map((d) => ({ dept: d, score: departmentScore(state, d, filters.period, anchor) })).sort((a, b) => a.score.score - b.score.score),
-    [scopedDepts, state, filters.period, anchor],
+    () => scopedDepts.map((d) => ({ dept: d, score: departmentScore(metricsState, d, filters.period, anchor) })).sort((a, b) => a.score.score - b.score.score),
+    [scopedDepts, metricsState, filters.period, anchor],
   );
-  const summary = useMemo(() => groupScore(state, deptIds, filters.period, anchor), [state, deptIds, filters.period, anchor]);
-  const series = useMemo(() => scoreSeries(state, deptIds, filters.period, anchor, 8), [state, deptIds, filters.period, anchor]);
+  const summary = useMemo(() => groupScore(metricsState, deptIds, filters.period, anchor), [metricsState, deptIds, filters.period, anchor]);
+  const series = useMemo(() => scoreSeries(metricsState, deptIds, filters.period, anchor, 8), [metricsState, deptIds, filters.period, anchor]);
   const below = scores.filter((s) => s.score.score < threshold);
 
   const activeDrill = drillDept ?? scopedDepts[0]?.id ?? null;
   const drillDepartment = activeDrill ? deptMap.get(activeDrill) : undefined;
   const drillMembers = useMemo(
     () =>
-      state.employees
+      metricsState.employees
         .filter((e) => e.departmentId === activeDrill && e.status !== 'inactive')
-        .map((e) => ({ emp: e, score: employeeScore(state, e, toISO(range.start), toISO(range.end)) }))
+        .map((e) => ({ emp: e, score: employeeScore(metricsState, e, toISO(range.start), toISO(range.end)) }))
         .filter((x) => (employeeQuery ? x.emp.name.toLowerCase().includes(employeeQuery.toLowerCase()) : true))
         .sort((a, b) => b.score.utilization - a.score.utilization),
-    [state, activeDrill, range, employeeQuery],
+    [metricsState, activeDrill, range, employeeQuery],
   );
 
   const escalationList = useMemo(
@@ -141,7 +147,7 @@ export function PerformancePage({
         threshold: emailPreview.threshold,
         utilization: emailPreview.utilization,
         onTimeRate: emailPreview.onTimeRate,
-        overdue: state.activities.filter(
+        overdue: metricsState.activities.filter(
           (a) =>
             a.departmentId === emailPreview.departmentId &&
             a.status !== 'completed' &&

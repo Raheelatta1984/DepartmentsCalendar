@@ -113,35 +113,43 @@ export function Dashboard({
     setFilters({ departmentId: 'all' });
   }, [entityDepartments, filters.departmentId, setFilters]);
   const deptIds = scopedDepartments.map((d) => d.id);
+  /* Metrics use the same visibility grants as the calendar. An employee must
+     not infer an unshared teammate's work from a dashboard total or drill-down. */
+  const analyticsState = useMemo(() => ({
+    ...state,
+    employees: state.employees.filter((employee) => scope.visibleEmployeeIds.includes(employee.id)),
+    activities: state.activities.filter((activity) => scope.visibleEmployeeIds.includes(activity.assigneeId)),
+    timeEntries: state.timeEntries.filter((entry) => scope.visibleEmployeeIds.includes(entry.employeeId)),
+  }), [state, scope.visibleEmployeeIds]);
   const scopedEmployees = useMemo(
-    () => state.employees.filter((e) => deptIds.includes(e.departmentId) && e.status !== 'inactive'),
-    [state.employees, deptIds],
+    () => analyticsState.employees.filter((e) => deptIds.includes(e.departmentId) && e.status !== 'inactive'),
+    [analyticsState.employees, deptIds],
   );
 
-  const summary = useMemo(() => groupScore(state, deptIds, filters.period, anchor), [state, deptIds, filters.period, anchor]);
+  const summary = useMemo(() => groupScore(analyticsState, deptIds, filters.period, anchor), [analyticsState, deptIds, filters.period, anchor]);
   const prevAnchor = useMemo(() => shiftAnchor(anchor, filters.period, -1), [anchor, filters.period]);
-  const prevSummary = useMemo(() => groupScore(state, deptIds, filters.period, prevAnchor), [state, deptIds, filters.period, prevAnchor]);
-  const series = useMemo(() => scoreSeries(state, deptIds, filters.period, anchor, 8), [state, deptIds, filters.period, anchor]);
+  const prevSummary = useMemo(() => groupScore(analyticsState, deptIds, filters.period, prevAnchor), [analyticsState, deptIds, filters.period, prevAnchor]);
+  const series = useMemo(() => scoreSeries(analyticsState, deptIds, filters.period, anchor, 8), [analyticsState, deptIds, filters.period, anchor]);
 
   const activities = useMemo(
-    () => filterActivities(state, { departmentIds: deptIds, start: rangeISO.start, end: rangeISO.end }),
-    [state, deptIds, rangeISO.start, rangeISO.end],
+    () => filterActivities(analyticsState, { departmentIds: deptIds, start: rangeISO.start, end: rangeISO.end }),
+    [analyticsState, deptIds, rangeISO.start, rangeISO.end],
   );
   const todaysActivities = useMemo(
     () =>
-      filterActivities(state, { departmentIds: deptIds, start: today, end: today }).sort((a, b) =>
+      filterActivities(analyticsState, { departmentIds: deptIds, start: today, end: today }).sort((a, b) =>
         (a.startTime ?? '23:59').localeCompare(b.startTime ?? '23:59'),
       ),
-    [state, deptIds, today],
+    [analyticsState, deptIds, today],
   );
   const mix = useMemo(() => typeDistribution(activities), [activities]);
 
   const peopleLoad = useMemo(
     () =>
       scopedEmployees
-        .map((e) => ({ employee: e, score: employeeScore(state, e, rangeISO.start, rangeISO.end) }))
+        .map((e) => ({ employee: e, score: employeeScore(analyticsState, e, rangeISO.start, rangeISO.end) }))
         .sort((a, b) => b.score.utilization - a.score.utilization),
-    [scopedEmployees, state, rangeISO.start, rangeISO.end],
+    [scopedEmployees, analyticsState, rangeISO.start, rangeISO.end],
   );
   const overloaded = peopleLoad.filter((p) => p.score.utilization > 110);
   const idle = peopleLoad.filter((p) => p.score.utilization < 45);
@@ -195,7 +203,7 @@ export function Dashboard({
   ).length;
 
   const raiseEscalation = (department: Department) => {
-    const score = departmentScore(state, department, filters.period, anchor);
+    const score = departmentScore(analyticsState, department, filters.period, anchor);
     const head = empMap.get(department.headId ?? '');
     const coo = state.employees.find((e) => e.role === 'head_operations');
     setEscalating(department.id);

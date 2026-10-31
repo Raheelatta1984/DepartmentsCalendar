@@ -12,6 +12,7 @@ import {
   BadgeCheck,
   CalendarDays,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -27,6 +28,7 @@ import type { AppFilters, TimeEntry } from '../types';
 import { TYPE_LABELS, capacityHoursFor, filterEntries, inRange } from '../lib/analytics';
 import { buildDayMeta, fromISO, humanHours, toISO, workingDays } from '../lib/dates';
 import { timeEntriesToCSV } from '../lib/export';
+import { canApproveEmployeeTime, canLogForEmployee, compareOrganisationEmployees, ORGANISATION_BAND_LABELS, organisationBand } from '../lib/permissions';
 import { Avatar, Badge, Button, Card, EmptyState, PageHeader, Progress, SearchInput, SectionHeader, Select, Tabs } from '../components/ui';
 import { TimeEntryModal } from '../components/TimeEntryModal';
 import { useToast } from '../components/toast';
@@ -54,6 +56,16 @@ export function TimesheetPage({
   const [editing, setEditing] = useState<TimeEntry | null>(null);
   const [defaults, setDefaults] = useState<Partial<TimeEntry>>({});
   const [selectedEmployee, setSelectedEmployee] = useState(filters.employeeId);
+  const [expandedEmployees, setExpandedEmployees] = useState<Set<string>>(() => new Set());
+
+  const toggleEmployeeActivities = (employeeId: string) => {
+    setExpandedEmployees((current) => {
+      const next = new Set(current);
+      if (next.has(employeeId)) next.delete(employeeId);
+      else next.add(employeeId);
+      return next;
+    });
+  };
 
   const weekStart = startOfWeek(weekAnchor, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(weekAnchor, { weekStartsOn: 1 });
@@ -69,8 +81,8 @@ export function TimesheetPage({
         .filter((e) => scope.visibleEmployeeIds.includes(e.id) && e.status !== 'inactive')
         .filter((e) => filters.departmentId === 'all' || e.departmentId === filters.departmentId)
         .filter((e) => (query ? `${e.name} ${e.code}`.toLowerCase().includes(query.toLowerCase()) : true))
-        .sort((a, b) => (deptMap.get(a.departmentId)?.code ?? '').localeCompare(deptMap.get(b.departmentId)?.code ?? '') || a.name.localeCompare(b.name)),
-    [state.employees, scope.visibleEmployeeIds, filters.departmentId, query, deptMap],
+        .sort((a, b) => compareOrganisationEmployees(a, b, state.departments, state.deliveryStreams)),
+    [state.employees, scope.visibleEmployeeIds, filters.departmentId, query, state.departments, state.deliveryStreams],
   );
 
   const weekEntries = useMemo(
@@ -99,6 +111,11 @@ export function TimesheetPage({
         .filter((t) => (filters.departmentId === 'all' ? true : empMap.get(t.employeeId)?.departmentId === filters.departmentId))
         .sort((a, b) => b.date.localeCompare(a.date)),
     [state.timeEntries, scope.visibleEmployeeIds, filters.departmentId, empMap],
+  );
+
+  const approvablePending = useMemo(
+    () => pending.filter((entry) => canApproveEmployeeTime(state, scope.user.id, entry.employeeId)),
+    [pending, state, scope.user.id],
   );
 
   const entriesForSelected = useMemo(
@@ -199,7 +216,7 @@ export function TimesheetPage({
             value={tab}
             onChange={setTab}
           />
-          <div className="w-[180px]">
+            <div className="w-full sm:w-[180px]">
             <Select value={filters.departmentId} onChange={(e) => setFilters({ departmentId: e.target.value })}>
               <option value="all">All departments</option>
               {scope.visibleDepartments.map((d) => (
@@ -210,7 +227,7 @@ export function TimesheetPage({
             </Select>
           </div>
           {tab === 'entries' ? (
-            <div className="w-[200px]">
+            <div className="w-full sm:w-[200px]">
               <Select value={selectedEmployee} onChange={(e) => setSelectedEmployee(e.target.value)}>
                 <option value="all">All employees</option>
                 {team.map((e) => (
@@ -221,7 +238,7 @@ export function TimesheetPage({
               </Select>
             </div>
           ) : null}
-          {tab === 'grid' ? <SearchInput value={query} onChange={setQuery} placeholder="Filter people…" className="ml-auto min-w-[170px]" /> : null}
+          {tab === 'grid' ? <SearchInput value={query} onChange={setQuery} placeholder="Filter people…" className="w-full sm:ml-auto sm:w-[220px] sm:min-w-[170px]" /> : null}
         </div>
       </Card>
 
@@ -246,6 +263,9 @@ export function TimesheetPage({
                     );
                   })}
                   <th className="border-b border-l border-slate-200 bg-slate-50/95 px-2 py-2 text-right text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                    Activities
+                  </th>
+                  <th className="border-b border-l border-slate-200 bg-slate-50/95 px-2 py-2 text-right text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                     Week
                   </th>
                   <th className="border-b border-slate-200 bg-slate-50/95 px-2 py-2 text-right text-[10px] font-semibold uppercase tracking-wider text-slate-500">
@@ -254,24 +274,49 @@ export function TimesheetPage({
                 </tr>
               </thead>
               <tbody>
-                {team.map((emp) => {
+                {team.map((emp, employeeIndex) => {
                   const cfg = state.countries.find((c) => c.code === emp.countryCode);
                   const capacity = capacityHoursFor(emp, toISO(weekStart), toISO(weekEnd), state.holidays, state.countries);
                   const myEntries = weekEntries.filter((t) => t.employeeId === emp.id);
                   const total = myEntries.reduce((a, b) => a + b.hours, 0);
                   const pct = capacity ? Math.round((total / capacity) * 100) : 0;
+                  const department = deptMap.get(emp.departmentId);
+                  const band = organisationBand(emp, department, state.deliveryStreams);
+                  const previous = employeeIndex > 0 ? team[employeeIndex - 1] : undefined;
+                  const previousBand = previous ? organisationBand(previous, deptMap.get(previous.departmentId), state.deliveryStreams) : undefined;
+                  const showGroup = !previous || previous.departmentId !== emp.departmentId || previousBand !== band;
+                  const assignedActivities = state.activities
+                    .filter((activity) => activity.assigneeId === emp.id && inRange(activity, toISO(weekStart), toISO(weekEnd)))
+                    .sort((a, b) => a.startDate.localeCompare(b.startDate) || a.title.localeCompare(b.title));
+                  const isExpanded = expandedEmployees.has(emp.id);
+                  const canLog = canLogForEmployee(state, scope.user.id, emp.id);
                   return (
-                    <tr key={emp.id} className="hover:bg-slate-50/40">
+                    <React.Fragment key={emp.id}>
+                      {showGroup ? (
+                        <tr className="bg-slate-100/80">
+                          <td colSpan={11} className="border-b border-slate-200 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                            <span style={{ color: department?.color }}>{department?.name}</span>
+                            <span className="mx-2 text-slate-300">/</span>{ORGANISATION_BAND_LABELS[band]}
+                          </td>
+                        </tr>
+                      ) : null}
+                    <tr className="hover:bg-slate-50/40">
                       <td className="sticky left-0 z-[5] border-b border-slate-100 bg-white/95 px-3 py-2 backdrop-blur">
-                        <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => toggleEmployeeActivities(emp.id)}
+                          aria-expanded={isExpanded}
+                          className="flex w-full items-center gap-2 rounded-md text-left focus:outline-none focus:ring-2 focus:ring-brand-200"
+                          title={`${isExpanded ? 'Hide' : 'Show'} activities for ${emp.name}`}
+                        >
+                          {isExpanded ? <ChevronDown className="h-3.5 w-3.5 flex-none text-slate-400" /> : <ChevronRight className="h-3.5 w-3.5 flex-none text-slate-400" />}
                           <Avatar name={emp.name} color={emp.avatarColor} size={24} />
                           <div className="min-w-0">
-                            <div className="max-w-[150px] truncate text-[11px] font-medium text-slate-800">{emp.name}</div>
+                            <div className="max-w-[130px] truncate text-[11px] font-medium text-slate-800">{emp.name}</div>
                             <div className="text-[9px] text-slate-400">
                               {deptMap.get(emp.departmentId)?.code} · {emp.countryCode}
                             </div>
                           </div>
-                        </div>
+                        </button>
                       </td>
                       {weekDays.map((d) => {
                         const iso = toISO(d);
@@ -288,26 +333,34 @@ export function TimesheetPage({
                             }`}
                           >
                             <button
-                              onClick={() => openNew({ employeeId: emp.id, date: iso, hours: 2 })}
-                              className={`mx-auto flex h-11 w-full max-w-[76px] flex-col items-center justify-center rounded-lg border text-[11px] transition-colors ${
+                              disabled={!canLog}
+                              onClick={() => { if (canLog) openNew({ employeeId: emp.id, date: iso, hours: 2 }); }}
+                              className={`mx-auto flex h-11 w-full max-w-[76px] flex-col items-center justify-center rounded-lg border text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${
                                 hours
                                   ? over
                                     ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
                                     : 'border-brand-200 bg-brand-50 text-brand-700 hover:bg-brand-100'
                                   : 'border-dashed border-slate-200 text-slate-300 hover:border-slate-300 hover:bg-slate-50'
                               }`}
-                              title={`${emp.name} · ${iso}${holiday ? ` · ${holiday.name}` : ''}`}
+                              title={`${emp.name} · ${iso}${holiday ? ` · ${holiday.name}` : ''}${canLog ? '' : ' · shared read-only calendar'}`}
                             >
                               {hours ? (
                                 <span className="font-semibold tabular-nums">{hours}h</span>
-                              ) : (
+                              ) : canLog ? (
                                 <Plus className="h-3 w-3" />
+                              ) : (
+                                <span className="text-[9px] text-slate-300">—</span>
                               )}
                               {holiday ? <span className="max-w-[68px] truncate text-[7px] leading-none opacity-80">{holiday.name}</span> : null}
                             </button>
                           </td>
                         );
                       })}
+                      <td className="border-b border-l border-slate-100 px-2 py-2 text-right text-[11px] font-semibold tabular-nums text-slate-600" title="Expand the current activities assigned to this employee in the displayed week">
+                        <button onClick={() => toggleEmployeeActivities(emp.id)} className="rounded px-1.5 py-1 hover:bg-brand-50 hover:text-brand-700" aria-label={`Toggle ${emp.name} activities`}>
+                          {assignedActivities.length}
+                        </button>
+                      </td>
                       <td className="border-b border-l border-slate-100 px-2 py-2 text-right">
                         <div className="text-xs font-semibold tabular-nums text-slate-800">{total}h</div>
                         <div className="mt-1 w-16">
@@ -316,6 +369,48 @@ export function TimesheetPage({
                       </td>
                       <td className="border-b border-slate-100 px-2 py-2 text-right text-[11px] tabular-nums text-slate-500">{capacity}h</td>
                     </tr>
+                    {isExpanded ? assignedActivities.map((activity) => {
+                      const activityEntries = myEntries.filter((entry) => entry.activityId === activity.id);
+                      const activityTotal = activityEntries.reduce((sum, entry) => sum + entry.hours, 0);
+                      return (
+                        <tr key={`${emp.id}-${activity.id}`} className="bg-slate-50/45">
+                          <td className="sticky left-0 z-[5] border-b border-slate-100 bg-slate-50/95 px-3 py-1.5 backdrop-blur">
+                            <div className="flex items-center gap-2 pl-7">
+                              <span className="h-1.5 w-1.5 flex-none rounded-full" style={{ backgroundColor: department?.color ?? '#94a3b8' }} />
+                              <div className="min-w-0">
+                                <div className="max-w-[165px] truncate text-[10px] font-medium text-slate-700" title={activity.title}>{activity.title}</div>
+                                <div className="text-[8px] text-slate-400">{TYPE_LABELS[activity.type]} · {activity.startDate}{activity.endDate !== activity.startDate ? ` → ${activity.endDate}` : ''}</div>
+                              </div>
+                            </div>
+                          </td>
+                          {weekDays.map((day) => {
+                            const iso = toISO(day);
+                            const hours = activityEntries.filter((entry) => entry.date === iso).reduce((sum, entry) => sum + entry.hours, 0);
+                            return (
+                              <td key={`${activity.id}-${iso}`} className="border-b border-l border-slate-100 p-1 text-center">
+                                <button
+                                  disabled={!canLog}
+                                  onClick={() => { if (canLog) openNew({ employeeId: emp.id, activityId: activity.id, date: iso, hours: 2 }); }}
+                                  className="mx-auto flex h-8 w-full max-w-[76px] items-center justify-center rounded-md border border-transparent text-[10px] tabular-nums text-slate-500 hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700 disabled:cursor-not-allowed disabled:hover:border-transparent disabled:hover:bg-transparent disabled:hover:text-slate-300"
+                                  title={`${activity.title} · ${iso}${canLog ? '' : ' · shared read-only calendar'}`}
+                                >
+                                  {hours ? `${hours}h` : canLog ? <Plus className="h-3 w-3 text-slate-300" /> : '—'}
+                                </button>
+                              </td>
+                            );
+                          })}
+                          <td className="border-b border-l border-slate-100 px-2 py-1.5 text-right text-[9px] tabular-nums text-slate-400">{activity.plannedHours}h plan</td>
+                          <td className="border-b border-l border-slate-100 px-2 py-1.5 text-right text-[10px] font-semibold tabular-nums text-slate-600">{activityTotal}h</td>
+                          <td className="border-b border-slate-100 px-2 py-1.5 text-right text-[9px] capitalize text-slate-400">{activity.status.replace('_', ' ')}</td>
+                        </tr>
+                      );
+                    }) : null}
+                    {isExpanded && !assignedActivities.length ? (
+                      <tr className="bg-slate-50/45">
+                        <td colSpan={11} className="border-b border-slate-100 px-10 py-2 text-[10px] text-slate-400">No activities assigned in this week.</td>
+                      </tr>
+                    ) : null}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
@@ -327,7 +422,7 @@ export function TimesheetPage({
             </div>
           ) : null}
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-2 text-[10px] text-slate-400">
-            <span>Click any cell to log time against that employee and day. Weekend and public-holiday cells are shaded using the country calendar.</span>
+            <span>Expand a person to drill into their activities. Click a permitted cell to log time; weekend and public-holiday cells use the country calendar.</span>
             <span className="flex items-center gap-2">
               <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-brand-400" /> within capacity</span>
               <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-400" /> above daily capacity</span>
@@ -364,6 +459,9 @@ export function TimesheetPage({
                 {entriesForSelected.map((t) => {
                   const emp = empMap.get(t.employeeId);
                   const act = activityMap.get(t.activityId);
+                  const canEdit = emp ? canLogForEmployee(state, scope.user.id, emp.id) : false;
+                  const canApprove = emp ? canApproveEmployeeTime(state, scope.user.id, emp.id) : false;
+                  const logger = t.loggedById ? empMap.get(t.loggedById) : undefined;
                   return (
                     <tr key={t.id} className="group hover:bg-slate-50/70">
                       <td className="border-b border-slate-100 py-2 pl-4 pr-3 text-[11px] tabular-nums text-slate-600">{t.date}</td>
@@ -371,48 +469,58 @@ export function TimesheetPage({
                         <div className="flex items-center gap-1.5">
                           <Avatar name={emp?.name ?? ''} color={emp?.avatarColor} size={20} />
                           <span className="text-[11px] text-slate-700">{emp?.name}</span>
+                          {logger && logger.id !== emp?.id ? <span className="text-[9px] text-slate-400">by {logger.name}</span> : null}
                         </div>
                       </td>
                       <td className="border-b border-slate-100 px-3 py-2">
                         <div className="max-w-[240px] truncate text-[11px] font-medium text-slate-800">{act?.title ?? '—'}</div>
                       </td>
                       <td className="border-b border-slate-100 px-3 py-2 text-[10px] text-slate-500">{act ? TYPE_LABELS[act.type] : '—'}</td>
-                      <td className="border-b border-slate-100 px-3 py-2 text-[11px] font-semibold tabular-nums text-slate-800">{t.hours}h</td>
+                      <td className="border-b border-slate-100 px-3 py-2 text-[11px] font-semibold tabular-nums text-slate-800">
+                        {t.hours}h
+                        {t.startTime && t.endTime ? <div className="text-[9px] font-normal text-slate-400">{t.startTime}–{t.endTime}</div> : null}
+                      </td>
                       <td className="border-b border-slate-100 px-3 py-2">
                         <Badge tone={t.billable ? 'good' : 'neutral'}>{t.billable ? 'billable' : 'internal'}</Badge>
                       </td>
                       <td className="border-b border-slate-100 px-3 py-2">
-                        <button
-                          onClick={() => toggleEntryApproved(t.id)}
-                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset ${
-                            t.approved ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-amber-50 text-amber-700 ring-amber-200'
-                          }`}
-                          title="Toggle approval"
-                        >
-                          {t.approved ? <BadgeCheck className="h-3 w-3" /> : <Clock3 className="h-3 w-3" />}
-                          {t.approved ? 'approved' : 'pending'}
-                        </button>
+                        {canApprove ? (
+                          <button
+                            onClick={() => toggleEntryApproved(t.id)}
+                            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset ${
+                              t.approved ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-amber-50 text-amber-700 ring-amber-200'
+                            }`}
+                            title="Toggle approval"
+                          >
+                            {t.approved ? <BadgeCheck className="h-3 w-3" /> : <Clock3 className="h-3 w-3" />}
+                            {t.approved ? 'approved' : 'pending'}
+                          </button>
+                        ) : <Badge tone={t.approved ? 'good' : 'warn'}>{t.approved ? 'approved' : 'pending'}</Badge>}
                       </td>
                       <td className="max-w-[220px] truncate border-b border-slate-100 px-3 py-2 text-[10px] text-slate-500">{t.note || '—'}</td>
                       <td className="border-b border-slate-100 py-2 pl-2 pr-4 text-right">
-                        <div className="flex justify-end gap-1 opacity-0 transition group-hover:opacity-100">
-                          <button
-                            onClick={() => {
-                              setEditing(t);
-                              setModalOpen(true);
-                            }}
-                            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                            title="Edit entry"
-                          >
-                            <FileSpreadsheet className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            onClick={() => deleteTimeEntry(t.id)}
-                            className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                            title="Delete entry"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                        <div className="flex justify-end gap-1 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100">
+                          {canEdit ? (
+                            <>
+                              <button
+                                onClick={() => {
+                                  setEditing(t);
+                                  setModalOpen(true);
+                                }}
+                                className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                                title="Edit entry"
+                              >
+                                <FileSpreadsheet className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={() => deleteTimeEntry(t.id)}
+                                className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                                title="Delete entry"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </>
+                          ) : null}
                         </div>
                       </td>
                     </tr>
@@ -446,10 +554,10 @@ export function TimesheetPage({
                     size="sm"
                     variant="primary"
                     onClick={() => {
-                      pending.forEach((p) => toggleEntryApproved(p.id));
-                      toast.push({ tone: 'success', title: 'Timesheets approved', description: `${pending.length} entries approved.` });
+                      approvablePending.forEach((entry) => toggleEntryApproved(entry.id));
+                      toast.push({ tone: 'success', title: 'Timesheets approved', description: `${approvablePending.length} entries approved.` });
                     }}
-                    disabled={!pending.length}
+                    disabled={!approvablePending.length}
                   >
                     <Check className="h-3.5 w-3.5" /> Approve all
                   </Button>
@@ -473,9 +581,11 @@ export function TimesheetPage({
                       </div>
                     </div>
                     <Badge tone={t.billable ? 'good' : 'neutral'}>{t.hours}h</Badge>
-                    <Button size="sm" variant="subtle" onClick={() => toggleEntryApproved(t.id)} className="!px-2 !py-1 !text-[10px]">
-                      <ThumbsUp className="h-3 w-3" /> Approve
-                    </Button>
+                    {canApproveEmployeeTime(state, scope.user.id, t.employeeId) ? (
+                      <Button size="sm" variant="subtle" onClick={() => toggleEntryApproved(t.id)} className="!px-2 !py-1 !text-[10px]">
+                        <ThumbsUp className="h-3 w-3" /> Approve
+                      </Button>
+                    ) : <span className="text-[9px] text-slate-400">Awaiting reporting lead</span>}
                   </div>
                 );
               })}

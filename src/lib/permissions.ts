@@ -1,4 +1,4 @@
-import type { Department, Employee, Role, StoreState } from '../types';
+import type { Activity, Department, DeliveryStream, Employee, Role, StoreState } from '../types';
 
 export const ROLE_LABELS: Record<Role, string> = {
   ceo: 'Chief Executive Officer',
@@ -86,16 +86,51 @@ export function getScope(state: StoreState, userId: string): Scope {
     visibleDepartments = state.departments.filter((d) => d.id === user.departmentId);
   }
 
+  /* Capture accountable departments before adding any direct-share department.
+     A person-to-person grant must never turn into visibility of the owner's
+     entire department for an executive or department head. */
+  const accountableDepartmentIds = visibleDepartments.map((department) => department.id);
+
+  /* Calendar sharing is one-way and employee-controlled. A colleague becomes
+     visible only when they shared with this person directly or with this
+     person's home department. Reporting-line and executive access remain
+     independent, so a manager never needs a grant to review their own team. */
+  const sharedOwnerIds = (state.calendarShares ?? [])
+    .filter((share) =>
+      share.ownerId !== user.id && (
+        (share.audience === 'employee' && share.employeeId === user.id) ||
+        (share.audience === 'department' && share.departmentId === user.departmentId)
+      ),
+    )
+    .map((share) => share.ownerId)
+    .filter((ownerId) => state.employees.some((employee) => employee.id === ownerId));
+
+  // A direct person-to-person grant may cross departments inside the same
+  // tenant. Only that person's rows become visible, never the whole department.
+  const sharedDepartmentIds = state.employees
+    .filter((employee) => sharedOwnerIds.includes(employee.id))
+    .map((employee) => employee.departmentId);
+  visibleDepartments = [
+    ...visibleDepartments,
+    ...state.departments.filter((department) =>
+      sharedDepartmentIds.includes(department.id) && !visibleDepartments.some((row) => row.id === department.id),
+    ),
+  ];
   const visibleDepartmentIds = visibleDepartments.map((d) => d.id);
-  /* Group executives see the people of the departments in scope — which is
-     already the active tenant cut down to the departments the calendar is
-     implemented for. Nobody outside those departments is ever listed. */
+
+  /* Group executives and department heads see their accountable departments.
+     Other leaders see their reporting line. Everyone can additionally see a
+     calendar explicitly shared with them; ordinary employees otherwise see
+     only themselves — not their line manager or teammates' working activity. */
   const visibleEmployeeIds =
-    user.role === 'ceo' || user.role === 'head_operations'
-      ? state.employees
-          .filter((e) => visibleDepartmentIds.includes(e.departmentId) || e.id === user.id)
-          .map((e) => e.id)
-      : Array.from(new Set([user.id, ...reports]));
+    user.role === 'ceo' || user.role === 'head_operations' || user.role === 'department_head'
+      ? Array.from(new Set([
+          ...state.employees
+            .filter((e) => accountableDepartmentIds.includes(e.departmentId) || e.id === user.id)
+            .map((e) => e.id),
+          ...sharedOwnerIds,
+        ]))
+      : Array.from(new Set([user.id, ...reports, ...sharedOwnerIds]));
 
   return {
     user,
@@ -114,6 +149,89 @@ export function getScope(state: StoreState, userId: string): Scope {
 
 export function canViewEmployee(scope: Scope, employeeId: string) {
   return scope.visibleEmployeeIds.includes(employeeId);
+}
+
+/* ------------------------------------------------------------------ */
+/* Activity ownership, on-behalf logging and delegation                */
+/* ------------------------------------------------------------------ */
+
+/** Self service, or a supervisor-and-above ancestor in the reporting tree. */
+export function canLogForEmployee(state: StoreState, actorId: string, employeeId: string): boolean {
+  if (actorId === employeeId) return state.employees.some((employee) => employee.id === employeeId);
+  const actor = state.employees.find((employee) => employee.id === actorId);
+  const target = state.employees.find((employee) => employee.id === employeeId);
+  if (!actor || !target || target.status === 'inactive') return false;
+  return ROLE_RANK[actor.role] >= ROLE_RANK.supervisor && reportingTree(state.employees, actorId).includes(employeeId);
+}
+
+/** Actual time can be approved only by the employee's reporting lead. */
+export function canApproveEmployeeTime(state: StoreState, actorId: string, employeeId: string): boolean {
+  return actorId !== employeeId && canLogForEmployee(state, actorId, employeeId);
+}
+
+/** Shared calendars are read-only unless the viewer is the owner's reporting lead. */
+export function canEditActivity(state: StoreState, actorId: string, activity: Activity): boolean {
+  return canLogForEmployee(state, actorId, activity.assigneeId);
+}
+
+/**
+ * Leaders can assign work to their reporting line. An employee can delegate a
+ * task they currently own to a colleague in the same department, even before
+ * calendars are shared. Delegation changes the current assignee; it never
+ * rewrites historical time already logged by the previous owner.
+ */
+export function canAssignActivity(
+  state: StoreState,
+  actorId: string,
+  activity: Pick<Activity, 'type' | 'assigneeId'>,
+  targetEmployeeId: string,
+): boolean {
+  if (canLogForEmployee(state, actorId, targetEmployeeId)) return true;
+  if (activity.type !== 'task') return false;
+  const actor = state.employees.find((employee) => employee.id === actorId);
+  const target = state.employees.find((employee) => employee.id === targetEmployeeId);
+  return Boolean(
+    actor && target && activity.assigneeId === actorId && target.id !== actorId &&
+    target.departmentId === actor.departmentId && target.status !== 'inactive',
+  );
+}
+
+export type OrganisationBand = 'heads' | 'leads' | 'members';
+
+export const ORGANISATION_BAND_LABELS: Record<OrganisationBand, string> = {
+  heads: 'Department heads',
+  leads: 'Department leads',
+  members: 'Team members',
+};
+
+/** Consistent executive drill-down order for roadmap and team-week views. */
+export function organisationBand(
+  employee: Employee,
+  department: Department | undefined,
+  streams: DeliveryStream[] = [],
+): OrganisationBand {
+  if (department?.headId === employee.id || ['ceo', 'head_operations', 'department_head'].includes(employee.role)) {
+    return 'heads';
+  }
+  if (['unit_head', 'manager', 'supervisor'].includes(employee.role) || streams.some((stream) => stream.leadId === employee.id)) {
+    return 'leads';
+  }
+  return 'members';
+}
+
+export function compareOrganisationEmployees(
+  a: Employee,
+  b: Employee,
+  departments: Department[],
+  streams: DeliveryStream[] = [],
+): number {
+  const departmentA = departments.find((department) => department.id === a.departmentId);
+  const departmentB = departments.find((department) => department.id === b.departmentId);
+  const departmentOrder = (departmentA?.name ?? '').localeCompare(departmentB?.name ?? '');
+  if (departmentOrder) return departmentOrder;
+  const rank: Record<OrganisationBand, number> = { heads: 0, leads: 1, members: 2 };
+  const bandOrder = rank[organisationBand(a, departmentA, streams)] - rank[organisationBand(b, departmentB, streams)];
+  return bandOrder || a.name.localeCompare(b.name);
 }
 
 /* ------------------------------------------------------------------ */

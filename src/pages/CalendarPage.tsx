@@ -15,7 +15,7 @@ import {
   startOfWeek,
   startOfYear,
 } from 'date-fns';
-import { CalendarDays, ChevronLeft, ChevronRight, Filter, Globe2, Plus, Search, Users } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Filter, Globe2, Plus, Search, Share2, Users } from 'lucide-react';
 import { useScopedState, useStore } from '../store';
 import type { Activity, AppFilters, Department, Holiday, LeaveRequest } from '../types';
 import { TYPE_LABELS, filterActivities } from '../lib/analytics';
@@ -24,6 +24,7 @@ import { WEEKDAY_LABELS, buildDayMeta, daysBetweenInclusive, fromISO, humanHours
 import { Avatar, Badge, Button, Card, EmptyState, PageHeader, SectionHeader, Select, Tabs } from '../components/ui';
 import { nextResponsible, awayOnDate, leaveOnDate } from '../lib/leave';
 import { ActivityLine, StatusBadge, TypeIcon } from '../components/activity-ui';
+import { CalendarSharingModal } from '../components/CalendarSharingModal';
 
 type Mode = 'year' | 'quarter' | 'month' | 'week' | 'day';
 
@@ -71,6 +72,7 @@ export function CalendarPage({
   const [peopleQuery, setPeopleQuery] = useState('');
   const [showHolidays, setShowHolidays] = useState(true);
   const [expandedCells, setExpandedCells] = useState<string[]>([]);
+  const [sharingOpen, setSharingOpen] = useState(false);
 
   const weekStartsOn = Number(state.settings.weekStartsOn) as 0 | 1 | 6;
   const anchor = fromISO(filters.anchor);
@@ -300,9 +302,12 @@ export function CalendarPage({
       <PageHeader
         eyebrow="Central calendar"
         title="Department & employee calendar"
-        description="One shared calendar per department, per person and per entity. Choose the grain — year, quarter, month, week or day — and every day cell holds as many activities as it needs, with an inline “+N more” instead of a hidden pile."
+        description="Your calendar stays private from peers until you share it with your department or a specific employee. Reporting leads retain their management view; shared calendars remain read-only."
         actions={
           <>
+            <Button size="sm" onClick={() => setSharingOpen(true)}>
+              <Share2 className="h-3.5 w-3.5" /> Share my calendar
+            </Button>
             <Button size="sm" onClick={() => setFilters({ anchor: today, employeeId: 'all', departmentId: 'all' })}>
               Today
             </Button>
@@ -334,7 +339,7 @@ export function CalendarPage({
               setSelectedDay(toISO(anchor));
             }}
           />
-          <div className="min-w-[170px]">
+          <div className="w-full sm:w-auto sm:min-w-[170px]">
             <Select value={filters.departmentId} onChange={(e) => setFilters({ departmentId: e.target.value, employeeId: 'all' })}>
               <option value="all">All departments</option>
               {scope.visibleDepartments.map((d) => (
@@ -356,7 +361,7 @@ export function CalendarPage({
                 ))}
             </Select>
           </div>
-          <div className="min-w-[150px]">
+          <div className="w-full sm:w-auto sm:min-w-[150px]">
             <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
               <option value="all">All activity types</option>
               {Object.entries(TYPE_LABELS).map(([k, v]) => (
@@ -861,6 +866,7 @@ export function CalendarPage({
           </Card>
         </div>
       </div>
+      <CalendarSharingModal open={sharingOpen} onClose={() => setSharingOpen(false)} />
     </div>
   );
 }

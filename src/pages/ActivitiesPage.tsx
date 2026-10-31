@@ -16,7 +16,7 @@ import {
 import { useScopedState, useStore } from '../store';
 import type { AppFilters, TaskStatus } from '../types';
 import { TYPE_LABELS, filterActivities, inRange } from '../lib/analytics';
-import { employeeTitle } from '../lib/permissions';
+import { canEditActivity, employeeTitle } from '../lib/permissions';
 import { periodLabel, periodRange, toISO, fromISO, humanHours, shortDate } from '../lib/dates';
 import { activitiesToCSV, downloadICS } from '../lib/export';
 import { Avatar, Badge, Button, Card, EmptyState, PageHeader, Progress, SearchInput, Select, Tabs } from '../components/ui';
@@ -261,6 +261,7 @@ export function ActivitiesPage({
                 const dept = deptMap.get(a.departmentId);
                 const emp = empMap.get(a.assigneeId);
                 const overdue = a.status !== 'completed' && a.status !== 'cancelled' && a.endDate < today;
+                const canEdit = canEditActivity(state, scope.user.id, a);
                 const logged = state.timeEntries.filter((t) => t.activityId === a.id).reduce((s, t) => s + t.hours, 0);
                 return (
                   <tr key={a.id} className="group transition-colors hover:bg-slate-50/70">
@@ -270,6 +271,7 @@ export function ActivitiesPage({
                           <span className="truncate text-xs font-semibold text-slate-800 group-hover:text-brand-700">{a.title}</span>
                           {a.priority === 'critical' ? <Badge tone="danger">critical</Badge> : null}
                           {overdue ? <Badge tone="danger">overdue</Badge> : null}
+                          {a.delegationHistory?.length ? <Badge tone="info">delegated</Badge> : null}
                         </span>
                         <span className="mt-0.5 flex items-center gap-1.5 text-[10px] text-slate-400">
                           {a.subtasks.length ? (
@@ -333,6 +335,7 @@ export function ActivitiesPage({
                     <td className="border-b border-slate-100 px-3 py-2.5">
                       <select
                         value={a.status}
+                        disabled={!canEdit}
                         onChange={(e) => updateActivityStatus(a.id, e.target.value as TaskStatus)}
                         className={`rounded-md border-0 py-1 pl-1.5 pr-6 text-[10px] font-medium focus:ring-1 focus:ring-brand-300 ${
                           a.status === 'completed'
@@ -355,6 +358,7 @@ export function ActivitiesPage({
                       <div className="flex items-center gap-1.5">
                         <SyncPips activity={a} />
                         <button
+                          disabled={!canEdit}
                           onClick={() => {
                             pushToCalendars(a.id);
                             toast.push({ tone: 'success', title: 'Pushed to calendars', description: `${a.title} was sent to the connected calendar providers.` });
