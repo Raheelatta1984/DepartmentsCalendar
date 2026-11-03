@@ -49,6 +49,7 @@ import {
   FALLBACK_TENANT_ID,
   buildTenantIndex,
   calendarDepartmentIds as resolveCalendarDepartmentIds,
+  disabledTenantIds,
   findTenant,
   mergeTenantState,
   normaliseCalendarScope,
@@ -58,7 +59,6 @@ import {
   scopeStateToTenant,
   tenantDepartments,
   tenantList,
-  TEMPORARILY_BLOCKED_TENANT_IDS,
 } from './lib/tenants';
 import { leaveBreakdown } from './lib/leave';
 import { orgChain, reparentEmployees, validateOrgMove } from './lib/org';
@@ -92,7 +92,7 @@ export function normaliseState(state: StoreState): StoreState {
           ? MERIDIAN_TENANT_ID
           : fallbackTenantId),
   }));
-  const activeTenantId = resolveTenantId(tenants, state.settings?.activeTenantId);
+  const activeTenantId = resolveTenantId(tenants, state.settings?.activeTenantId, state.settings);
   const tenant = tenants.find((row) => row.id === activeTenantId);
   const tenantDeptIds = new Set(
     (state.departments ?? [])
@@ -173,7 +173,7 @@ export function initialiseWorkspaceState(state: StoreState): StoreState {
     settings: {
       ...migrated.settings,
       // Keep an existing tenant preference when possible. Normalisation
-      // redirects blocked Harris Farm selections to the available fallback.
+      // redirects a disabled Harris Farm selection to the available fallback.
       onboardingVersion: 2,
     },
   };
@@ -299,10 +299,14 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
   const workspace = useWorkspacePersistence(fullState, setFullState, shared);
   const writeTimer = useRef<number | null>(null);
 
-  // The full register stays in storage so temporary blocks never destroy data,
-  // but neither the UI nor its selection handlers receive blocked tenants.
-  const tenants = useMemo(() => tenantList(fullState.tenants), [fullState.tenants]);
-  const activeTenantId = resolveTenantId(tenants, fullState.settings.activeTenantId);
+  // The full register stays in storage so a disabled tenant's data is never
+  // destroyed, but neither the UI nor its selection handlers receive tenants
+  // hidden behind their master setup switch.
+  const tenants = useMemo(
+    () => tenantList(fullState.tenants, fullState.settings),
+    [fullState.tenants, fullState.settings],
+  );
+  const activeTenantId = resolveTenantId(tenants, fullState.settings.activeTenantId, fullState.settings);
   const tenant = findTenant(tenants, activeTenantId);
 
   /* The hard isolation boundary: another tenant's rows are dropped here,
@@ -399,7 +403,7 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
    */
   const save = useCallback<StoreContextValue['save']>((next, audit) => {
     setFullState((prevFull) => {
-      const prevTenantId = resolveTenantId(prevFull.tenants, prevFull.settings.activeTenantId);
+      const prevTenantId = resolveTenantId(prevFull.tenants, prevFull.settings.activeTenantId, prevFull.settings);
       const prevScoped = scopeStateToTenant(prevFull, prevTenantId);
       const resolved = typeof next === 'function' ? next(prevScoped) : next;
       if (!audit) return mergeTenantState(prevFull, resolved, prevTenantId);
@@ -470,7 +474,7 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
         if (!tenants.some((row) => row.id === id)) return;
         save(
           (prev) => {
-            const target = tenantList(prev.tenants).find((row) => row.id === id);
+            const target = tenantList(prev.tenants, prev.settings).find((row) => row.id === id);
             if (!target) return prev;
             const targetState = scopeStateToTenant(prev, id);
             const current = prev.employees.find((row) => row.id === prev.settings.activeUserId);
@@ -515,7 +519,7 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
       upsertTenant: (nextTenant) =>
         save(
           (prev) => {
-            if (TEMPORARILY_BLOCKED_TENANT_IDS.has(nextTenant.id)) return prev;
+            if (disabledTenantIds(prev.settings).has(nextTenant.id)) return prev;
             const exists = prev.tenants.some((row) => row.id === nextTenant.id);
             return {
               ...prev,
@@ -529,9 +533,9 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
       deleteTenant: (id) =>
         save(
           (prev) => {
-            // A workspace always keeps at least one tenant. The temporary
-            // block hides but never deletes the retained tenant and its data.
-            if (TEMPORARILY_BLOCKED_TENANT_IDS.has(id) || prev.tenants.length <= 1) return prev;
+            // A workspace always keeps at least one tenant. A tenant hidden
+            // behind its master setup switch is kept, never deleted.
+            if (disabledTenantIds(prev.settings).has(id) || prev.tenants.length <= 1) return prev;
             return removeTenant(prev, id);
           },
           { action: 'Tenant removed', detail: id },

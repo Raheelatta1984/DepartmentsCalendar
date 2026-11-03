@@ -1444,13 +1444,50 @@ export function AdminPage() {
                   <option value={6}>Saturday</option>
                 </Select>
               </Field>
+              <div className="sm:col-span-2 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-semibold text-slate-700">Harris Farm Markets rollout</div>
+                    <div className="mt-0.5 text-[10px] leading-snug text-slate-500">
+                      Master switch for the Harris Farm Markets tenant and its group → company entities
+                    </div>
+                  </div>
+                  <Badge tone={settingsDraft.harrisFarmMarketEnabled ? 'good' : 'neutral'}>
+                    {settingsDraft.harrisFarmMarketEnabled ? 'Enabled' : 'Disabled'}
+                  </Badge>
+                </div>
+                <div className={!canEdit ? 'pointer-events-none opacity-60' : ''}>
+                  <Toggle
+                    checked={settingsDraft.harrisFarmMarketEnabled ?? false}
+                    onChange={(v) => setSettingsDraft({ ...settingsDraft, harrisFarmMarketEnabled: v })}
+                    label="Enable Harris Farm Markets group and entity"
+                    description="Restores the Harris Farm Markets tenant with its group → company entities, IT department, people, delivery streams and DevOps backlog. Off by default: the tenant stays hidden from selection until you switch it on, and hiding it never deletes its data."
+                  />
+                </div>
+              </div>
               <div className="flex items-end">
                 <Button
                   variant="primary"
                   disabled={!canEdit}
                   onClick={() => {
+                    const harrisBefore = state.settings.harrisFarmMarketEnabled ?? false;
+                    const harrisAfter = settingsDraft.harrisFarmMarketEnabled ?? false;
                     updateSettings(settingsDraft);
-                    toast.push({ tone: 'success', title: 'Settings saved', description: 'Scores and calendars recalculate immediately.' });
+                    if (harrisAfter && !harrisBefore) {
+                      toast.push({
+                        tone: 'success',
+                        title: 'Harris Farm Markets enabled',
+                        description: 'The Harris Farm Markets group and entity now appear in Master setup → Tenants. Switch to the tenant to open its IT calendar.',
+                      });
+                    } else if (!harrisAfter && harrisBefore) {
+                      toast.push({
+                        tone: 'info',
+                        title: 'Harris Farm Markets hidden',
+                        description: 'The tenant is no longer selectable. Its data is kept and comes back when you re-enable the switch.',
+                      });
+                    } else {
+                      toast.push({ tone: 'success', title: 'Settings saved', description: 'Scores and calendars recalculate immediately.' });
+                    }
                   }}
                 >
                   <Save className="h-3.5 w-3.5" /> Save settings

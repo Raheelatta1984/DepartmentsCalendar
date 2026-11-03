@@ -156,6 +156,7 @@ export const workspaceSchema = record({
     holidayHorizonYears: z.number().int().min(1).max(20), performanceThreshold: number.min(0).max(100),
     weekStartsOn: z.union([z.literal(0), z.literal(1), z.literal(6)]),
     onboardingVersion: z.number().int().min(0).optional(),
+    harrisFarmMarketEnabled: z.boolean().optional(),
   }),
   auditLog: rows({ id, tenantId: id.optional(), at: text, actorId: id, action: text, detail: text }),
   projects: rows({

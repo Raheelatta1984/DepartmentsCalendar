@@ -3,7 +3,23 @@
 
 The portal’s **What’s new** tab renders this same log from `src/data/releases.ts`, so the screen and this file can never disagree. Newest first.
 
-**22 releases · last updated 1 November 2026**
+**23 releases · last updated 3 November 2026**
+
+---
+
+## Master setup switch for the Harris Farm Markets group and entity
+
+**3 November 2026 · Just added**
+
+Master setup now carries a master switch for the Harris Farm Markets group and entity. Off by default, the tenant — its group → company entities, IT department, people, delivery streams and DevOps backlog — stays hidden from tenant selection and every operational screen. Turn the switch on in Master setup → Group settings and the tenant appears in Master setup → Tenants, ready to switch to; turning it off hides it again without deleting any data. The earlier temporary block on Harris Farm tenant selection has been replaced by this explicit, reversible switch.
+
+- New Master setup → Group settings switch: Enable Harris Farm Markets group and entity
+- Off by default — the tenant is hidden from selection and every screen until the switch is turned on
+- Turning it on restores the full tenant: group → company entities, IT department, co-CEO portfolios, people, streams, work items and activities
+- Hiding the tenant never deletes its data — the rows are kept and reappear when the switch is re-enabled
+- The previous temporary block on Harris Farm tenant selection has been removed in favour of this explicit switch
+
+_Where to look: **Master setup** (`#/admin`) — Open master setup._
 
 ---
 

@@ -649,6 +649,12 @@ export interface Settings {
   weekStartsOn: 0 | 1 | 6;
   /** Additive one-time onboarding data migrations already applied to this workspace. */
   onboardingVersion?: number;
+  /**
+   * Master setup switch for the Harris Farm Markets group and entity. Off by
+   * default: the tenant stays hidden from selection and every operational
+   * screen until the switch is turned on in Master setup.
+   */
+  harrisFarmMarketEnabled?: boolean;
 }
 
 export interface StoreState {

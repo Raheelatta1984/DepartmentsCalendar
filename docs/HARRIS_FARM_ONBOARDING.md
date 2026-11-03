@@ -1,8 +1,16 @@
 # Harris Farm Markets onboarding
 
+## Master setup switch
+
+The Harris Farm Markets group and entity are gated behind a **Master setup → Group settings** switch: **Enable Harris Farm Markets group and entity**.
+
+- **Off by default.** While the switch is off, the tenant is hidden from tenant selection and every operational screen; the portal opens on Harbourline Retail Australia instead.
+- **Turning it on** makes the tenant appear in **Master setup → Tenants**, ready to switch to, and restores the whole rollout below — group → company entities, IT department, people, streams, work items and activities.
+- **Hiding it never deletes data.** Turning the switch off keeps every Harris Farm row in the workspace; re-enabling brings it back exactly as it was.
+
 ## Entity and scope
 
-- Tenant: **Harris Farm Markets** (`HFM`), initially the active tenant.
+- Tenant: **Harris Farm Markets** (`HFM`), initially the active tenant once the Master setup switch above is enabled.
 - Entity tree: **Harris Farm Markets** (group) → **HarrisFarm Markets** (company).
 - Department rollout: **Information Technology** (`HIT`) only. DevOps delivery is enabled for IT. Warehouse, retail sites and Finance are not departments yet.
 - The older Harbourline and Meridian tenants remain separate demo tenants and do not share Harris Farm data.

@@ -3,6 +3,7 @@ import type {
   CalendarScopeSettings,
   Department,
   Entity,
+  Settings,
   StoreState,
   Tenant,
 } from '../types';
@@ -24,12 +25,28 @@ import { HARRIS_FARM_TENANT_ID } from '../data/tenant-seed';
 /*   2. `mergeTenantState` writes a tenant-scoped edit back into the     */
 /*      full snapshot, replacing only that tenant's rows and leaving     */
 /*      every other tenant byte-for-byte untouched.                      */
+/*                                                                     */
+/* A tenant can also be gated behind a master setup switch (see        */
+/* `disabledTenantIds`): a disabled tenant's rows stay in the snapshot  */
+/* but never reach the UI, and its data is never deleted — flipping the */
+/* switch back on makes it appear again.                                */
 /* ------------------------------------------------------------------ */
 
-/** The tenant the portal opens on while Harris Farm is temporarily unavailable. */
+/** The tenant the portal opens on while the Harris Farm Markets switch is off. */
 export const DEFAULT_TENANT_ID = 'tnt-harbourline';
-/** Tenants intentionally hidden from selection and operational views for now. */
-export const TEMPORARILY_BLOCKED_TENANT_IDS = new Set([HARRIS_FARM_TENANT_ID]);
+
+/**
+ * Tenants hidden from selection until their master setup switch is turned on.
+ * The Harris Farm Markets group and entity are gated by the Master setup
+ * switch (`harrisFarmMarketEnabled`) and stay hidden by default; enabling the
+ * switch returns an empty set so the tenant is selectable again.
+ */
+export function disabledTenantIds(
+  settings?: Pick<Settings, 'harrisFarmMarketEnabled'> | null,
+): Set<string> {
+  return settings?.harrisFarmMarketEnabled ? new Set<string>() : new Set([HARRIS_FARM_TENANT_ID]);
+}
+
 /** Fallback for legacy rows that predate tenancy. */
 export const FALLBACK_TENANT_ID = 'tnt-meridian';
 
@@ -45,9 +62,13 @@ export const CALENDAR_SCOPE_HINTS: Record<CalendarScopeMode, string> = {
   all: 'Every department in this tenant is on the calendar.',
 };
 
-export function tenantList(tenants: Tenant[] | undefined): Tenant[] {
+export function tenantList(
+  tenants: Tenant[] | undefined,
+  settings?: Pick<Settings, 'harrisFarmMarketEnabled'> | null,
+): Tenant[] {
+  const disabled = disabledTenantIds(settings);
   return (tenants ?? []).filter(
-    (tenant) => tenant.status !== 'archived' && !TEMPORARILY_BLOCKED_TENANT_IDS.has(tenant.id),
+    (tenant) => tenant.status !== 'archived' && !disabled.has(tenant.id),
   );
 }
 
@@ -57,8 +78,12 @@ export function findTenant(tenants: Tenant[] | undefined, tenantId: string | und
 }
 
 /** Resolves the tenant to show, falling back to the default / first active tenant. */
-export function resolveTenantId(tenants: Tenant[] | undefined, tenantId: string | undefined): string {
-  const active = tenantList(tenants);
+export function resolveTenantId(
+  tenants: Tenant[] | undefined,
+  tenantId: string | undefined,
+  settings?: Pick<Settings, 'harrisFarmMarketEnabled'> | null,
+): string {
+  const active = tenantList(tenants, settings);
   if (tenantId && active.some((tenant) => tenant.id === tenantId)) return tenantId;
   if (active.some((tenant) => tenant.id === DEFAULT_TENANT_ID)) return DEFAULT_TENANT_ID;
   return active[0]?.id ?? '';
@@ -207,7 +232,7 @@ export function scopeStateToTenant(state: StoreState, tenantId: string): StoreSt
 
   return {
     // Operational screens receive only tenants that are currently selectable.
-    tenants: tenantList(state.tenants),
+    tenants: tenantList(state.tenants, state.settings),
     entities,
     departments,
     deliveryStreams: (state.deliveryStreams ?? []).filter((row) => owned(index.departmentTenant, row.departmentId)),
