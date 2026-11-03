@@ -48,6 +48,7 @@ export function AdminPage() {
     state,
     scope,
     tenants,
+    manageableTenants,
     tenant,
     calendarScope,
     calendarDepartmentIds,
@@ -100,6 +101,21 @@ export function AdminPage() {
     setScopeDraft(calendarScope);
   }, [calendarScope, tenant?.id]);
   useEffect(() => { setFeelingDraft(feelingScale(tenant)); }, [tenant?.id, tenant?.feelingScale]);
+
+  /* Master setup actions for tenants that are not currently selectable: a
+     disabled tenant can be Enabled and an archived one Restored without
+     touching any of its data. */
+  const setTenantActive = useCallback(
+    (row: Tenant) => {
+      upsertTenant({ ...row, status: 'active' });
+      toast.push({
+        tone: 'success',
+        title: row.status === 'disabled' ? 'Tenant enabled' : 'Tenant restored',
+        description: `${row.name} is selectable again — switch to the tenant to open its calendar.`,
+      });
+    },
+    [upsertTenant, toast],
+  );
 
   const canEdit = scope.canManageMaster;
   const empMap = useMemo(() => new Map(state.employees.map((e) => [e.id, e])), [state.employees]);
@@ -549,13 +565,14 @@ export function AdminPage() {
                 />
               </div>
               <div className="mt-3 grid gap-2 px-4 pb-4 sm:grid-cols-2">
-                {tenants.map((row) => {
+                {manageableTenants.map((row) => {
                   const stats = tenantStats(state, row.id);
                   const active = row.id === tenant?.id;
+                  const off = row.status !== 'active';
                   return (
                     <div
                       key={row.id}
-                      className={`rounded-xl border p-3 ${active ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200 bg-white'}`}
+                      className={`rounded-xl border p-3 ${active ? 'border-brand-300 bg-brand-50/40' : off ? 'border-slate-200 bg-slate-50/60' : 'border-slate-200 bg-white'}`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
@@ -564,7 +581,13 @@ export function AdminPage() {
                             {row.code} · {row.currency} · {row.countryCode}
                           </div>
                         </div>
-                        {active ? <Badge tone="brand">active</Badge> : <Badge tone="neutral">{row.status}</Badge>}
+                        {row.status === 'active' ? (
+                          <Badge tone="brand">active</Badge>
+                        ) : row.status === 'disabled' ? (
+                          <Badge tone="warn">disabled</Badge>
+                        ) : (
+                          <Badge tone="neutral">archived</Badge>
+                        )}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-1 text-[10px] text-slate-500">
                         <Badge tone="neutral">{stats.entities} entities</Badge>
@@ -577,17 +600,32 @@ export function AdminPage() {
                       </div>
                       <div className="text-[10px] text-slate-500">PTO entitlement {row.ptoAnnualEntitlementDays} working days / year</div>
                       <div className="mt-2 flex flex-wrap gap-1">
-                        <Button size="sm" disabled={active} onClick={() => setActiveTenant(row.id)}>
+                        <Button
+                          size="sm"
+                          disabled={active || off}
+                          title={off ? 'Enable the tenant first — a disabled tenant cannot be switched to' : undefined}
+                          onClick={() => setActiveTenant(row.id)}
+                        >
                           {active ? 'Active' : 'Switch to tenant'}
                         </Button>
                         <Button size="sm" disabled={!canEdit} onClick={() => setTenantDraft(row)}>
                           <Pencil className="h-3 w-3" /> Edit
                         </Button>
+                        {row.status === 'disabled' ? (
+                          <Button size="sm" variant="primary" disabled={!canEdit} onClick={() => setTenantActive(row)}>
+                            Enable
+                          </Button>
+                        ) : null}
+                        {row.status === 'archived' ? (
+                          <Button size="sm" disabled={!canEdit} onClick={() => setTenantActive(row)}>
+                            Restore
+                          </Button>
+                        ) : null}
                         <Button
                           size="sm"
                           variant="danger"
-                          disabled={!canEdit || tenants.length <= 1}
-                          title={tenants.length <= 1 ? 'A workspace always keeps one tenant' : 'Remove this tenant and everything it owns'}
+                          disabled={!canEdit || manageableTenants.length <= 1}
+                          title={manageableTenants.length <= 1 ? 'A workspace always keeps one tenant' : 'Remove this tenant and everything it owns'}
                           onClick={() => {
                             if (confirm(`Delete ${row.name} and every entity, department, person, activity and leave record it owns?`)) {
                               deleteTenant(row.id);
@@ -1510,7 +1548,18 @@ export function AdminPage() {
                   onClick={() => {
                     const harrisBefore = state.settings.harrisFarmMarketEnabled ?? false;
                     const harrisAfter = settingsDraft.harrisFarmMarketEnabled ?? false;
-                    updateSettings(settingsDraft);
+                    // Send only the fields the user actually changed, and never
+                    // the device-local preferences (active tenant / persona):
+                    // the draft is initialized once from the settings at mount,
+                    // so sending the whole draft would overwrite preferences that
+                    // changed elsewhere with stale values.
+                    const patch: Record<string, unknown> = {};
+                    (Object.keys(settingsDraft) as (keyof typeof settingsDraft)[]).forEach((key) => {
+                      if (key === 'activeTenantId' || key === 'activeUserId') return;
+                      const draftValue = settingsDraft[key];
+                      if (state.settings[key] !== draftValue) patch[key] = draftValue;
+                    });
+                    updateSettings(patch as Partial<typeof state.settings>);
                     if (harrisAfter && !harrisBefore) {
                       toast.push({
                         tone: 'success',
@@ -1627,7 +1676,7 @@ score            = 40% utilizationScore + 35% onTimeRate + 25% completionRate`}<
       <Modal
         open={!!tenantDraft}
         onClose={() => setTenantDraft(null)}
-        title={tenants.some((row) => row.id === tenantDraft?.id) ? 'Edit tenant' : 'Add tenant'}
+        title={manageableTenants.some((row) => row.id === tenantDraft?.id) ? 'Edit tenant' : 'Add tenant'}
         subtitle="A tenant owns its own entity tree, departments, people and PTO policy. Nothing is shared with another tenant."
         width="max-w-2xl"
         footer={
@@ -1691,9 +1740,13 @@ score            = 40% utilizationScore + 35% onTimeRate + 25% completionRate`}<
                 onChange={(e) => setTenantDraft({ ...tenantDraft, ptoAnnualEntitlementDays: Number(e.target.value) })}
               />
             </Field>
-            <Field label="Status">
+            <Field
+              label="Status"
+              hint="Disabled tenants stay in the workspace and visible here, but are hidden from selection until enabled again. Archived tenants are kept for history."
+            >
               <Select value={tenantDraft.status} onChange={(e) => setTenantDraft({ ...tenantDraft, status: e.target.value as Tenant['status'] })}>
                 <option value="active">Active</option>
+                <option value="disabled">Disabled</option>
                 <option value="archived">Archived</option>
               </Select>
             </Field>

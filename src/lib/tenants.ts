@@ -62,14 +62,33 @@ export const CALENDAR_SCOPE_HINTS: Record<CalendarScopeMode, string> = {
   all: 'Every department in this tenant is on the calendar.',
 };
 
+/**
+ * Tenants selectable by screens: only active tenants, minus the ones hidden
+ * behind the Master setup switch. Disabled and archived tenants are kept in
+ * the workspace but stay out of every operational list.
+ */
 export function tenantList(
   tenants: Tenant[] | undefined,
   settings?: Pick<Settings, 'harrisFarmMarketEnabled'> | null,
 ): Tenant[] {
   const disabled = disabledTenantIds(settings);
   return (tenants ?? []).filter(
-    (tenant) => tenant.status !== 'archived' && !disabled.has(tenant.id),
+    (tenant) => tenant.status === 'active' && !disabled.has(tenant.id),
   );
+}
+
+/**
+ * Tenants Master setup can manage: active, disabled and archived tenants are
+ * all listed (with their status and an Enable / Restore action), minus the
+ * ones hidden behind the Master setup switch. A tenant can therefore never be
+ * lost or become unrecoverable — it stays visible until it is deleted.
+ */
+export function manageableTenantList(
+  tenants: Tenant[] | undefined,
+  settings?: Pick<Settings, 'harrisFarmMarketEnabled'> | null,
+): Tenant[] {
+  const disabled = disabledTenantIds(settings);
+  return (tenants ?? []).filter((tenant) => !disabled.has(tenant.id));
 }
 
 export function findTenant(tenants: Tenant[] | undefined, tenantId: string | undefined): Tenant | undefined {
