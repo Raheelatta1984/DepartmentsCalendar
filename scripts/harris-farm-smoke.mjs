@@ -33,7 +33,7 @@ const workItems = new Map(state.workItems.map((item) => [item.id, item]));
 
 assert.equal(state.settings.activeTenantId, HARRIS_FARM_TENANT_ID);
 assert.equal(state.settings.activeUserId, HARRIS_FARM_ACTIVE_USER_ID);
-assert.equal(state.tenants.find((tenant) => tenant.id === HARRIS_FARM_TENANT_ID)?.name, 'Harris Farm Markets');
+assert.equal(state.tenants.some((tenant) => tenant.id === HARRIS_FARM_TENANT_ID), false, 'blocked tenant register entry is hidden from operational state');
 const group = state.entities.find((entity) => entity.id === HARRIS_FARM_GROUP_ID);
 const company = state.entities.find((entity) => entity.id === HARRIS_FARM_ENTITY_ID);
 assert.equal(group?.name, 'Harris Farm Markets');
@@ -172,8 +172,8 @@ assert.deepEqual(orgBlockedTargets(state.employees, employee('ram').id).has(empl
 const parsed = workspaceSchema.safeParse(toSharedState(full));
 assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues, null, 2));
 
-// Upgrade an older locally stored snapshot additively and switch its former
-// default Harbourline focus to the requested Harris Farm onboarding tenant.
+// Upgrade an older snapshot additively without reactivating Harris Farm as
+// the selected tenant while its temporary selection block is in effect.
 const withoutHarris = {
   ...full,
   tenants: full.tenants.filter((tenant) => tenant.id !== HARRIS_FARM_TENANT_ID),
@@ -187,8 +187,8 @@ const withoutHarris = {
   settings: { ...full.settings, activeTenantId: 'tnt-harbourline', activeUserId: 'rtl-emp-004', onboardingVersion: 0 },
 };
 const migrated = initialiseWorkspaceState(withoutHarris);
-assert.equal(migrated.settings.activeTenantId, HARRIS_FARM_TENANT_ID);
-assert.equal(migrated.settings.activeUserId, HARRIS_FARM_ACTIVE_USER_ID);
+assert.equal(migrated.settings.activeTenantId, 'tnt-harbourline');
+assert.equal(migrated.settings.activeUserId, 'rtl-emp-004');
 assert.equal(migrated.tenants.filter((tenant) => tenant.id === HARRIS_FARM_TENANT_ID).length, 1);
 assert.equal(scopeStateToTenant(migrated, HARRIS_FARM_TENANT_ID).employees.length, 31);
 

@@ -10,6 +10,8 @@ import {
   scopeStateToDepartments,
   scopeStateToTenant,
   tenantDepartments,
+  tenantList,
+  TEMPORARILY_BLOCKED_TENANT_IDS,
 } from '../src/lib/tenants.ts';
 import {
   approvalQueue,
@@ -21,6 +23,7 @@ import {
 } from '../src/lib/leave.ts';
 import { getScope } from '../src/lib/permissions.ts';
 import { toISO } from '../src/lib/dates.ts';
+import { initialiseWorkspaceState } from '../src/store.tsx';
 
 const results = [];
 const check = (name, fn) => {
@@ -45,6 +48,14 @@ check('every entity belongs to a registered tenant', () => {
   state.entities.forEach((entity) => {
     assert.ok(tenantIds.includes(entity.tenantId), `${entity.id} has no valid tenant`);
   });
+});
+
+check('temporarily blocked tenant cannot be selected or exposed by operational tenant lists', () => {
+  const available = tenantList(state.tenants);
+  assert.ok(TEMPORARILY_BLOCKED_TENANT_IDS.has('tnt-harris-farm'));
+  assert.equal(available.some((tenant) => tenant.id === 'tnt-harris-farm'), false);
+  assert.equal(resolveTenantId(state.tenants, 'tnt-harris-farm'), 'tnt-harbourline');
+  assert.equal(resolveTenantId(available, 'tnt-harris-farm'), 'tnt-harbourline');
 });
 
 check('entity trees never span two tenants', () => {
@@ -219,7 +230,7 @@ check('PTO hours exclude public holidays and weekly offs', () => {
 });
 
 check('the seeded PH-crossing request shows excluded holiday hours', () => {
-  const crossing = harbourline.leaves.filter((leave) => leave.publicHolidayDays > 0);
+  const crossing = harbourline.leaves.filter((leave) => leave.publicHolidayDays > 0 && leave.workingDays > 0);
   assert.ok(crossing.length >= 1, 'at least one request crosses a public holiday');
   crossing.forEach((leave) => {
     assert.ok(leave.hours > 0);
@@ -281,12 +292,14 @@ check('next responsible follows delegate, manager, then department head', () => 
 /* ------------------------------------------------------------------ */
 /* 5. Persona and scope safety                                         */
 /* ------------------------------------------------------------------ */
-check('the default persona belongs to the active tenant and never leaks to another tenant', () => {
-  const resolved = resolveTenantId(state.tenants, state.settings.activeTenantId);
-  const scoped = scopeStateToTenant(state, resolved);
-  assert.ok(scoped.employees.some((employee) => employee.id === state.settings.activeUserId));
+check('the temporarily blocked tenant redirects the default persona into the available tenant', () => {
+  const initialised = initialiseWorkspaceState(state);
+  const resolved = resolveTenantId(initialised.tenants, initialised.settings.activeTenantId);
+  const scoped = scopeStateToTenant(initialised, resolved);
+  assert.ok(scoped.employees.some((employee) => employee.id === initialised.settings.activeUserId));
   assert.equal(scoped.employees.find((employee) => employee.id === 'emp-001'), undefined);
-  assert.equal(resolved, 'tnt-harris-farm');
+  assert.equal(resolved, 'tnt-harbourline');
+  assert.equal(scoped.tenants.some((tenant) => tenant.id === 'tnt-harris-farm'), false);
 });
 
 const failures = results.filter((row) => row[0] === 'FAIL');

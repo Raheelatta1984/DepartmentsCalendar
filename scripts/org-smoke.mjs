@@ -138,6 +138,18 @@ globalThis.HTMLElement = dom.window.HTMLElement;
 globalThis.Node = dom.window.Node;
 globalThis.localStorage = dom.window.localStorage;
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+const uiFixture = createSeedState();
+uiFixture.tenants = uiFixture.tenants.map((tenant) => tenant.id === HARRIS_FARM_TENANT_ID
+  ? { ...tenant, id: 'tnt-workflow-fixture', name: 'Workflow test fixture' }
+  : tenant);
+uiFixture.entities = uiFixture.entities.map((entity) => entity.tenantId === HARRIS_FARM_TENANT_ID
+  ? { ...entity, tenantId: 'tnt-workflow-fixture' }
+  : entity);
+uiFixture.designations = uiFixture.designations.map((designation) => designation.tenantId === HARRIS_FARM_TENANT_ID
+  ? { ...designation, tenantId: 'tnt-workflow-fixture' }
+  : designation);
+uiFixture.settings = { ...uiFixture.settings, activeTenantId: 'tnt-workflow-fixture' };
+localStorage.setItem('orbit.portal.state.v1', JSON.stringify(uiFixture));
 window.scrollTo = () => {};
 window.matchMedia = window.matchMedia || (() => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} }));
 
@@ -153,7 +165,7 @@ function Probe() {
 }
 const root = createRoot(document.getElementById('root'));
 await act(async () => root.render(React.createElement(StoreProvider, null, React.createElement(Probe))));
-assert.equal(latest.state.settings.activeTenantId, HARRIS_FARM_TENANT_ID, 'the smoke test runs on the Harris Farm workspace');
+assert.equal(latest.state.settings.activeTenantId, 'tnt-workflow-fixture', 'the smoke test uses an explicitly selectable fixture tenant');
 assert.equal(latest.state.settings.activeUserId, id('angus'));
 
 // Refused: looping the hierarchy.
