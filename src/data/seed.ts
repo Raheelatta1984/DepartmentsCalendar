@@ -721,6 +721,9 @@ export function createSeedState(): StoreState {
       performanceThreshold: 70,
       weekStartsOn: 1,
       onboardingVersion: 2,
+      // Master setup switch: the Harris Farm Markets group and entity stay
+      // hidden until the switch is turned on in Master setup.
+      harrisFarmMarketEnabled: false,
     },
   };
 

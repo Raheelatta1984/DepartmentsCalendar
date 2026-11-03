@@ -3,6 +3,7 @@ import { createSeedState } from '../src/data/seed.ts';
 import {
   buildTenantIndex,
   calendarDepartmentIds,
+  disabledTenantIds,
   findTenant,
   mergeTenantState,
   removeTenant,
@@ -11,7 +12,6 @@ import {
   scopeStateToTenant,
   tenantDepartments,
   tenantList,
-  TEMPORARILY_BLOCKED_TENANT_IDS,
 } from '../src/lib/tenants.ts';
 import {
   approvalQueue,
@@ -50,12 +50,16 @@ check('every entity belongs to a registered tenant', () => {
   });
 });
 
-check('temporarily blocked tenant cannot be selected or exposed by operational tenant lists', () => {
-  const available = tenantList(state.tenants);
-  assert.ok(TEMPORARILY_BLOCKED_TENANT_IDS.has('tnt-harris-farm'));
+check('master setup switch gates the Harris Farm tenant in operational tenant lists', () => {
+  const available = tenantList(state.tenants, state.settings);
+  assert.ok(disabledTenantIds(state.settings).has('tnt-harris-farm'));
   assert.equal(available.some((tenant) => tenant.id === 'tnt-harris-farm'), false);
-  assert.equal(resolveTenantId(state.tenants, 'tnt-harris-farm'), 'tnt-harbourline');
-  assert.equal(resolveTenantId(available, 'tnt-harris-farm'), 'tnt-harbourline');
+  assert.equal(resolveTenantId(state.tenants, 'tnt-harris-farm', state.settings), 'tnt-harbourline');
+  assert.equal(resolveTenantId(available, 'tnt-harris-farm', state.settings), 'tnt-harbourline');
+  const enabled = { ...state.settings, harrisFarmMarketEnabled: true };
+  assert.equal(disabledTenantIds(enabled).has('tnt-harris-farm'), false);
+  assert.equal(tenantList(state.tenants, enabled).some((tenant) => tenant.id === 'tnt-harris-farm'), true);
+  assert.equal(resolveTenantId(state.tenants, 'tnt-harris-farm', enabled), 'tnt-harris-farm');
 });
 
 check('entity trees never span two tenants', () => {
@@ -292,9 +296,9 @@ check('next responsible follows delegate, manager, then department head', () => 
 /* ------------------------------------------------------------------ */
 /* 5. Persona and scope safety                                         */
 /* ------------------------------------------------------------------ */
-check('the temporarily blocked tenant redirects the default persona into the available tenant', () => {
+check('the disabled Harris Farm tenant redirects the default persona into the available tenant', () => {
   const initialised = initialiseWorkspaceState(state);
-  const resolved = resolveTenantId(initialised.tenants, initialised.settings.activeTenantId);
+  const resolved = resolveTenantId(initialised.tenants, initialised.settings.activeTenantId, initialised.settings);
   const scoped = scopeStateToTenant(initialised, resolved);
   assert.ok(scoped.employees.some((employee) => employee.id === initialised.settings.activeUserId));
   assert.equal(scoped.employees.find((employee) => employee.id === 'emp-001'), undefined);

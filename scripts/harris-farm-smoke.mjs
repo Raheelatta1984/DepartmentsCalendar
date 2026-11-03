@@ -20,7 +20,12 @@ import {
   reparentEmployees,
   validateOrgMove,
 } from '../src/lib/org.ts';
-import { scopeStateToTenant } from '../src/lib/tenants.ts';
+import {
+  disabledTenantIds,
+  resolveTenantId,
+  scopeStateToTenant,
+  tenantList,
+} from '../src/lib/tenants.ts';
 import { toSharedState } from '../src/lib/workspace-api.ts';
 import { workspaceSchema } from '../server/validation.mjs';
 import { initialiseWorkspaceState } from '../src/store.tsx';
@@ -33,7 +38,19 @@ const workItems = new Map(state.workItems.map((item) => [item.id, item]));
 
 assert.equal(state.settings.activeTenantId, HARRIS_FARM_TENANT_ID);
 assert.equal(state.settings.activeUserId, HARRIS_FARM_ACTIVE_USER_ID);
-assert.equal(state.tenants.some((tenant) => tenant.id === HARRIS_FARM_TENANT_ID), false, 'blocked tenant register entry is hidden from operational state');
+assert.equal(state.settings.harrisFarmMarketEnabled, false, 'the Harris Farm Markets master switch defaults to off');
+assert.equal(state.tenants.some((tenant) => tenant.id === HARRIS_FARM_TENANT_ID), false, 'the tenant stays hidden from the operational register while the master switch is off');
+assert.equal(disabledTenantIds(full.settings).has(HARRIS_FARM_TENANT_ID), true);
+assert.equal(tenantList(full.tenants, full.settings).some((tenant) => tenant.id === HARRIS_FARM_TENANT_ID), false);
+assert.equal(resolveTenantId(full.tenants, HARRIS_FARM_TENANT_ID, full.settings), 'tnt-harbourline');
+
+/* Enabling the Master setup switch restores the tenant to the selectable
+   register without touching any of its rows. */
+const enabledSettings = { ...full.settings, harrisFarmMarketEnabled: true };
+assert.equal(disabledTenantIds(enabledSettings).has(HARRIS_FARM_TENANT_ID), false);
+assert.equal(tenantList(full.tenants, enabledSettings).some((tenant) => tenant.id === HARRIS_FARM_TENANT_ID), true);
+assert.equal(resolveTenantId(full.tenants, HARRIS_FARM_TENANT_ID, enabledSettings), HARRIS_FARM_TENANT_ID);
+assert.equal(scopeStateToTenant({ ...full, settings: enabledSettings }, HARRIS_FARM_TENANT_ID).tenants.some((tenant) => tenant.id === HARRIS_FARM_TENANT_ID), true);
 const group = state.entities.find((entity) => entity.id === HARRIS_FARM_GROUP_ID);
 const company = state.entities.find((entity) => entity.id === HARRIS_FARM_ENTITY_ID);
 assert.equal(group?.name, 'Harris Farm Markets');
@@ -191,6 +208,12 @@ assert.equal(migrated.settings.activeTenantId, 'tnt-harbourline');
 assert.equal(migrated.settings.activeUserId, 'rtl-emp-004');
 assert.equal(migrated.tenants.filter((tenant) => tenant.id === HARRIS_FARM_TENANT_ID).length, 1);
 assert.equal(scopeStateToTenant(migrated, HARRIS_FARM_TENANT_ID).employees.length, 31);
+assert.equal(
+  scopeStateToTenant({ ...migrated, settings: { ...migrated.settings, harrisFarmMarketEnabled: true } }, HARRIS_FARM_TENANT_ID)
+    .tenants.some((tenant) => tenant.id === HARRIS_FARM_TENANT_ID),
+  true,
+  'enabling the switch after an upgrade makes the tenant selectable again',
+);
 
 /* A workspace saved on the earlier draft reporting lines is upgraded in place:
    lines and designations change, ids and everything else stay the same. */
