@@ -21,7 +21,7 @@ export const workspaceSchema = record({
   // snapshot can never contain a dangling reference by accident.
   tenants: rows({
     id, name: text, code: text, countryCode: text, timezone: text, currency: text,
-    industry: text.optional(), status: z.enum(['active', 'archived']),
+    industry: text.optional(), status: z.enum(['active', 'disabled', 'archived']),
     calendarScope: record({
       mode: z.enum(['single', 'multiple', 'all']),
       departmentIds: z.array(id).max(500),

@@ -5,6 +5,7 @@ import {
   calendarDepartmentIds,
   disabledTenantIds,
   findTenant,
+  manageableTenantList,
   mergeTenantState,
   removeTenant,
   resolveTenantId,
@@ -60,6 +61,16 @@ check('master setup switch gates the Harris Farm tenant in operational tenant li
   assert.equal(disabledTenantIds(enabled).has('tnt-harris-farm'), false);
   assert.equal(tenantList(state.tenants, enabled).some((tenant) => tenant.id === 'tnt-harris-farm'), true);
   assert.equal(resolveTenantId(state.tenants, 'tnt-harris-farm', enabled), 'tnt-harris-farm');
+});
+
+check('disabled and archived tenants are not selectable but stay manageable', () => {
+  const withStatus = (status) => state.tenants.map((tenant) => (tenant.id === 'tnt-harbourline' ? { ...tenant, status } : tenant));
+  for (const status of ['disabled', 'archived']) {
+    const register = withStatus(status);
+    assert.equal(tenantList(register, state.settings).some((tenant) => tenant.id === 'tnt-harbourline'), false, `a ${status} tenant is not selectable`);
+    assert.equal(manageableTenantList(register, state.settings).some((tenant) => tenant.id === 'tnt-harbourline'), true, `a ${status} tenant is still manageable in Master setup`);
+    assert.equal(resolveTenantId(register, 'tnt-harbourline', state.settings), 'tnt-meridian', `a ${status} preferred tenant falls back to the next available one`);
+  }
 });
 
 check('entity trees never span two tenants', () => {

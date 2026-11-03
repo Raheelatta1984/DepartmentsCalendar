@@ -9,6 +9,16 @@ The Harris Farm Markets group and entity are gated behind a **Master setup → G
 - **A missing tenant explains itself.** With the switch off, Master setup → Tenants shows a notice saying the tenant is hidden behind the switch, with a one-click **Enable now** button — no need to hunt for the toggle.
 - **Hiding it never deletes data.** Turning the switch off keeps every Harris Farm row in the workspace; re-enabling brings it back exactly as it was.
 
+## Tenant statuses: Disabled and Archived
+
+Tenant status now has three values, and a tenant can never be lost:
+
+- **Active** — selectable in every screen, as before.
+- **Disabled** — the tenant stays in the workspace and stays visible in **Master setup → Tenants** with a `disabled` badge and a one-click **Enable** button. It is hidden from tenant selection and every operational screen until it is enabled again, and its data is never deleted. This is the correct choice when you want to retire a tenant from daily use without losing it.
+- **Archived** — the tenant stays visible with an `archived` badge and a **Restore** button, kept for history and never selectable.
+
+Open **Master setup → Tenants → Edit** to change a tenant's status; the dialog explains each option. The **Switch to tenant** button is disabled for a disabled or archived tenant, so it can only be restored first.
+
 ## Entity and scope
 
 - Tenant: **Harris Farm Markets** (`HFM`), initially the active tenant once the Master setup switch above is enabled.

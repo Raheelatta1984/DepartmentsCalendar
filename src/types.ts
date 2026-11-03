@@ -48,7 +48,14 @@ export interface Tenant {
   timezone: string;
   currency: string;
   industry?: string;
-  status: 'active' | 'archived';
+  /**
+   * 'active' — selectable in every screen;
+   * 'disabled' — kept in the workspace and visible in Master setup, but hidden
+   *   from selection until enabled again (its data is never deleted);
+   * 'archived' — kept for history, visible in Master setup with a Restore
+   *   action, and never selectable.
+   */
+  status: 'active' | 'disabled' | 'archived';
   /** Master setting: is this calendar implemented for one, several or all departments? */
   calendarScope: CalendarScopeSettings;
   /** Paid time off entitlement, in working days per year (public holidays excluded). */

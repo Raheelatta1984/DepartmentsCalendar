@@ -51,6 +51,7 @@ import {
   calendarDepartmentIds as resolveCalendarDepartmentIds,
   disabledTenantIds,
   findTenant,
+  manageableTenantList,
   mergeTenantState,
   normaliseCalendarScope,
   removeTenant,
@@ -204,6 +205,8 @@ interface StoreContextValue {
   scopedState: StoreState;
   /** All tenants in the workspace (register only — no rows of other tenants). */
   tenants: Tenant[];
+  /** Active, disabled and archived tenants — what Master setup can manage. */
+  manageableTenants: Tenant[];
   tenant: Tenant | undefined;
   calendarScope: CalendarScopeSettings;
   calendarDepartmentIds: string[];
@@ -304,6 +307,12 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
   // hidden behind their master setup switch.
   const tenants = useMemo(
     () => tenantList(fullState.tenants, fullState.settings),
+    [fullState.tenants, fullState.settings],
+  );
+  /* Master setup sees disabled and archived tenants as well (with an Enable /
+     Restore action) so a tenant can never be lost or become unrecoverable. */
+  const manageableTenants = useMemo(
+    () => manageableTenantList(fullState.tenants, fullState.settings),
     [fullState.tenants, fullState.settings],
   );
   const activeTenantId = resolveTenantId(tenants, fullState.settings.activeTenantId, fullState.settings);
@@ -456,6 +465,7 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
       state,
       scopedState,
       tenants,
+      manageableTenants,
       tenant,
       calendarScope,
       calendarDepartmentIds,

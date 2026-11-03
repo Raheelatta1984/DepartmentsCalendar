@@ -79,6 +79,24 @@ export type Release = {
 
 export const RELEASES: Release[] = [
   {
+    title: 'A Disabled status for tenants, with one-click Enable and Restore',
+    date: '2026-11-03',
+    released: '3 November 2026',
+    label: 'Just added',
+    tone: 'brand',
+    icon: 'shield',
+    description:
+      'Disabling a tenant no longer means it disappears: tenant status now has three values — Active, Disabled and Archived. A Disabled tenant stays in the workspace and visible in Master setup → Tenants with a disabled badge and a one-click Enable button, so it can never be lost or become unrecoverable; its data is kept and it returns to selection the moment it is enabled. Archived tenants stay visible too, with a Restore button. The tenant Edit dialog offers all three statuses with an explanation of each, and saving Master settings no longer overwrites device-local preferences such as the active tenant.',
+    bullets: [
+      'Three tenant statuses: Active, Disabled and Archived',
+      'A Disabled tenant stays visible in Master setup → Tenants with a disabled badge and an Enable button — its data is never deleted',
+      'An Archived tenant stays visible with a Restore button, so a tenant can never be lost',
+      'The tenant Edit dialog offers Active / Disabled / Archived with an explanation of each',
+      'Saving Master settings only sends the fields you actually changed — device-local preferences like the active tenant are never overwritten',
+    ],
+    link: { view: 'admin', label: 'Open master setup' },
+  },
+  {
     title: 'Master setup switch for the Harris Farm Markets group and entity',
     date: '2026-11-03',
     released: '3 November 2026',
