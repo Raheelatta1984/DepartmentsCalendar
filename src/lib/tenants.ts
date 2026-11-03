@@ -6,6 +6,7 @@ import type {
   StoreState,
   Tenant,
 } from '../types';
+import { HARRIS_FARM_TENANT_ID } from '../data/tenant-seed';
 
 /* ------------------------------------------------------------------ */
 /* Tenant isolation                                                    */
@@ -25,8 +26,10 @@ import type {
 /*      every other tenant byte-for-byte untouched.                      */
 /* ------------------------------------------------------------------ */
 
-/** The tenant the portal opens on: Harris Farm Markets' IT department rollout. */
-export const DEFAULT_TENANT_ID = 'tnt-harris-farm';
+/** The tenant the portal opens on while Harris Farm is temporarily unavailable. */
+export const DEFAULT_TENANT_ID = 'tnt-harbourline';
+/** Tenants intentionally hidden from selection and operational views for now. */
+export const TEMPORARILY_BLOCKED_TENANT_IDS = new Set([HARRIS_FARM_TENANT_ID]);
 /** Fallback for legacy rows that predate tenancy. */
 export const FALLBACK_TENANT_ID = 'tnt-meridian';
 
@@ -43,7 +46,9 @@ export const CALENDAR_SCOPE_HINTS: Record<CalendarScopeMode, string> = {
 };
 
 export function tenantList(tenants: Tenant[] | undefined): Tenant[] {
-  return (tenants ?? []).filter((tenant) => tenant.status !== 'archived');
+  return (tenants ?? []).filter(
+    (tenant) => tenant.status !== 'archived' && !TEMPORARILY_BLOCKED_TENANT_IDS.has(tenant.id),
+  );
 }
 
 export function findTenant(tenants: Tenant[] | undefined, tenantId: string | undefined): Tenant | undefined {
@@ -201,7 +206,8 @@ export function scopeStateToTenant(state: StoreState, tenantId: string): StoreSt
   const employeeIds = new Set(employees.map((employee) => employee.id));
 
   return {
-    tenants: state.tenants ?? [],
+    // Operational screens receive only tenants that are currently selectable.
+    tenants: tenantList(state.tenants),
     entities,
     departments,
     deliveryStreams: (state.deliveryStreams ?? []).filter((row) => owned(index.departmentTenant, row.departmentId)),

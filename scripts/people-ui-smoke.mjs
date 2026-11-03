@@ -22,6 +22,19 @@ window.addEventListener('error', (event) => errors.push(event.message));
 const React = (await import('react')).default;
 const { act } = React;
 const { createRoot } = await import('react-dom/client');
+const { createSeedState } = await import('../src/data/seed.ts');
+const workflowFixture = createSeedState();
+workflowFixture.tenants = workflowFixture.tenants.map((tenant) =>
+  tenant.id === 'tnt-harris-farm' ? { ...tenant, id: 'tnt-workflow-fixture', name: 'Workflow test fixture' } : tenant,
+);
+workflowFixture.entities = workflowFixture.entities.map((entity) =>
+  entity.tenantId === 'tnt-harris-farm' ? { ...entity, tenantId: 'tnt-workflow-fixture' } : entity,
+);
+workflowFixture.designations = workflowFixture.designations.map((designation) =>
+  designation.tenantId === 'tnt-harris-farm' ? { ...designation, tenantId: 'tnt-workflow-fixture' } : designation,
+);
+workflowFixture.settings = { ...workflowFixture.settings, activeTenantId: 'tnt-workflow-fixture' };
+localStorage.setItem('orbit.portal.state.v1', JSON.stringify(workflowFixture));
 const { StoreProvider, useStore } = await import('../src/store.tsx');
 const { ToastProvider } = await import('../src/components/toast.tsx');
 const { App } = await import('../src/App.tsx');

@@ -57,6 +57,8 @@ import {
   scopeStateToDepartments,
   scopeStateToTenant,
   tenantDepartments,
+  tenantList,
+  TEMPORARILY_BLOCKED_TENANT_IDS,
 } from './lib/tenants';
 import { leaveBreakdown } from './lib/leave';
 import { orgChain, reparentEmployees, validateOrgMove } from './lib/org';
@@ -64,7 +66,7 @@ import { canPublishLeadershipUpdate, canReadOneOnOneNotes, canViewEscalation, es
 import { externalKey, linkActivity, linkWorkItemsToParent, normaliseAcceptanceCriteria, validateWorkItem, validStreamParent, workItemDescendants } from './lib/delivery';
 import { devopsSampleWorkItems } from './data/delivery-seed';
 import { DEFAULT_TENANT_ID, HARRIS_FARM_TENANT_ID, HARBOURLINE_TENANT_ID, MERIDIAN_TENANT_ID, TENANTS } from './data/tenant-seed';
-import { HARRIS_FARM_ACTIVE_USER_ID, withConfirmedOrganisationHierarchy, withHarrisFarmSample } from './data/harris-farm-seed';
+import { withConfirmedOrganisationHierarchy, withHarrisFarmSample } from './data/harris-farm-seed';
 import { fromSharedState, rememberPersona, rememberTenant } from './lib/workspace-api';
 import { useWorkspacePersistence, type SharedConnection, type WorkspacePersistence } from './lib/useWorkspacePersistence';
 
@@ -166,20 +168,13 @@ export function initialiseWorkspaceState(state: StoreState): StoreState {
   if (!hasHarrisFarm) {
     migrated = withHarrisFarmSample(state);
   }
-  const shouldOpenHarrisFarm =
-    !state.settings?.activeTenantId || state.settings.activeTenantId === HARBOURLINE_TENANT_ID;
   migrated = {
     ...migrated,
     settings: {
       ...migrated.settings,
+      // Keep an existing tenant preference when possible. Normalisation
+      // redirects blocked Harris Farm selections to the available fallback.
       onboardingVersion: 2,
-      ...(shouldOpenHarrisFarm
-        ? {
-            activeTenantId: HARRIS_FARM_TENANT_ID,
-            activeUserId: HARRIS_FARM_ACTIVE_USER_ID,
-            groupName: 'Harris Farm Markets',
-          }
-        : {}),
     },
   };
   return normaliseState(migrated);
@@ -188,15 +183,15 @@ export function initialiseWorkspaceState(state: StoreState): StoreState {
 function loadState(): StoreState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return createSeedState();
+    if (!raw) return initialiseWorkspaceState(createSeedState());
     const parsed = JSON.parse(raw) as StoreState;
-    if (!parsed.employees?.length || !parsed.activities || !parsed.settings) return createSeedState();
+    if (!parsed.employees?.length || !parsed.activities || !parsed.settings) return initialiseWorkspaceState(createSeedState());
     // heals older caches when the demo schema evolves
-    if (!parsed.syncJobs || !parsed.connections || !parsed.escalations) return createSeedState();
-    if (!parsed.projects || !parsed.capitalisation) return createSeedState();
+    if (!parsed.syncJobs || !parsed.connections || !parsed.escalations) return initialiseWorkspaceState(createSeedState());
+    if (!parsed.projects || !parsed.capitalisation) return initialiseWorkspaceState(createSeedState());
     return initialiseWorkspaceState(parsed);
   } catch {
-    return createSeedState();
+    return initialiseWorkspaceState(createSeedState());
   }
 }
 
@@ -304,7 +299,9 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
   const workspace = useWorkspacePersistence(fullState, setFullState, shared);
   const writeTimer = useRef<number | null>(null);
 
-  const tenants = useMemo(() => fullState.tenants ?? [], [fullState.tenants]);
+  // The full register stays in storage so temporary blocks never destroy data,
+  // but neither the UI nor its selection handlers receive blocked tenants.
+  const tenants = useMemo(() => tenantList(fullState.tenants), [fullState.tenants]);
   const activeTenantId = resolveTenantId(tenants, fullState.settings.activeTenantId);
   const tenant = findTenant(tenants, activeTenantId);
 
@@ -469,10 +466,11 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
           if (!employee) return prev;
           return { ...prev, settings: { ...prev.settings, activeUserId: id } };
         }),
-      setActiveTenant: (id) =>
+      setActiveTenant: (id) => {
+        if (!tenants.some((row) => row.id === id)) return;
         save(
           (prev) => {
-            const target = prev.tenants.find((row) => row.id === id);
+            const target = tenantList(prev.tenants).find((row) => row.id === id);
             if (!target) return prev;
             const targetState = scopeStateToTenant(prev, id);
             const current = prev.employees.find((row) => row.id === prev.settings.activeUserId);
@@ -496,7 +494,8 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
             };
           },
           { action: 'Tenant switched', detail: id },
-        ),
+        );
+      },
       setCalendarScope: (nextScope) =>
         save(
           (prev) => {
@@ -516,6 +515,7 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
       upsertTenant: (nextTenant) =>
         save(
           (prev) => {
+            if (TEMPORARILY_BLOCKED_TENANT_IDS.has(nextTenant.id)) return prev;
             const exists = prev.tenants.some((row) => row.id === nextTenant.id);
             return {
               ...prev,
@@ -529,8 +529,9 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
       deleteTenant: (id) =>
         save(
           (prev) => {
-            // A workspace always keeps at least one tenant.
-            if (prev.tenants.length <= 1) return prev;
+            // A workspace always keeps at least one tenant. The temporary
+            // block hides but never deletes the retained tenant and its data.
+            if (TEMPORARILY_BLOCKED_TENANT_IDS.has(id) || prev.tenants.length <= 1) return prev;
             return removeTenant(prev, id);
           },
           { action: 'Tenant removed', detail: id },
@@ -1374,7 +1375,7 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
       resetDemo: () => {
         if (shared) return; // never replace the shared database with demo data
         localStorage.removeItem(STORAGE_KEY);
-        setFullState(createSeedState());
+        setFullState(initialiseWorkspaceState(createSeedState()));
       },
     };
   }, [

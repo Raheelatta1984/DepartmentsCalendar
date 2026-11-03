@@ -14,9 +14,24 @@ window.scrollTo = () => {};
 window.matchMedia ||= () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} });
 
 const { createRoot } = await import('react-dom/client');
+const { createSeedState } = await import('../src/data/seed.ts');
+const workflowFixture = createSeedState();
+// This integration test needs a selectable tenant but exercises the Harris
+// Farm-shaped org fixture; give its copy a test-only tenant ID so it does not
+// bypass the production temporary block.
+workflowFixture.tenants = workflowFixture.tenants.map((tenant) =>
+  tenant.id === 'tnt-harris-farm' ? { ...tenant, id: 'tnt-workflow-fixture', name: 'Workflow test fixture' } : tenant,
+);
+workflowFixture.entities = workflowFixture.entities.map((entity) =>
+  entity.tenantId === 'tnt-harris-farm' ? { ...entity, tenantId: 'tnt-workflow-fixture' } : entity,
+);
+workflowFixture.designations = workflowFixture.designations.map((designation) =>
+  designation.tenantId === 'tnt-harris-farm' ? { ...designation, tenantId: 'tnt-workflow-fixture' } : designation,
+);
+workflowFixture.settings = { ...workflowFixture.settings, activeTenantId: 'tnt-workflow-fixture' };
+localStorage.setItem('orbit.portal.state.v1', JSON.stringify(workflowFixture));
 const { StoreProvider, useStore, emptyActivity, emptyStandup, emptyEscalation, normaliseState } = await import('../src/store.tsx');
 const { HARRIS_FARM_EMPLOYEE_IDS: ids } = await import('../src/data/harris-farm-seed.ts');
-const { createSeedState } = await import('../src/data/seed.ts');
 const { standupVisibleIds, standupStateForViewer, canSeeLeadershipUpdate, canViewEscalation, canViewOneOnOne, canReadOneOnOneNotes, feelingScale } = await import('../src/lib/people-workflows.ts');
 const { standupLayers } = await import('../src/lib/standups.ts');
 const { scopeStateToTenant, scopeStateToDepartments, mergeTenantState, removeTenant } = await import('../src/lib/tenants.ts');
@@ -140,6 +155,9 @@ assert.equal(feelingScale(latest.tenant)[0].label, 'Needs support');
 const healed = normaliseState({ ...latest.state, oneOnOnes: undefined, leadershipUpdates: undefined });
 assert.deepEqual(healed.oneOnOnes, []); assert.deepEqual(healed.leadershipUpdates, []);
 const original = createSeedState();
+original.tenants = original.tenants.map((row) => row.id === 'tnt-harris-farm' ? { ...row, id: 'tnt-workflow-fixture', name: 'Workflow test fixture' } : row);
+original.entities = original.entities.map((row) => row.tenantId === 'tnt-harris-farm' ? { ...row, tenantId: 'tnt-workflow-fixture' } : row);
+original.designations = original.designations.map((row) => row.tenantId === 'tnt-harris-farm' ? { ...row, tenantId: 'tnt-workflow-fixture' } : row);
 const merged = mergeTenantState(original, latest.state, latest.tenant.id);
 const harris = scopeStateToTenant(merged, latest.tenant.id);
 const other = scopeStateToTenant(merged, 'tnt-harbourline');
