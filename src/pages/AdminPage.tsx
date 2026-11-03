@@ -480,6 +480,44 @@ export function AdminPage() {
       {tab === 'tenants' ? (
         <div className="grid gap-3 xl:grid-cols-3">
           <div className="space-y-3 xl:col-span-2">
+            {!state.settings.harrisFarmMarketEnabled ? (
+              <Card className="border-brand-200 bg-brand-50/40">
+                <div className="flex items-start justify-between gap-2 p-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 flex-none items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+                        <Building2 className="h-3.5 w-3.5" />
+                      </span>
+                      <div className="text-xs font-semibold text-slate-800">
+                        Harris Farm Markets is hidden behind the Master setup switch
+                      </div>
+                    </div>
+                    <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
+                      The tenant, its group → company entities, IT department, people and DevOps backlog stay in the workspace, but the
+                      tenant is not selectable while the switch is off. Enable it here or in Master setup → Group settings.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    disabled={!canEdit}
+                    onClick={() => {
+                      // Keep the Group settings draft in step with the saved
+                      // switch so the toggle reflects the change immediately.
+                      setSettingsDraft((prev) => ({ ...prev, harrisFarmMarketEnabled: true }));
+                      updateSettings({ harrisFarmMarketEnabled: true });
+                      toast.push({
+                        tone: 'success',
+                        title: 'Harris Farm Markets enabled',
+                        description: 'The tenant now appears in this list — switch to it to open its IT calendar.',
+                      });
+                    }}
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Enable now
+                  </Button>
+                </div>
+              </Card>
+            ) : null}
             <Card padded={false}>
               <div className="flex flex-wrap items-end justify-between gap-2 px-4 pt-4">
                 <SectionHeader

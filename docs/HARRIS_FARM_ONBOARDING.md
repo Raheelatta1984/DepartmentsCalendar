@@ -6,6 +6,7 @@ The Harris Farm Markets group and entity are gated behind a **Master setup → G
 
 - **Off by default.** While the switch is off, the tenant is hidden from tenant selection and every operational screen; the portal opens on Harbourline Retail Australia instead.
 - **Turning it on** makes the tenant appear in **Master setup → Tenants**, ready to switch to, and restores the whole rollout below — group → company entities, IT department, people, streams, work items and activities.
+- **A missing tenant explains itself.** With the switch off, Master setup → Tenants shows a notice saying the tenant is hidden behind the switch, with a one-click **Enable now** button — no need to hunt for the toggle.
 - **Hiding it never deletes data.** Turning the switch off keeps every Harris Farm row in the workspace; re-enabling brings it back exactly as it was.
 
 ## Entity and scope
