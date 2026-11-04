@@ -17,7 +17,9 @@ A new App demo screen presents the portal like a mobile-app store listing — br
 - Screenshots are the real screens: each of the 20 tabs is rendered by its actual page component inside an auto-adjusting 20" 16:9 monitor frame — one full-width block per screen, pixel-identical to the app
 - All 20 portal tabs are covered: every screen is the live page with the real yellow AI guide sticky note (title, tip, watch) rendered on top
 - Watch demo video: a cinematic in-app player (big banner on the demo page plus a header action) that auto-advances through all 20 real screens with per-scene captions and human-sounding AI voiceover narration, branded by the selected tenant
-- Export demo PDF restructured: per tab a full-screen page (20" 16:9 frame at full page width, with continuation pages when the screen overflows) followed by a dedicated brief page — guide note, live data points, purpose, impact, outcome and industry examples
+- Export demo PDF restructured: per tab a full-screen A4 landscape page (the 20" 16:9 monitor frame fills the whole page, with continuation pages when the screen overflows) followed by a dedicated brief page — guide note, live data points, purpose, impact, outcome and industry examples
+- Shareable demo link: #/demo?tenant=...&entity=... deep-links straight into the demo for a chosen company, with a Copy shareable link button and the link shown on the page
+- Export shareable page: a self-contained static HTML file (works from any host or file://) with the brand, stats, every screen’s caption, AI guide note, live points and full AI brief, plus a prominent link to the live demo with its video tour
 - Each screenshot ships with an AI-generated brief — purpose, impact, outcome and real examples by industry (retail, construction, facilities, IT services, advisory)
 - Tenant + entity selection drives everything — brand, logo, colors and all numbers/screenshots follow the selection and stay tenant-scoped
 - Export demo PDF: branded cover, one page per screen (sticky note + AI brief drawn in) and a features page — ready to share with the wider audience
