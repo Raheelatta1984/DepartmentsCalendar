@@ -62,11 +62,11 @@ for (const item of NAV_ITEMS) {
 assert.ok(harbourline.screenshots.every((s) => s.points.length > 0));
 console.log(`PASS: demo covers all ${NAV_ITEMS.length} tabs, each with guide note + live points`);
 
-// PDF: real PDF, cover + one page per screenshot + features page.
+// PDF: real PDF, cover + per tab a full-screen page (plus continuation pages) and a brief page + features page.
 const pdf = buildDemoPDF(meridian);
 assert.ok(pdf.output().startsWith('%PDF'));
-assert.equal(pdf.getNumberOfPages(), 2 + meridian.screenshots.length);
-console.log('PASS: demo PDF is a real multi-page PDF (cover + every screen + features)');
+assert.ok(pdf.getNumberOfPages() >= 2 + meridian.screenshots.length * 2, `cover + screen page(s) + brief page per tab + features: ${pdf.getNumberOfPages()} pages`);
+console.log(`PASS: demo PDF is a real multi-page PDF (${pdf.getNumberOfPages()} pages: cover, full screen + brief per tab, features)`);
 
 // Screen: renders and the tenant selector re-brands the demo.
 localStorage.setItem('orbit.portal.state.v1', JSON.stringify(seed));
@@ -94,8 +94,9 @@ assert.ok(guideNotes[0].textContent.includes('Guide'), 'sticky note shows the GU
 // the screens are the real app pages, not mocks: first frame shows a real dashboard widget
 assert.ok(shots[0].textContent.length > 2000, 'real screen content renders inside the frame (dashboard page)');
 assert.ok(html.includes('Department calendar') && html.includes('Master setup'), 'every tab title appears in the demo blocks');
-// demo video entry point + script coverage
+// demo video entry points (header action + prominent banner) + script coverage
 assert.ok(html.includes('Watch demo video'), 'demo video button renders');
+assert.ok(document.querySelector('[data-demo-video-cta]'), 'prominent demo video banner renders');
 const { DEMO_SCENES } = await import('../src/data/demo-script.ts');
 assert.equal(DEMO_SCENES.length, NAV_ITEMS.length, 'one video scene per tab');
 assert.ok(DEMO_SCENES.every((s) => s.audio.startsWith('/demo-audio/') && s.narration.length > 40), 'every scene has narration audio');

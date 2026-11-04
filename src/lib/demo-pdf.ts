@@ -5,9 +5,11 @@ import type { DemoModel } from './demo-content';
 /* App demo — shareable PDF                                            */
 /*                                                                     */
 /* A marketing-style PDF of the store-listing demo: branded cover,     */
-/* stats, one page per "screenshot" (drawn as a 20" 16:9 monitor frame with  */
-/* the live caption + bullets) and a features page. Same DemoModel as  */
-/* the screen, so the PDF always matches what was on screen.          */
+/* then per tab a full-screen page (20" 16:9 monitor frame, with      */
+/* continuation pages when the screen content overflows) followed by   */
+/* a dedicated brief page (guide note, live points, purpose / impact  */
+/* / outcome and industry examples), and a features page. Same        */
+/* DemoModel as the screen, so the PDF always matches what was shown.  */
 /* ------------------------------------------------------------------ */
 
 const INK: [number, number, number] = [30, 41, 59];
@@ -89,121 +91,157 @@ export function buildDemoPDF(model: DemoModel): jsPDF {
   doc.setFontSize(8);
   doc.text(`Generated ${new Date().toLocaleDateString('en-AU')} · share this PDF with the wider audience`, 20, H - 10);
 
-  /* ---- One page per screenshot ---- */
-  model.screenshots.forEach((shot, index) => {
+  /* ---- Per tab: full-screen page(s), then a dedicated brief page ---- */
+  const frameX = 15;
+  const frameY = 22;
+  const frameW = W - 30; // full-width 20" 16:9 monitor frame
+  const frameH = Math.round((frameW * 9) / 16);
+  const rowH = 11;
+  const rowsPerPage = Math.max(1, Math.floor((frameH - 50) / rowH));
+
+  const drawScreenFrame = (shot: DemoModel['screenshots'][number], rows: string[], suffix: string, footer: string) => {
     doc.addPage();
-    // 20" 16:9 monitor frame on the left, like the demo page
-    const px = 20;
-    const py = 24;
-    const pw = 78;
-    const ph = Math.round((pw * 9) / 16);
     doc.setDrawColor(15, 23, 42);
     doc.setLineWidth(1.6);
-    doc.roundedRect(px, py, pw, ph, 4, 4, 'S');
+    doc.roundedRect(frameX, frameY, frameW, frameH, 4, 4, 'S');
     doc.setFillColor(15, 23, 42);
-    doc.rect(px + pw / 2 - 6, py + ph, 12, 3, 'F'); // monitor stand
+    doc.rect(frameX + frameW / 2 - 8, frameY + frameH, 16, 3.5, 'F'); // monitor stand
+    doc.rect(frameX + frameW / 2 - 16, frameY + frameH + 3.5, 32, 1.8, 'F');
+    // in-screen brand header
     doc.setFillColor(...brand);
-    doc.rect(px + 2.5, py + 4, pw - 5, 8, 'F');
+    doc.rect(frameX + 2.5, frameY + 3, frameW - 5, 9, 'F');
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6.5);
+    doc.setFontSize(8);
     doc.setTextColor(255, 255, 255);
-    doc.text(wrap(doc, shot.title, pw - 8).slice(0, 1), px + 4.5, py + 9.5);
+    doc.text(`${shot.title}${suffix}`, frameX + 5, frameY + 9.2);
     // AI guide sticky note inside the real screen
-    let ry = py + 15;
+    let ry = frameY + 15;
     doc.setFillColor(246, 230, 162);
-    doc.roundedRect(px + 3, ry, pw - 6, 24, 1.5, 1.5, 'F');
+    doc.roundedRect(frameX + 3, ry, frameW - 6, 26, 1.5, 1.5, 'F');
     doc.setFillColor(255, 255, 255);
-    doc.roundedRect(px + 6, ry - 2, 12, 3, 1, 1, 'F');
+    doc.roundedRect(frameX + 7, ry - 2.5, 16, 4, 1, 1, 'F');
     doc.setFillColor(34, 32, 15);
-    doc.roundedRect(px + 5, ry + 2, 10, 3.5, 1, 1, 'F');
+    doc.roundedRect(frameX + 6, ry + 2.5, 13, 4.5, 1, 1, 'F');
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(4);
-    doc.setTextColor(247, 236, 198);
-    doc.text('GUIDE', px + 6, ry + 4.8);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6);
-    doc.setTextColor(47, 44, 24);
-    doc.text(wrap(doc, shot.guide.title, pw - 22).slice(0, 1), px + 17, ry + 4.5);
-    doc.setFont('helvetica', 'normal');
     doc.setFontSize(5);
-    doc.setTextColor(87, 82, 47);
-    doc.text(wrap(doc, `Do this: ${shot.guide.tip}`, pw - 10).slice(0, 3), px + 5, ry + 9);
-    ry += 27;
-    // content rows (fit inside the 16:9 frame)
-    doc.setFont('helvetica', 'normal');
-    shot.points.slice(0, 2).forEach((p) => {
-      doc.setFillColor(248, 250, 252);
-      doc.roundedRect(px + 3, ry, pw - 6, 10, 1.5, 1.5, 'F');
-      doc.setFontSize(5.5);
-      doc.setTextColor(...INK);
-      doc.text(wrap(doc, p, pw - 10).slice(0, 2), px + 5, ry + 4);
-      ry += 12;
-    });
-    // content on the right
+    doc.setTextColor(247, 236, 198);
+    doc.text('GUIDE', frameX + 7.5, ry + 5.8);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(16);
+    doc.setFontSize(8);
+    doc.setTextColor(47, 44, 24);
+    doc.text(wrap(doc, shot.guide.title, frameW - 40).slice(0, 1), frameX + 24, ry + 6);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(87, 82, 47);
+    doc.text(wrap(doc, `Do this: ${shot.guide.tip}`, frameW - 12).slice(0, 4), frameX + 6, ry + 11.5);
+    ry += 30;
+    // content rows inside the frame
+    doc.setFont('helvetica', 'normal');
+    for (const p of rows) {
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(frameX + 3, ry, frameW - 6, rowH - 1.5, 1.5, 1.5, 'F');
+      doc.setFontSize(6.5);
+      doc.setTextColor(...INK);
+      doc.text(wrap(doc, p, frameW - 12).slice(0, 2), frameX + 6, ry + 4.6);
+      ry += rowH;
+    }
+    doc.setFontSize(8);
+    doc.setTextColor(...MUTED);
+    doc.text(footer, 20, H - 10);
+  };
+
+  model.screenshots.forEach((shot, index) => {
+    const label = `${model.appName} · screen ${index + 1} of ${model.screenshots.length}`;
+    // 1) full screen — as many rows as fit, continuation pages for the rest
+    const pages = Math.max(1, Math.ceil(shot.points.length / rowsPerPage));
+    for (let p = 0; p < pages; p++) {
+      const rows = shot.points.slice(p * rowsPerPage, (p + 1) * rowsPerPage);
+      const suffix = pages > 1 ? (p === 0 ? ' (1/2)' : ' (continued)') : '';
+      const footer = pages > 1 ? `${label} · screen page ${p + 1}/${pages}` : `${label} · full screen`;
+      drawScreenFrame(shot, rows, suffix, footer);
+    }
+
+    // 2) brief page — caption, sticky note, live points, purpose/impact/outcome, industries
+    doc.addPage();
+    let by = 26;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(17);
     doc.setTextColor(...INK);
-    doc.text(shot.title, 95, 30);
+    doc.text(`${shot.title} — brief`, 20, by);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.setTextColor(...MUTED);
-    doc.text(wrap(doc, shot.caption, 95), 95, 38);
-    // sticky-note summary on the right too
+    by = bullets(doc, [shot.caption], 20, by + 6, 170, 5) + 4;
+    // sticky-note summary
     doc.setFillColor(246, 230, 162);
-    doc.roundedRect(95, 42, 95, 14, 2, 2, 'F');
+    doc.roundedRect(20, by, 170, 16, 2, 2, 'F');
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6);
+    doc.setFontSize(7);
     doc.setTextColor(47, 44, 24);
-    doc.text(`AI GUIDE — ${shot.guide.title}`, 98, 47);
+    doc.text(`AI GUIDE — ${shot.guide.title}`, 23, by + 5.5);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.5);
+    doc.setFontSize(7.5);
     doc.setTextColor(87, 82, 47);
-    doc.text(wrap(doc, `Do this: ${shot.guide.tip}`, 90).slice(0, 2), 98, 51);
+    doc.text(wrap(doc, `Do this: ${shot.guide.tip}`, 164).slice(0, 2), 23, by + 10.5);
+    by += 22;
     // live data points
-    doc.setFontSize(9);
-    doc.setTextColor(...INK);
-    let by = bullets(doc, shot.points, 95, 62, 95, 5);
-    // AI-generated brief: purpose / impact / outcome / industry examples
-    by += 4;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
-    doc.setTextColor(...brand);
-    doc.text('AI BRIEF', 95, by);
+    doc.setTextColor(...INK);
+    doc.text('On this screen right now', 20, by);
+    by += 6;
+    by = bullets(doc, shot.points, 20, by, 170, 4.8, 40);
     by += 5;
+    // AI-generated brief: purpose / impact / outcome / industry examples
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(...brand);
+    doc.text('AI BRIEF', 20, by);
+    by += 7;
+    const ensure = (need: number) => {
+      if (by + need > H - 16) {
+        doc.addPage();
+        by = 24;
+      }
+    };
     const briefRows: [string, string][] = [
       ['Purpose', shot.brief.purpose],
       ['Impact', shot.brief.impact],
       ['Outcome', shot.brief.outcome],
     ];
     for (const [label, text] of briefRows) {
+      ensure(16);
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
+      doc.setFontSize(9);
       doc.setTextColor(...INK);
-      doc.text(label, 95, by);
+      doc.text(label, 20, by);
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
+      doc.setFontSize(9);
       doc.setTextColor(...MUTED);
-      by = bullets(doc, [text], 112, by, 78, 4.4, 4) + 1;
+      by = bullets(doc, [text], 42, by, 148, 4.6, 6) + 2;
     }
+    ensure(10);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
+    doc.setFontSize(9);
     doc.setTextColor(...INK);
-    doc.text('By industry', 95, by);
-    by += 4.5;
+    doc.text('By industry', 20, by);
+    by += 5.5;
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(8.5);
     doc.setTextColor(...MUTED);
     for (const ex of shot.brief.examples) {
-      if (by > H - 24) break;
+      ensure(10);
       doc.setFont('helvetica', 'bold');
-      doc.text(`${ex.industry}:`, 95, by);
-      const labelW = doc.getTextWidth(`${ex.industry}: `) + 1;
+      doc.setTextColor(...INK);
+      doc.text(`${ex.industry}:`, 20, by);
+      const labelW = doc.getTextWidth(`${ex.industry}: `) + 1.5;
       doc.setFont('helvetica', 'normal');
-      by = bullets(doc, [ex.example], 95 + labelW, by, 95 - labelW, 4.2, 3) + 1;
+      doc.setTextColor(...MUTED);
+      by = bullets(doc, [ex.example], 20 + labelW, by, 170 - labelW, 4.4, 4) + 1.5;
     }
     doc.setFontSize(8);
     doc.setTextColor(...MUTED);
-    doc.text(`${model.appName} · screen ${index + 1} of ${model.screenshots.length}`, 20, H - 10);
+    doc.text(`${label} · brief`, 20, H - 10);
   });
 
   /* ---- Features page ---- */

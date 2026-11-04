@@ -110,6 +110,29 @@ export function DemoPage() {
         </div>
       </Card>
 
+      {/* Demo video — prominent banner so it is easy to find */}
+      <button
+        type="button"
+        onClick={() => setVideoOpen(true)}
+        data-demo-video-cta
+        className="group mb-6 block w-full overflow-hidden rounded-2xl bg-slate-950 text-left shadow-xl ring-1 ring-slate-800 transition-transform hover:-translate-y-0.5"
+      >
+        <div className="flex flex-wrap items-center gap-4 px-5 py-5 sm:px-8">
+          <span className="flex h-14 w-14 flex-none items-center justify-center rounded-full text-white shadow-lg transition-transform group-hover:scale-110" style={{ background: model.brandColor }}>
+            <Play className="ml-1 h-6 w-6 fill-white" />
+          </span>
+          <span className="min-w-0 flex-1 basis-64">
+            <span className="block text-lg font-bold text-white">Watch the demo video</span>
+            <span className="mt-0.5 block text-sm text-slate-300">
+              A guided tour of all {model.screenshots.length} screens with AI voiceover — follows the tenant &amp; entity selected above ({model.entityName}).
+            </span>
+          </span>
+          <span className="rounded-full border border-white/25 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-white group-hover:bg-white/10">
+            Play · {model.screenshots.length} scenes
+          </span>
+        </div>
+      </button>
+
       {/* Screenshots — one detailed 20" screen per portal tab, one per page block */}
       <SectionHeader title={`Screenshots · ${model.screenshots.length} screens`} subtitle={`${model.entityName} · 20" display view, live from the workspace with AI briefs — not stock images`} className="mb-3" />
       <div className="mb-6 space-y-8">
