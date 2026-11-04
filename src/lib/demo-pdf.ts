@@ -150,18 +150,57 @@ export function buildDemoPDF(model: DemoModel): jsPDF {
     doc.text(wrap(doc, shot.caption, 95), 95, 38);
     // sticky-note summary on the right too
     doc.setFillColor(246, 230, 162);
-    doc.roundedRect(95, 42, 95, 16, 2, 2, 'F');
+    doc.roundedRect(95, 42, 95, 14, 2, 2, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6);
     doc.setTextColor(47, 44, 24);
     doc.text(`AI GUIDE — ${shot.guide.title}`, 98, 47);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
+    doc.setFontSize(6.5);
     doc.setTextColor(87, 82, 47);
-    doc.text(wrap(doc, `Do this: ${shot.guide.tip}`, 90).slice(0, 2), 98, 51.5);
-    doc.setFontSize(9.5);
+    doc.text(wrap(doc, `Do this: ${shot.guide.tip}`, 90).slice(0, 2), 98, 51);
+    // live data points
+    doc.setFontSize(9);
     doc.setTextColor(...INK);
-    bullets(doc, shot.points, 95, 64, 95, 5.5);
+    let by = bullets(doc, shot.points, 95, 62, 95, 5);
+    // AI-generated brief: purpose / impact / outcome / industry examples
+    by += 4;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(...brand);
+    doc.text('AI BRIEF', 95, by);
+    by += 5;
+    const briefRows: [string, string][] = [
+      ['Purpose', shot.brief.purpose],
+      ['Impact', shot.brief.impact],
+      ['Outcome', shot.brief.outcome],
+    ];
+    for (const [label, text] of briefRows) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(...INK);
+      doc.text(label, 95, by);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...MUTED);
+      by = bullets(doc, [text], 112, by, 78, 4.4, 4) + 1;
+    }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(...INK);
+    doc.text('By industry', 95, by);
+    by += 4.5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...MUTED);
+    for (const ex of shot.brief.examples) {
+      if (by > H - 24) break;
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${ex.industry}:`, 95, by);
+      const labelW = doc.getTextWidth(`${ex.industry}: `) + 1;
+      doc.setFont('helvetica', 'normal');
+      by = bullets(doc, [ex.example], 95 + labelW, by, 95 - labelW, 4.2, 3) + 1;
+    }
     doc.setFontSize(8);
     doc.setTextColor(...MUTED);
     doc.text(`${model.appName} · screen ${index + 1} of ${model.screenshots.length}`, 20, H - 10);

@@ -56,6 +56,8 @@ for (const item of NAV_ITEMS) {
   assert.ok(shot, `screenshot exists for tab ${item.id}`);
   assert.ok(shot.guide.title && shot.guide.tip, `screenshot ${item.id} carries the AI guide sticky note content`);
   assert.ok(shot.points.length > 0, `screenshot ${item.id} has live data points`);
+  assert.ok(shot.brief.purpose && shot.brief.impact && shot.brief.outcome, `screenshot ${item.id} has a purpose/impact/outcome brief`);
+  assert.ok(shot.brief.examples.length >= 4 && shot.brief.examples.every((e) => e.industry && e.example), `screenshot ${item.id} has industry examples`);
 }
 assert.ok(harbourline.screenshots.every((s) => s.points.length > 0));
 console.log(`PASS: demo covers all ${NAV_ITEMS.length} tabs, each with guide note + live points`);
@@ -83,11 +85,17 @@ assert.ok(html.includes('Screenshots'), 'screenshots section renders');
 assert.ok(html.includes('Why every company needs it'), 'features section renders');
 assert.ok(html.includes('Export demo PDF'), 'PDF export action renders');
 assert.ok(html.includes('Orbit ·'), 'store-style app name renders');
-// every phone frame carries the AI guide sticky note
+// every 20" screen block carries the AI guide sticky note and an AI brief
+const shots = document.querySelectorAll('[data-demo-shot]');
+assert.equal(shots.length, NAV_ITEMS.length, `one 20" screen per tab: ${shots.length}`);
 const guideNotes = document.querySelectorAll('[data-mini-guide="true"]');
 assert.equal(guideNotes.length, NAV_ITEMS.length, `one sticky guide note per screenshot: ${guideNotes.length}`);
-assert.ok([...guideNotes[0].textContent].join('').length > 10 && guideNotes[0].textContent.includes('GUIDE') || guideNotes[0].textContent.includes('Guide'), 'sticky note shows the GUIDE chip');
+assert.ok(guideNotes[0].textContent.includes('Guide'), 'sticky note shows the GUIDE chip');
 assert.ok(html.includes('Department calendar') && html.includes('Master setup'), 'sidebar lists every tab inside the screenshots');
+const briefs = [...document.querySelectorAll('dl')].filter((dl) => dl.textContent.includes('Purpose') && dl.textContent.includes('Impact') && dl.textContent.includes('Outcome'));
+assert.equal(briefs.length, NAV_ITEMS.length, `one AI brief (purpose/impact/outcome) per screenshot: ${briefs.length}`);
+assert.ok(html.includes('By industry'), 'industry examples render in the briefs');
+assert.ok(html.includes('aspect-ratio: 16 / 9') || html.includes('aspect-ratio:16/9'), '20" screen frames auto-adjust via 16:9 aspect ratio');
 
 // Switch tenant in the selector: the hero app name must change.
 const selects = [...document.querySelectorAll('select')];
