@@ -80,19 +80,20 @@ export type Release = {
 
 export const RELEASES: Release[] = [
   {
-    title: 'Department status pack with department filters and PPTX / PDF / CSV export',
+    title: 'Department status pack with department filters and real PDF / PPTX+AI-prompt / CSV export',
     date: '2026-11-04',
     released: '4 November 2026',
     label: 'Just added',
     tone: 'brand',
     icon: 'layout',
     description:
-      'A new Department status pack screen renders the weekly attachment-style overview for any department: executive RAG with score, team feeling, workload band, support need, immediate priority clusters, delivered outcomes, key milestones, critical risks & dependencies and governance commitments — all derived live from the workspace. A dedicated selection section lets you pick all, multiple or a single department (plus a week/month period), and the whole pack exports to PPTX (one slide per department), PDF via the browser print dialog, or CSV for downstream tooling.',
+      'A new Department status pack screen renders the weekly attachment-style overview for any department: executive RAG with score, team feeling, workload band, support need, immediate priority clusters, delivered outcomes, key milestones, critical risks & dependencies and governance commitments — all derived live from the workspace. A dedicated selection section lets you pick all, multiple or a single department (plus a week/month period). The pack exports to a real PDF (jsPDF, one colored A4 page per department in the same layout as the screen — not a page print), to PPTX, and to CSV. The PPTX export also copies an AI prompt to the clipboard and embeds it on a Copilot slide: open the file, go to Copilot, paste and run, and every slide is reformatted into the status-pack design with the RAG colors.',
     bullets: [
       'New Department status pack screen with an attachment-style report card per department (RAG, feeling, workload, support need, priorities, outcomes, milestones, risks, governance)',
       'Separate department selection section: all / multiple / single department chips, plus week or month period',
-      'Export the pack to PPTX (title slide + one slide per department), PDF (print) and CSV',
-      'Report content is computed from live activities, projects, stand-ups, escalations and PMO data — the screen and the exports always agree',
+      'Real PDF export (jsPDF): one colored A4-landscape page per department, same layout and colors as the on-screen section',
+      'PPTX export (one slide per department) that automatically copies a Copilot AI prompt to the clipboard and embeds it on the deck’s first slide — paste into Copilot in PowerPoint to reformat the whole file',
+      'CSV export for downstream tooling; report content is computed from live data so the screen and every export always agree',
     ],
     link: { view: 'dept-report', label: 'Open the status pack' },
   },

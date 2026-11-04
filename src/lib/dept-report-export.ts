@@ -15,6 +15,40 @@ const INK = '1E293B';
 const MUTED = '64748B';
 const ACCENT = '2563EB';
 
+/**
+ * The AI prompt copied to the clipboard when the PPTX is exported and shown
+ * on the deck's first slide. Paste it into Copilot inside PowerPoint and it
+ * reformats every slide into the status-pack design (colors included).
+ */
+export const COPILOT_REFORMAT_PROMPT = [
+  'Reformat this entire deck into a polished weekly "Department status pack" design, keeping all existing text and data.',
+  'Slide 1 stays a title slide: large title "Department status pack", tenant name, department count and generation date.',
+  'Every department slide must follow this layout: a header band with the department name and code plus "Update <date> | Action tracker <date>"; a 4-card KPI strip with colored cards (Executive status card filled green/amber/red to match the RAG, Feeling, Workload, Support need); then three columns for "Immediate priority clusters", "Delivered outcomes" and "Key milestones" (milestones as date chips "d MMM — label"); then a bottom band with "Critical risks and dependencies" on a light red background and "Governance commitments" beside it.',
+  'Use a clean sans-serif font, dark slate text (#1E293B), muted grey secondary text (#64748B), blue section headings (#2563EB), white page background, rounded cards with subtle borders, and generous spacing. Keep one department per slide, preserve the RAG colors exactly (green #22C55E, amber #F59E0B, red #EF4444), and make sure all bullet text fits on the slide without overflow.',
+].join('\n\n');
+
+/** Copy the Copilot prompt so it is on the clipboard the moment the PPTX opens. */
+export async function copyCopilotPrompt(): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(COPILOT_REFORMAT_PROMPT);
+    return true;
+  } catch {
+    try {
+      const area = document.createElement('textarea');
+      area.value = COPILOT_REFORMAT_PROMPT;
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(area);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
 function addSection(slide: PptxGenJS.Slide, title: string, lines: string[], x: number, y: number, w: number, h: number) {
   slide.addText(title, { x, y, w, h: 0.3, bold: true, fontSize: 13, color: ACCENT });
   if (!lines.length) {
@@ -37,6 +71,18 @@ export function buildReportDeck(reports: DeptReportModel[], tenantName: string):
   title.addText(`${tenantName} · ${reports.length} department${reports.length === 1 ? '' : 's'} · generated ${new Date().toLocaleDateString('en-AU')}`, {
     x: 0.6, y: 3.3, w: 8.8, h: 0.5, fontSize: 14, color: MUTED,
   });
+
+  // Copilot slide: the prompt is on the clipboard already (copied on export),
+  // so opening the file goes straight to Copilot → paste → action.
+  const copilot = pptx.addSlide();
+  copilot.addText('✨ Reformat this deck with Copilot', { x: 0.6, y: 0.5, w: 8.8, h: 0.6, bold: true, fontSize: 24, color: ACCENT });
+  copilot.addText('The AI prompt below is already on your clipboard (copied when you exported). In PowerPoint open Copilot, paste, and run — every slide is reformatted into the status-pack design with colors.', {
+    x: 0.6, y: 1.15, w: 8.8, h: 0.7, fontSize: 12, color: MUTED,
+  });
+  copilot.addText(
+    COPILOT_REFORMAT_PROMPT.split('\n\n').map((para) => ({ text: para, options: { fontSize: 11, color: INK, breakLine: true } })),
+    { x: 0.6, y: 1.95, w: 8.8, h: 4.6, valign: 'top', fill: { color: 'F1F5F9' } },
+  );
 
   for (const report of reports) {
     const slide = pptx.addSlide();
@@ -66,6 +112,9 @@ export function buildReportDeck(reports: DeptReportModel[], tenantName: string):
 }
 
 export async function exportReportPPTX(reports: DeptReportModel[], tenantName: string, filename = 'department-status-pack.pptx') {
+  // Copy the Copilot prompt first, so the moment the file opens the prompt
+  // is ready to paste into Copilot and reformat the whole deck.
+  await copyCopilotPrompt();
   const pptx = buildReportDeck(reports, tenantName);
   await pptx.writeFile({ fileName: filename });
 }

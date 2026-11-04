@@ -35,7 +35,8 @@ const { createRoot } = await import('react-dom/client');
 const { createSeedState } = await import('../src/data/seed.ts');
 const { scopeStateToTenant } = await import('../src/lib/tenants.ts');
 const { buildDepartmentReport, buildDepartmentReports, GOVERNANCE_COMMITMENTS } = await import('../src/lib/dept-report.ts');
-const { buildReportDeck } = await import('../src/lib/dept-report-export.ts');
+const { buildReportDeck, COPILOT_REFORMAT_PROMPT, copyCopilotPrompt } = await import('../src/lib/dept-report-export.ts');
+const { buildReportPDF } = await import('../src/lib/dept-report-pdf.ts');
 
 // Pure builder: every department gets a complete attachment-style model.
 const seed = createSeedState();
@@ -54,10 +55,21 @@ const reports = buildDepartmentReports(scoped, scoped.departments.slice(0, 3), '
 assert.equal(reports.length, 3);
 console.log('PASS: report builder produces a complete model per department');
 
-// PPTX deck builder: title slide + one slide per department.
+// PPTX deck builder: title slide + Copilot prompt slide + one slide per department.
 const deck = buildReportDeck(reports, 'Meridian Group Holdings');
-assert.ok(deck.slides.length >= 1 + reports.length, `deck has ${deck.slides.length} slides`);
-console.log('PASS: PPTX deck builder creates a title slide plus one slide per department');
+assert.equal(deck.slides.length, 2 + reports.length, `deck has ${deck.slides.length} slides`);
+assert.ok(COPILOT_REFORMAT_PROMPT.includes('Reformat this entire deck'), 'AI prompt instructs Copilot to reformat the deck');
+assert.ok(COPILOT_REFORMAT_PROMPT.includes('#22C55E'), 'AI prompt pins the RAG colors');
+console.log('PASS: PPTX deck builder creates title + Copilot prompt slide + one slide per department');
+
+// Real PDF export: a valid PDF with one page per department plus title page.
+const pdf = buildReportPDF(reports, 'Meridian Group Holdings');
+const raw = pdf.output();
+assert.ok(raw.startsWith('%PDF'), 'PDF output is a real PDF file');
+assert.equal(pdf.getNumberOfPages(), 1 + reports.length, 'one PDF page per department plus title page');
+const copied = await copyCopilotPrompt();
+assert.equal(typeof copied, 'boolean', 'clipboard helper resolves');
+console.log('PASS: PDF export produces a real colored PDF; Copilot prompt is clipboard-ready');
 
 console.log('PASS: export helpers load');
 
@@ -78,6 +90,8 @@ const html = document.getElementById('root').innerHTML;
 assert.ok(html.includes('Department status pack'), 'page header renders');
 assert.ok(html.includes('Choose departments'), 'separate department-selection section renders');
 assert.ok(html.includes('Export PPTX'), 'PPTX export action renders');
+assert.ok(html.includes('Export PDF'), 'real PDF export action renders');
+assert.ok(html.includes('Copy AI prompt'), 'Copilot AI-prompt copy action renders');
 assert.ok(html.includes('Executive status'), 'attachment-style KPI row renders');
 assert.ok(html.includes('Key milestones'), 'milestones section renders');
 assert.ok(html.includes('Governance commitments'), 'governance section renders');
