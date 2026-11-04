@@ -852,4 +852,5 @@ export type ViewKey =
   | 'integrations'
   | 'whats-new'
   | 'dept-report'
+  | 'demo'
   | 'theme-studio';

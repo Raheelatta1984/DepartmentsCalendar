@@ -112,6 +112,18 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
     tips: ['Enable the department in Master setup, then create nested streams and assign a lead.', 'Import a CSV/JSON index or fetch an Azure DevOps work-item link. Review before committing.', 'Open a ticket and schedule an activity. Log actual time against that activity in Timesheets.'],
     watch: 'Backlog estimates, calendar plans and logged hours are different measures. A capex tag is not accounting approval.', sections: [], subTabs: [],
   },
+  demo: {
+    title: 'App demo', subtitle: 'A shareable, store-style tour of the portal',
+    blurb: 'The portal presented like a mobile-app store listing: branded hero with rating and live stats, phone-framed screenshots rendered from real workspace data, and a features grid. Pick a tenant and entity and the whole demo — brand, numbers, screenshots — re-renders for that company.',
+    tips: [
+      'Use the tenant and entity selectors at the top: every screenshot and figure follows the selection.',
+      'Export demo PDF produces a shareable marketing document built from the same model as the screen.',
+      'Screenshots are miniature live UI, not stock images — they always match the selected tenant’s data.',
+    ],
+    watch: 'The demo is tenant-scoped: switching tenant never leaks another company’s rows into the screenshots.',
+    sections: [],
+    subTabs: [],
+  },
   'dept-report': {
     title: 'Department status pack', subtitle: 'The weekly one-pager per department, exportable',
     blurb: 'Each selected department gets an attachment-style status card — executive RAG, feeling, workload, support need, priority clusters, delivered outcomes, key milestones, risks and governance commitments — computed live from the same workspace data every other screen reads.',

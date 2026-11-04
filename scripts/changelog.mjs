@@ -42,6 +42,7 @@ const SCREENS = {
   'one-on-ones': 'One-on-ones',
   performance: 'Performance & escalation',
   'dept-report': 'Department status pack',
+  demo: 'App demo',
 };
 
 const problems = [];

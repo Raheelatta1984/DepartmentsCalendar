@@ -60,6 +60,7 @@ export const RELEASE_LINK_VIEWS = [
   'one-on-ones',
   'performance',
   'dept-report',
+  'demo',
 ] as const satisfies readonly ViewKey[];
 export type ReleaseLinkView = (typeof RELEASE_LINK_VIEWS)[number];
 
@@ -79,6 +80,23 @@ export type Release = {
 };
 
 export const RELEASES: Release[] = [
+  {
+    title: 'App demo: a Play-Store-style, tenant-aware product tour exportable to PDF',
+    date: '2026-11-04',
+    released: '4 November 2026',
+    label: 'Just added',
+    tone: 'brand',
+    icon: 'sparkles',
+    description:
+      'A new App demo screen presents the portal like a mobile-app store listing — branded app icon, name, star rating and review count, live stats strip, phone-framed screenshots and a "why every company needs it" feature grid. Tenant and entity selectors re-render the entire demo for the chosen company: brand colors and logo, department/people/project/activity counts, and every screenshot, which is miniature live UI drawn from that tenant’s real data rather than stock images. The whole demo exports to a shareable PDF (branded cover, stats, one page per screenshot, features page) so the wider audience can see exactly what each company gets.',
+    bullets: [
+      'New App demo screen styled like a Google Play listing: icon, rating, stats, screenshots carousel, feature grid',
+      'Tenant + entity selection drives everything — brand, logo, colors and all numbers/screenshots follow the selection and stay tenant-scoped',
+      'Screenshots are phone-framed miniature live UI (command centre, calendar, status pack, PMO tool) built from real workspace data',
+      'Export demo PDF: branded cover, stats, one page per screenshot and a features page — ready to share with the wider audience',
+    ],
+    link: { view: 'demo', label: 'Open the app demo' },
+  },
   {
     title: 'Department status pack with department filters and real PDF / PPTX+AI-prompt / CSV export',
     date: '2026-11-04',
