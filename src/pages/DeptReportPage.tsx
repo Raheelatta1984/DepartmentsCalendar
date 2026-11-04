@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { AlertTriangle, CalendarDays, Check, FileSpreadsheet, MonitorDown, Presentation, Users } from 'lucide-react';
+import { AlertTriangle, CalendarDays, Check, FileSpreadsheet, MonitorDown, Presentation, Sparkles, Users } from 'lucide-react';
 import { useScopedState, useStore } from '../store';
 import type { PeriodKey } from '../types';
 import { buildDepartmentReports, type DeptReportModel } from '../lib/dept-report';
-import { exportReportCSV, exportReportPPTX } from '../lib/dept-report-export';
+import { copyCopilotPrompt, exportReportCSV, exportReportPPTX } from '../lib/dept-report-export';
+import { exportReportPDF } from '../lib/dept-report-pdf';
 import { hoursLabel } from '../lib/capitalisation';
 import { Badge, Button, Card, EmptyState, Field, PageHeader, SectionHeader, Select } from '../components/ui';
 import { useToast } from '../components/toast';
@@ -40,7 +41,18 @@ export function DeptReportPage() {
   const exportPptx = async () => {
     if (!reports.length) return;
     await exportReportPPTX(reports, tenant?.name ?? state.settings.groupName);
-    toast.push({ tone: 'success', title: 'PPTX exported', description: `${reports.length} department slide${reports.length === 1 ? '' : 's'}.` });
+    toast.push({ tone: 'success', title: 'PPTX exported — AI prompt copied', description: 'Open Copilot in PowerPoint, paste (Ctrl+V) and run to reformat every slide.' });
+  };
+
+  const exportPdf = () => {
+    if (!reports.length) return;
+    exportReportPDF(reports, tenant?.name ?? state.settings.groupName);
+    toast.push({ tone: 'success', title: 'PDF exported', description: `${reports.length} department page${reports.length === 1 ? '' : 's'} with the same colors as the screen.` });
+  };
+
+  const copyPrompt = async () => {
+    const ok = await copyCopilotPrompt();
+    toast.push(ok ? { tone: 'success', title: 'AI prompt copied to clipboard', description: 'Paste it into Copilot inside the PPTX to reformat the whole file.' } : { tone: 'error', title: 'Clipboard blocked', description: 'Copy the prompt from the first slide of the exported PPTX instead.' });
   };
 
   return (
@@ -52,8 +64,9 @@ export function DeptReportPage() {
         actions={
           <>
             <Button size="sm" onClick={() => exportReportCSV(reports)} disabled={!reports.length}><FileSpreadsheet className="h-3.5 w-3.5" /> CSV</Button>
-            <Button size="sm" onClick={() => window.print()} disabled={!reports.length}><MonitorDown className="h-3.5 w-3.5" /> PDF (print)</Button>
-            <Button size="sm" variant="primary" onClick={exportPptx} disabled={!reports.length}><Presentation className="h-3.5 w-3.5" /> Export PPTX</Button>
+            <Button size="sm" onClick={exportPdf} disabled={!reports.length}><MonitorDown className="h-3.5 w-3.5" /> Export PDF</Button>
+            <Button size="sm" onClick={copyPrompt} disabled={!reports.length} title="Copy the AI prompt used to reformat the PPTX in Copilot"><Sparkles className="h-3.5 w-3.5" /> Copy AI prompt</Button>
+            <Button size="sm" variant="primary" onClick={exportPptx} disabled={!reports.length}><Presentation className="h-3.5 w-3.5" /> Export PPTX + AI prompt</Button>
           </>
         }
       />
