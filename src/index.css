@@ -106,3 +106,13 @@
     display: none !important;
   }
 }
+
+/* Demo video — slow Ken Burns drift on each scene */
+@keyframes demo-zoom {
+  from { transform: scale(1) translate(0, 0); }
+  to { transform: scale(1.06) translate(-0.6%, -0.8%); }
+}
+.animate-demo-zoom {
+  animation: demo-zoom 14s ease-in-out forwards;
+  transform-origin: 50% 40%;
+}
