@@ -28,11 +28,12 @@ import { OrganisationPage } from './pages/OrganisationPage';
 import { TypeIcon } from './components/activity-ui';
 import { WorkspaceStatus } from './components/WorkspaceStatus';
 import { WhatsNewPage } from './pages/WhatsNewPage';
+import { DeptReportPage } from './pages/DeptReportPage';
 import { ThemeStudioPage } from './pages/ThemeStudioPage';
 import { fontStack, getEntityTheme } from './lib/portal-theme';
 import { employeeTitle } from './lib/permissions';
 
-const VIEWS: ViewKey[] = ['dashboard', 'calendar', 'activities', 'roadmap', 'timesheet', 'standups', 'one-on-ones', 'leave', 'delivery', 'effort-reports', 'projects', 'capitalisation', 'performance', 'integrations', 'organisation', 'admin', 'whats-new', 'theme-studio'];
+const VIEWS: ViewKey[] = ['dashboard', 'calendar', 'activities', 'roadmap', 'timesheet', 'standups', 'one-on-ones', 'leave', 'delivery', 'effort-reports', 'projects', 'capitalisation', 'performance', 'integrations', 'organisation', 'admin', 'whats-new', 'dept-report', 'theme-studio'];
 
 function viewFromHash(): ViewKey {
   const hash = window.location.hash.replace(/^#\/?/, '').split('?')[0];
@@ -198,6 +199,7 @@ export function App() {
             {view === 'organisation' ? <OrganisationPage /> : null}
             {view === 'admin' ? <AdminPage /> : null}
             {view === 'whats-new' ? <WhatsNewPage onNavigate={navigate} /> : null}
+            {view === 'dept-report' ? <DeptReportPage /> : null}
             {view === 'theme-studio' ? <ThemeStudioPage /> : null}
           </div>
           <footer className="mt-8 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 py-3 text-[10px] text-slate-400">

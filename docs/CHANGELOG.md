@@ -3,7 +3,22 @@
 
 The portal’s **What’s new** tab renders this same log from `src/data/releases.ts`, so the screen and this file can never disagree. Newest first.
 
-**25 releases · last updated 4 November 2026**
+**26 releases · last updated 4 November 2026**
+
+---
+
+## Department status pack with department filters and PPTX / PDF / CSV export
+
+**4 November 2026 · Just added**
+
+A new Department status pack screen renders the weekly attachment-style overview for any department: executive RAG with score, team feeling, workload band, support need, immediate priority clusters, delivered outcomes, key milestones, critical risks & dependencies and governance commitments — all derived live from the workspace. A dedicated selection section lets you pick all, multiple or a single department (plus a week/month period), and the whole pack exports to PPTX (one slide per department), PDF via the browser print dialog, or CSV for downstream tooling.
+
+- New Department status pack screen with an attachment-style report card per department (RAG, feeling, workload, support need, priorities, outcomes, milestones, risks, governance)
+- Separate department selection section: all / multiple / single department chips, plus week or month period
+- Export the pack to PPTX (title slide + one slide per department), PDF (print) and CSV
+- Report content is computed from live activities, projects, stand-ups, escalations and PMO data — the screen and the exports always agree
+
+_Where to look: **Department status pack** (`#/dept-report`) — Open the status pack._
 
 ---
 

@@ -59,6 +59,7 @@ export const RELEASE_LINK_VIEWS = [
   'standups',
   'one-on-ones',
   'performance',
+  'dept-report',
 ] as const satisfies readonly ViewKey[];
 export type ReleaseLinkView = (typeof RELEASE_LINK_VIEWS)[number];
 
@@ -78,6 +79,23 @@ export type Release = {
 };
 
 export const RELEASES: Release[] = [
+  {
+    title: 'Department status pack with department filters and PPTX / PDF / CSV export',
+    date: '2026-11-04',
+    released: '4 November 2026',
+    label: 'Just added',
+    tone: 'brand',
+    icon: 'layout',
+    description:
+      'A new Department status pack screen renders the weekly attachment-style overview for any department: executive RAG with score, team feeling, workload band, support need, immediate priority clusters, delivered outcomes, key milestones, critical risks & dependencies and governance commitments — all derived live from the workspace. A dedicated selection section lets you pick all, multiple or a single department (plus a week/month period), and the whole pack exports to PPTX (one slide per department), PDF via the browser print dialog, or CSV for downstream tooling.',
+    bullets: [
+      'New Department status pack screen with an attachment-style report card per department (RAG, feeling, workload, support need, priorities, outcomes, milestones, risks, governance)',
+      'Separate department selection section: all / multiple / single department chips, plus week or month period',
+      'Export the pack to PPTX (title slide + one slide per department), PDF (print) and CSV',
+      'Report content is computed from live activities, projects, stand-ups, escalations and PMO data — the screen and the exports always agree',
+    ],
+    link: { view: 'dept-report', label: 'Open the status pack' },
+  },
   {
     title: 'PMO tool on top of the DevOps delivery tab for the IT department',
     date: '2026-11-04',
