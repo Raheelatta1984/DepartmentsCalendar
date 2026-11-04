@@ -20,6 +20,12 @@ import type {
   LeaveStatus,
   LeadershipUpdate,
   OneOnOneSession,
+  PmoDecision,
+  PmoMilestone,
+  PmoRequest,
+  PmoRisk,
+  PmoStakeholder,
+  PmoUpdateEntry,
   Project,
   Settings,
   StandupEntry,
@@ -138,6 +144,12 @@ export function normaliseState(state: StoreState): StoreState {
     projects: Array.isArray(state.projects) ? state.projects : [],
     capitalisation: state.capitalisation ?? RETAIL_CAPITALISATION_POLICY,
     capitalisationApprovals: Array.isArray(state.capitalisationApprovals) ? state.capitalisationApprovals : [],
+    pmoRequests: Array.isArray(state.pmoRequests) ? state.pmoRequests : [],
+    pmoUpdates: Array.isArray(state.pmoUpdates) ? state.pmoUpdates : [],
+    pmoRisks: Array.isArray(state.pmoRisks) ? state.pmoRisks : [],
+    pmoMilestones: Array.isArray(state.pmoMilestones) ? state.pmoMilestones : [],
+    pmoDecisions: Array.isArray(state.pmoDecisions) ? state.pmoDecisions : [],
+    pmoStakeholders: Array.isArray(state.pmoStakeholders) ? state.pmoStakeholders : [],
     standups: Array.isArray(state.standups) ? state.standups : [],
     leadershipUpdates: Array.isArray(state.leadershipUpdates) ? state.leadershipUpdates : [],
     oneOnOnes: Array.isArray(state.oneOnOnes) ? state.oneOnOnes : [],
@@ -266,6 +278,20 @@ interface StoreContextValue {
   pushToCalendars: (activityId: string, providers?: CalendarProvider[]) => void;
   setActivitySync: (activityId: string, provider: CalendarProvider, enabled: boolean) => void;
   upsertProject: (project: Project) => void;
+  upsertPmoRequest: (request: PmoRequest) => void;
+  /** Approve (onboards a project + top-of-backlog epic) or reject a PMO request. */
+  decidePmoRequest: (id: string, decision: 'approved' | 'rejected', note: string) => string | null;
+  upsertPmoUpdate: (entry: PmoUpdateEntry) => void;
+  deletePmoUpdate: (id: string) => void;
+  upsertPmoRisk: (risk: PmoRisk) => void;
+  deletePmoRisk: (id: string) => void;
+  upsertPmoMilestone: (milestone: PmoMilestone) => void;
+  deletePmoMilestone: (id: string) => void;
+  upsertPmoDecision: (decision: PmoDecision) => void;
+  deletePmoDecision: (id: string) => void;
+  upsertPmoStakeholder: (stakeholder: PmoStakeholder) => void;
+  deletePmoStakeholder: (id: string) => void;
+  updatePmoWorkItem: (item: WorkItem) => string | null;
   upsertStream: (stream: DeliveryStream) => string | null;
   deleteStream: (id: string) => string | null;
   upsertWorkItem: (item: WorkItem) => string | null;
@@ -1335,6 +1361,186 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
           }),
           { action: 'Project saved', detail: `${project.code} · ${project.name}` },
         ),
+      upsertPmoRequest: (request) =>
+        save(
+          (prev) => ({
+            ...prev,
+            pmoRequests: prev.pmoRequests.some((row) => row.id === request.id)
+              ? prev.pmoRequests.map((row) => (row.id === request.id ? request : row))
+              : [request, ...prev.pmoRequests],
+          }),
+          { action: 'PMO request saved', detail: request.title },
+        ),
+      decidePmoRequest: (id, decision, note) => {
+        const current = latestStateRef.current;
+        const request = current.pmoRequests.find((row) => row.id === id);
+        if (!request) return 'That request no longer exists.';
+        if (request.status === 'approved' || request.status === 'rejected') return 'That request has already been decided.';
+        const department = current.departments.find((row) => current.employees.find((e) => e.id === request.requestedById)?.departmentId === row.id)
+          ?? current.departments.find((row) => row.devopsEnabled && current.projects.some((p) => p.departmentId === row.id));
+        if (!department?.devopsEnabled) return 'No DevOps-enabled IT department is available to onboard this request.';
+        const leading = current.deliveryStreams.some((s) => s.leadId === current.settings.activeUserId && s.departmentId === department.id);
+        if (!scope.canManageMaster && !leading) return 'Only department leadership, a stream lead or the PMO can approve requests.';
+        const now = new Date().toISOString();
+        const projectStart = now.slice(0, 10);
+        const projectEnd = new Date(Date.now() + 182 * 86400000).toISOString().slice(0, 10);
+        if (decision === 'rejected') {
+          save(
+            (prev) => ({
+              ...prev,
+              pmoRequests: prev.pmoRequests.map((row) => (row.id === id ? { ...row, status: 'rejected', reviewedById: prev.settings.activeUserId, reviewedAt: now, reviewNote: note } : row)),
+            }),
+            { action: 'PMO request rejected', detail: request.title },
+          );
+          return null;
+        }
+        // Approve: onboard a project and drop a new epic on top of the backlog.
+        const projectSeq = current.projects.filter((p) => p.departmentId === department.id).length + 1;
+        const projectId = uid('prj');
+        const capital = request.portfolio === 'capital';
+        const project: Project = {
+          id: projectId,
+          code: `${department.code}-PMO-${String(projectSeq).padStart(3, '0')}`,
+          name: request.title,
+          description: request.description,
+          entityId: department.entityId,
+          departmentId: department.id,
+          portfolio: request.portfolio,
+          category: request.category,
+          stage: 'approved',
+          status: 'active',
+          priority: 'high',
+          sponsorId: request.requestedById,
+          managerId: current.settings.activeUserId,
+          startDate: projectStart,
+          endDate: projectEnd,
+          budgetAUD: request.estimatedBudgetAUD,
+          capexAUD: capital ? request.estimatedBudgetAUD : 0,
+          opexAUD: capital ? 0 : request.estimatedBudgetAUD,
+          capitalisationRate: 0,
+          assetClass: '',
+          usefulLifeYears: 0,
+          capitalisationStart: projectStart,
+          capitalisationEnd: projectEnd,
+          boardApproved: false,
+          wbsCode: '',
+          tasks: [],
+        };
+        const epic: WorkItem = {
+          id: uid('wi'),
+          kind: 'epic',
+          title: request.title,
+          description: request.description || `Onboarded from PMO request ${request.id}.`,
+          acceptanceCriteria: '',
+          parentId: null,
+          departmentId: department.id,
+          streamId: current.deliveryStreams.find((s) => s.departmentId === department.id && /pmo/i.test(`${s.name} ${s.code}`))?.id ?? current.deliveryStreams.find((s) => s.departmentId === department.id)?.id ?? null,
+          projectId,
+          assigneeId: current.settings.activeUserId,
+          funding: capital ? 'capex' : 'opex',
+          phase: 'discovery',
+          status: 'not_started',
+          priority: 'high',
+          estimateHours: 0,
+          source: 'manual',
+          externalId: '',
+          externalUrl: '',
+          organization: '',
+          devopsProject: '',
+          createdAt: now,
+          updatedAt: now,
+        };
+        const estimateError = validateWorkItem([epic, ...current.workItems], epic);
+        if (estimateError) return estimateError;
+        save(
+          (prev) => ({
+            ...prev,
+            projects: [project, ...prev.projects],
+            workItems: [epic, ...prev.workItems],
+            pmoRequests: prev.pmoRequests.map((row) => (row.id === id ? { ...row, status: 'approved', reviewedById: prev.settings.activeUserId, reviewedAt: now, reviewNote: note, projectId } : row)),
+          }),
+          { action: 'PMO request approved — project onboarded', detail: `${project.code} · ${project.name} · epic at top of backlog` },
+        );
+        return null;
+      },
+      upsertPmoUpdate: (entry) =>
+        save(
+          (prev) => ({
+            ...prev,
+            pmoUpdates: prev.pmoUpdates.some((row) => row.id === entry.id)
+              ? prev.pmoUpdates.map((row) => (row.id === entry.id ? entry : row))
+              : [entry, ...prev.pmoUpdates],
+          }),
+          { action: 'PMO update logged', detail: entry.projectId },
+        ),
+      deletePmoUpdate: (id) =>
+        save((prev) => ({ ...prev, pmoUpdates: prev.pmoUpdates.filter((row) => row.id !== id) }), { action: 'PMO update removed', detail: id }),
+      upsertPmoRisk: (risk) =>
+        save(
+          (prev) => ({
+            ...prev,
+            pmoRisks: prev.pmoRisks.some((row) => row.id === risk.id)
+              ? prev.pmoRisks.map((row) => (row.id === risk.id ? risk : row))
+              : [risk, ...prev.pmoRisks],
+          }),
+          { action: 'PMO risk saved', detail: risk.title },
+        ),
+      deletePmoRisk: (id) =>
+        save((prev) => ({ ...prev, pmoRisks: prev.pmoRisks.filter((row) => row.id !== id) }), { action: 'PMO risk removed', detail: id }),
+      upsertPmoMilestone: (milestone) =>
+        save(
+          (prev) => ({
+            ...prev,
+            pmoMilestones: prev.pmoMilestones.some((row) => row.id === milestone.id)
+              ? prev.pmoMilestones.map((row) => (row.id === milestone.id ? milestone : row))
+              : [milestone, ...prev.pmoMilestones],
+          }),
+          { action: 'PMO milestone saved', detail: milestone.title },
+        ),
+      deletePmoMilestone: (id) =>
+        save((prev) => ({ ...prev, pmoMilestones: prev.pmoMilestones.filter((row) => row.id !== id) }), { action: 'PMO milestone removed', detail: id }),
+      upsertPmoDecision: (decision) =>
+        save(
+          (prev) => ({
+            ...prev,
+            pmoDecisions: prev.pmoDecisions.some((row) => row.id === decision.id)
+              ? prev.pmoDecisions.map((row) => (row.id === decision.id ? decision : row))
+              : [decision, ...prev.pmoDecisions],
+          }),
+          { action: 'PMO decision recorded', detail: decision.title },
+        ),
+      deletePmoDecision: (id) =>
+        save((prev) => ({ ...prev, pmoDecisions: prev.pmoDecisions.filter((row) => row.id !== id) }), { action: 'PMO decision removed', detail: id }),
+      upsertPmoStakeholder: (stakeholder) =>
+        save(
+          (prev) => ({
+            ...prev,
+            pmoStakeholders: prev.pmoStakeholders.some((row) => row.id === stakeholder.id)
+              ? prev.pmoStakeholders.map((row) => (row.id === stakeholder.id ? stakeholder : row))
+              : [stakeholder, ...prev.pmoStakeholders],
+          }),
+          { action: 'PMO stakeholder saved', detail: stakeholder.name },
+        ),
+      deletePmoStakeholder: (id) =>
+        save((prev) => ({ ...prev, pmoStakeholders: prev.pmoStakeholders.filter((row) => row.id !== id) }), { action: 'PMO stakeholder removed', detail: id }),
+      /** PMO members and project resources may update work / estimates on their department's items. */
+      updatePmoWorkItem: (item) => {
+        const current = latestStateRef.current;
+        const user = current.employees.find((e) => e.id === current.settings.activeUserId);
+        const leading = current.deliveryStreams.some((s) => s.leadId === current.settings.activeUserId && s.departmentId === item.departmentId);
+        const isDepartmentMember = user?.departmentId === item.departmentId;
+        if (!scope.canManageMaster && !leading && !isDepartmentMember) return 'Only PMO, department leadership or a resource in the owning department can update this work item.';
+        if (!current.departments.find((d) => d.id === item.departmentId)?.devopsEnabled) return 'This department is not enabled for DevOps delivery.';
+        if (item.projectId && !current.projects.some((p) => p.id === item.projectId && p.departmentId === item.departmentId)) return 'Select a project owned by the same department.';
+        const next = { ...item, title: item.title.trim(), acceptanceCriteria: normaliseAcceptanceCriteria(item.acceptanceCriteria), updatedAt: new Date().toISOString() };
+        const error = validateWorkItem(current.workItems, next);
+        if (error) return error;
+        save(
+          (prev) => ({ ...prev, workItems: prev.workItems.map((row) => (row.id === next.id ? next : row)) }),
+          { action: 'PMO work item updated', detail: `${item.kind} · ${item.title} · estimate ${item.estimateHours}h` },
+        );
+        return null;
+      },
       submitCapitalisation: (entityId, departmentId, month) => {
         // Snapshot the live timesheet numbers into an immutable board request.
         const current = normaliseState(latestStateRef.current);

@@ -193,6 +193,88 @@ export interface Project {
   tasks: ProjectTask[];
 }
 
+/* ------------------------------------------------------------------ */
+/* PMO tool (PM Planner) — project intake, portfolio and resources     */
+/* ------------------------------------------------------------------ */
+
+export type PmoRequestStatus = 'submitted' | 'under_review' | 'approved' | 'rejected';
+
+/** A business project request form. Sits in the PMO/TO review queue until approved, then becomes a project. */
+export interface PmoRequest {
+  id: string;
+  title: string;
+  description: string;
+  requestedById: string;
+  /** Delivery pillar the request belongs to (e.g. BIA / digital function). */
+  pillar: string;
+  portfolio: ProjectPortfolio;
+  category: ProjectCategory;
+  estimatedBudgetAUD: number;
+  /** Expected value / benefit raised by the requester. */
+  valueRaised: string;
+  status: PmoRequestStatus;
+  submittedAt: string;
+  reviewedById?: string;
+  reviewedAt?: string;
+  reviewNote?: string;
+  /** Set when approved — the project that was onboarded from this request. */
+  projectId?: string;
+}
+
+/** Weekly update-log entry on a project's landing page. */
+export interface PmoUpdateEntry {
+  id: string;
+  projectId: string;
+  /** ISO date of the week the update covers (Monday). */
+  weekOf: string;
+  authorId: string;
+  summary: string;
+  stage: ProjectStage;
+  status: ProjectStatus;
+  createdAt: string;
+}
+
+export type PmoRiskSeverity = 'low' | 'medium' | 'high' | 'critical';
+
+export interface PmoRisk {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string;
+  severity: PmoRiskSeverity;
+  status: 'open' | 'mitigating' | 'closed';
+  ownerId?: string;
+  createdAt: string;
+}
+
+export interface PmoMilestone {
+  id: string;
+  projectId: string;
+  title: string;
+  dueDate: string;
+  status: 'planned' | 'on_track' | 'at_risk' | 'done';
+}
+
+/** Supporting decision recorded against a project's delivery tab. */
+export interface PmoDecision {
+  id: string;
+  projectId: string;
+  title: string;
+  decision: string;
+  decidedById: string;
+  decidedAt: string;
+}
+
+/** Stakeholder registry entry — added via Active Directory (employee) or as a vendor. */
+export interface PmoStakeholder {
+  id: string;
+  projectId: string;
+  name: string;
+  email: string;
+  role: string;
+  source: 'active_directory' | 'vendor' | 'manual';
+}
+
 export interface CapitalisationPolicy {
   currency: 'AUD';
   standard: string;
@@ -690,6 +772,12 @@ export interface StoreState {
   projects: Project[];
   capitalisation: CapitalisationPolicy;
   capitalisationApprovals: CapitalisationApproval[];
+  pmoRequests: PmoRequest[];
+  pmoUpdates: PmoUpdateEntry[];
+  pmoRisks: PmoRisk[];
+  pmoMilestones: PmoMilestone[];
+  pmoDecisions: PmoDecision[];
+  pmoStakeholders: PmoStakeholder[];
 }
 
 export interface AuditEntry {

@@ -660,6 +660,12 @@ export function createSeedState(): StoreState {
     projects: retail.projects,
     capitalisation: RETAIL_CAPITALISATION_POLICY,
     capitalisationApprovals: [],
+    pmoRequests: [],
+    pmoUpdates: [],
+    pmoRisks: [],
+    pmoMilestones: [],
+    pmoDecisions: [],
+    pmoStakeholders: [],
     holidays: holidayRows,
     countries: COUNTRIES,
     // The existing tenants keep their fictional demo stand-ups; leave the new

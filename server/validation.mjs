@@ -187,6 +187,34 @@ export const workspaceSchema = record({
     status: z.enum(['draft', 'submitted', 'approved', 'rejected']),
     submittedById: id.nullable(), submittedAt: text.nullable(), decidedById: id.nullable(), decidedAt: text.nullable(), note: text,
   }).optional(),
+  pmoRequests: rows({
+    id, title: text, description: text, requestedById: id, pillar: text,
+    portfolio: z.enum(['capital', 'operational']), category: projectCategory,
+    estimatedBudgetAUD: number.min(0), valueRaised: text,
+    status: z.enum(['submitted', 'under_review', 'approved', 'rejected']),
+    submittedAt: text, reviewedById: id.optional(), reviewedAt: text.optional(), reviewNote: text.optional(), projectId: id.optional(),
+  }).optional(),
+  pmoUpdates: rows({
+    id, projectId: id, weekOf: date, authorId: id, summary: text,
+    stage: z.enum(['idea', 'business_case', 'approved', 'design', 'build', 'test', 'deploy', 'hypercare', 'closed', 'on_hold']),
+    status: z.enum(['pipeline', 'active', 'on_hold', 'completed', 'cancelled']),
+    createdAt: text,
+  }).optional(),
+  pmoRisks: rows({
+    id, projectId: id, title: text, description: text,
+    severity: z.enum(['low', 'medium', 'high', 'critical']),
+    status: z.enum(['open', 'mitigating', 'closed']),
+    ownerId: id.optional(), createdAt: text,
+  }).optional(),
+  pmoMilestones: rows({
+    id, projectId: id, title: text, dueDate: date, status: z.enum(['planned', 'on_track', 'at_risk', 'done']),
+  }).optional(),
+  pmoDecisions: rows({
+    id, projectId: id, title: text, decision: text, decidedById: id, decidedAt: text,
+  }).optional(),
+  pmoStakeholders: rows({
+    id, projectId: id, name: text, email: text, role: text, source: z.enum(['active_directory', 'vendor', 'manual']),
+  }).optional(),
 }).superRefine((state, ctx) => {
   // Additive delivery collections must preserve the same tenant/department
   // boundary as activities. Validate references and acyclic hierarchy here,
@@ -223,6 +251,16 @@ export const workspaceSchema = record({
     while (ancestor) {
       if (seen.has(ancestor)) { ctx.addIssue({ code: 'custom', path, message: 'Work-item hierarchy contains a cycle' }); break; }
       seen.add(ancestor); ancestor = items.get(ancestor)?.parentId;
+    }
+  }
+  for (const [index, row] of (state.pmoRequests ?? []).entries()) {
+    const path = ['pmoRequests', index];
+    if (!employees.has(row.requestedById)) ctx.addIssue({ code: 'custom', path, message: 'PMO request requester must exist' });
+    if (row.projectId && !projects.has(row.projectId)) ctx.addIssue({ code: 'custom', path, message: 'PMO request project must exist' });
+  }
+  for (const [key, list] of [['pmoUpdates', state.pmoUpdates], ['pmoRisks', state.pmoRisks], ['pmoMilestones', state.pmoMilestones], ['pmoDecisions', state.pmoDecisions], ['pmoStakeholders', state.pmoStakeholders]]) {
+    for (const [index, row] of (list ?? []).entries()) {
+      if (!projects.has(row.projectId)) ctx.addIssue({ code: 'custom', path: [key, index], message: 'PMO row project must exist' });
     }
   }
   for (const [index, employee] of state.employees.entries()) {
