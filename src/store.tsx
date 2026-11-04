@@ -211,6 +211,8 @@ function loadState(): StoreState {
 const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 
 interface StoreContextValue {
+  /** Every tenant's rows — for screens (like the app demo) that switch tenant. Never render other tenants' rows directly. */
+  fullState: StoreState;
   /** The active tenant only — never another tenant's entities or people. */
   state: StoreState;
   /** The active tenant cut down to the departments the calendar is implemented for. */
@@ -488,6 +490,7 @@ export function StoreProvider({ children, shared }: { children: React.ReactNode;
 
   const value = useMemo<StoreContextValue>(() => {
     return {
+      fullState,
       state,
       scopedState,
       tenants,

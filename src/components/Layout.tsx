@@ -27,6 +27,7 @@ import {
   Users,
   Network,
   Presentation,
+  Smartphone,
   X,
 } from 'lucide-react';
 import { useStore } from '../store';
@@ -65,6 +66,7 @@ export const NAV_ITEMS: { id: ViewKey; label: string; icon: React.ReactNode; gro
   { id: 'admin', label: 'Master setup', icon: <Settings2 className="h-4 w-4" />, group: 'Configuration', hint: 'Entities, departments, people, holidays' },
   { id: 'theme-studio', label: 'Theme Studio', icon: <Palette className="h-4 w-4" />, group: 'Configuration', hint: 'Entity identity, colour and typography' },
   { id: 'whats-new', label: 'What’s new', icon: <Sparkles className="h-4 w-4" />, group: 'Workspace', hint: 'Recent portal improvements' },
+  { id: 'demo', label: 'App demo', icon: <Smartphone className="h-4 w-4" />, group: 'Workspace', hint: 'Store-style tour · tenant & entity · PDF export' },
 ];
 
 export function Sidebar({
