@@ -100,6 +100,18 @@ assert.ok(document.querySelector('[data-demo-video-cta]'), 'prominent demo video
 const { DEMO_SCENES } = await import('../src/data/demo-script.ts');
 assert.equal(DEMO_SCENES.length, NAV_ITEMS.length, 'one video scene per tab');
 assert.ok(DEMO_SCENES.every((s) => s.audio.startsWith('/demo-audio/') && s.narration.length > 40), 'every scene has narration audio');
+// shareable deep link + static page export
+assert.ok(html.includes('Copy shareable link'), 'shareable link action renders');
+const shareEl = document.querySelector('[data-demo-share-url]');
+assert.ok(shareEl && shareEl.textContent.includes('#/demo?tenant='), `shareable deep link renders: ${shareEl?.textContent}`);
+assert.ok(html.includes('Export shareable page'), 'static page export action renders');
+const { buildDemoStaticPage, demoShareUrl } = await import('../src/lib/demo-static-page.ts');
+const staticPage = buildDemoStaticPage(meridian, demoShareUrl(meridian.tenantId, meridian.entityId));
+assert.ok(staticPage.startsWith('<!doctype html>') && !staticPage.includes('src="http'), 'static page is self-contained');
+assert.ok(staticPage.includes(meridian.appName) && staticPage.includes('#/demo?tenant='), 'static page carries brand + live demo link');
+assert.ok(staticPage.includes('Purpose') && staticPage.includes('Impact') && staticPage.includes('Outcome') && staticPage.includes('By industry'), 'static page carries the full brief per screen');
+assert.equal((staticPage.match(/class="screen"/g) || []).length, meridian.screenshots.length, 'static page has one section per screen');
+console.log('PASS: demo shareable link + self-contained static page export behave');
 const briefs = [...document.querySelectorAll('dl')].filter((dl) => dl.textContent.includes('Purpose') && dl.textContent.includes('Impact') && dl.textContent.includes('Outcome'));
 assert.equal(briefs.length, NAV_ITEMS.length, `one AI brief (purpose/impact/outcome) per screenshot: ${briefs.length}`);
 assert.ok(html.includes('By industry'), 'industry examples render in the briefs');

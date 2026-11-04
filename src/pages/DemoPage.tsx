@@ -1,11 +1,12 @@
-import React, { useMemo, useState } from 'react';
-import { BadgeCheck, Download, GanttChartSquare, Play, Sparkles, Star, Smartphone, ShieldCheck } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { BadgeCheck, Download, GanttChartSquare, Link2, Play, Share2, Sparkles, Star, Smartphone, ShieldCheck } from 'lucide-react';
 import { useStore } from '../store';
 import type { AppFilters, StoreState, ViewKey } from '../types';
 import { entitySubtreeIds } from '../lib/entities';
 import { scopeStateToTenant } from '../lib/tenants';
 import { buildDemoModel, demoEntityOptions, type DemoModel, type DemoScreenshot } from '../lib/demo-content';
 import { exportDemoPDF } from '../lib/demo-pdf';
+import { demoShareUrl, exportDemoStaticPage } from '../lib/demo-static-page';
 import { toISO } from '../lib/dates';
 import { RealScreen, ScaledFrame } from '../components/RealScreen';
 import { DemoVideo } from '../components/DemoVideo';
@@ -25,8 +26,13 @@ import { useToast } from '../components/toast';
 export function DemoPage() {
   const { fullState, tenants, tenant, setActiveTenant, state } = useStore();
   const toast = useToast();
-  const [tenantId, setTenantId] = useState(tenant?.id ?? tenants[0]?.id ?? '');
-  const [entityId, setEntityId] = useState('');
+  /* Deep link support: #/demo?tenant=...&entity=... preselects the demo. */
+  const [tenantId, setTenantId] = useState(() => {
+    const q = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
+    const t = q.get('tenant');
+    return tenants.some((x) => x.id === t) ? (t as string) : (tenant?.id ?? tenants[0]?.id ?? '');
+  });
+  const [entityId, setEntityId] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('entity') ?? '');
   const [videoOpen, setVideoOpen] = useState(false);
   const activeTenant = tenants.find((t) => t.id === tenantId);
 
@@ -54,9 +60,32 @@ export function DemoPage() {
   const entityIds = useMemo(() => entitySubtreeIds(scoped.entities, selectedEntityId), [scoped.entities, selectedEntityId]);
   void state;
 
+  /* A deep-linked tenant (?tenant=) drives the workspace too, so the shared
+     link shows the same tenant's data everywhere. */
+  useEffect(() => {
+    if (tenantId && tenantId !== tenant?.id) setActiveTenant(tenantId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId]);
+
   const exportPdf = () => {
     exportDemoPDF(model);
     toast.push({ tone: 'success', title: 'Demo PDF exported', description: `${model.appName} · ${model.screenshots.length} screens — ready to share.` });
+  };
+
+  const shareUrl = demoShareUrl(tenantId, selectedEntityId);
+
+  const copyShareLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      toast.push({ tone: 'success', title: 'Shareable link copied', description: shareUrl });
+    } catch {
+      toast.push({ tone: 'info', title: 'Shareable link', description: shareUrl });
+    }
+  };
+
+  const exportStatic = () => {
+    exportDemoStaticPage(model, shareUrl);
+    toast.push({ tone: 'success', title: 'Shareable page exported', description: `${model.appName} · self-contained HTML with all ${model.screenshots.length} screens and the live demo link.` });
   };
 
   return (
@@ -67,6 +96,8 @@ export function DemoPage() {
         description={`A store-listing style tour of every screen in the portal — ${model.screenshots.length} detailed screenshots with the AI guide sticky note. Pick a tenant and entity: every brand, number and screenshot re-renders live. Export the demo as a PDF to share.`}
         actions={<>
           <Button size="sm" variant="primary" onClick={() => setVideoOpen(true)}><Play className="h-3.5 w-3.5" /> Watch demo video</Button>
+          <Button size="sm" onClick={copyShareLink}><Link2 className="h-3.5 w-3.5" /> Copy shareable link</Button>
+          <Button size="sm" onClick={exportStatic}><Share2 className="h-3.5 w-3.5" /> Export shareable page</Button>
           <Button size="sm" onClick={exportPdf}><Download className="h-3.5 w-3.5" /> Export demo PDF</Button>
         </>}
       />
@@ -77,6 +108,11 @@ export function DemoPage() {
           <Field label="Tenant"><Select value={tenantId} onChange={(e) => pickTenant(e.target.value)}>{tenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></Field>
           <Field label="Entity"><Select value={selectedEntityId} onChange={(e) => setEntityId(e.target.value)}>{entityOptions.map(({ entity, depth }) => <option key={entity.id} value={entity.id}>{'\u00A0'.repeat(depth * 2)}{entity.name} · {entity.code}</option>)}</Select></Field>
           <div className="flex items-center gap-2 pb-1 text-[11px] text-slate-500"><ShieldCheck className="h-4 w-4 text-emerald-600" /> Demo is tenant-scoped — only the selected tenant’s data appears.</div>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 text-[11px]">
+          <span className="font-semibold text-slate-600">Shareable link:</span>
+          <code data-demo-share-url className="min-w-0 flex-1 truncate rounded-md bg-slate-100 px-2 py-1 text-slate-600">{shareUrl}</code>
+          <Button size="sm" onClick={copyShareLink}><Link2 className="h-3.5 w-3.5" /> Copy</Button>
         </div>
       </Card>
 

@@ -5,8 +5,9 @@ import type { DemoModel } from './demo-content';
 /* App demo — shareable PDF                                            */
 /*                                                                     */
 /* A marketing-style PDF of the store-listing demo: branded cover,     */
-/* then per tab a full-screen page (20" 16:9 monitor frame, with      */
-/* continuation pages when the screen content overflows) followed by   */
+/* then per tab a full-screen landscape page (the 20" 16:9 monitor    */
+/* frame fills the whole A4 landscape page; continuation pages when    */
+/* the screen content overflows) followed by                         */
 /* a dedicated brief page (guide note, live points, purpose / impact  */
 /* / outcome and industry examples), and a features page. Same        */
 /* DemoModel as the screen, so the PDF always matches what was shown.  */
@@ -91,63 +92,65 @@ export function buildDemoPDF(model: DemoModel): jsPDF {
   doc.setFontSize(8);
   doc.text(`Generated ${new Date().toLocaleDateString('en-AU')} · share this PDF with the wider audience`, 20, H - 10);
 
-  /* ---- Per tab: full-screen page(s), then a dedicated brief page ---- */
-  const frameX = 15;
-  const frameY = 22;
-  const frameW = W - 30; // full-width 20" 16:9 monitor frame
+  /* ---- Per tab: full-screen landscape page(s), then a brief page ---- */
+  const LW = 297; // A4 landscape — the screen fills the whole page
+  const LH = 210;
+  const frameX = 10;
+  const frameY = 16;
+  const frameW = LW - 20; // 277mm-wide 20" 16:9 monitor frame
   const frameH = Math.round((frameW * 9) / 16);
   const rowH = 11;
-  const rowsPerPage = Math.max(1, Math.floor((frameH - 50) / rowH));
+  const rowsPerPage = Math.max(1, Math.floor((frameH - 52) / rowH));
 
   const drawScreenFrame = (shot: DemoModel['screenshots'][number], rows: string[], suffix: string, footer: string) => {
-    doc.addPage();
+    doc.addPage('a4', 'landscape');
     doc.setDrawColor(15, 23, 42);
     doc.setLineWidth(1.6);
     doc.roundedRect(frameX, frameY, frameW, frameH, 4, 4, 'S');
     doc.setFillColor(15, 23, 42);
-    doc.rect(frameX + frameW / 2 - 8, frameY + frameH, 16, 3.5, 'F'); // monitor stand
-    doc.rect(frameX + frameW / 2 - 16, frameY + frameH + 3.5, 32, 1.8, 'F');
+    doc.rect(frameX + frameW / 2 - 9, frameY + frameH, 18, 4, 'F'); // monitor stand
+    doc.rect(frameX + frameW / 2 - 20, frameY + frameH + 4, 40, 2, 'F');
     // in-screen brand header
     doc.setFillColor(...brand);
-    doc.rect(frameX + 2.5, frameY + 3, frameW - 5, 9, 'F');
+    doc.rect(frameX + 2.5, frameY + 3, frameW - 5, 10, 'F');
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
+    doc.setFontSize(9);
     doc.setTextColor(255, 255, 255);
-    doc.text(`${shot.title}${suffix}`, frameX + 5, frameY + 9.2);
+    doc.text(`${shot.title}${suffix}`, frameX + 6, frameY + 10);
     // AI guide sticky note inside the real screen
-    let ry = frameY + 15;
+    let ry = frameY + 16;
     doc.setFillColor(246, 230, 162);
-    doc.roundedRect(frameX + 3, ry, frameW - 6, 26, 1.5, 1.5, 'F');
+    doc.roundedRect(frameX + 3, ry, frameW - 6, 30, 1.5, 1.5, 'F');
     doc.setFillColor(255, 255, 255);
-    doc.roundedRect(frameX + 7, ry - 2.5, 16, 4, 1, 1, 'F');
+    doc.roundedRect(frameX + 8, ry - 3, 18, 4.5, 1, 1, 'F');
     doc.setFillColor(34, 32, 15);
-    doc.roundedRect(frameX + 6, ry + 2.5, 13, 4.5, 1, 1, 'F');
+    doc.roundedRect(frameX + 7, ry + 3, 15, 5, 1, 1, 'F');
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(5);
+    doc.setFontSize(5.5);
     doc.setTextColor(247, 236, 198);
-    doc.text('GUIDE', frameX + 7.5, ry + 5.8);
+    doc.text('GUIDE', frameX + 8.5, ry + 6.4);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
+    doc.setFontSize(9);
     doc.setTextColor(47, 44, 24);
-    doc.text(wrap(doc, shot.guide.title, frameW - 40).slice(0, 1), frameX + 24, ry + 6);
+    doc.text(wrap(doc, shot.guide.title, frameW - 46).slice(0, 1), frameX + 28, ry + 7);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.5);
+    doc.setFontSize(7.5);
     doc.setTextColor(87, 82, 47);
-    doc.text(wrap(doc, `Do this: ${shot.guide.tip}`, frameW - 12).slice(0, 4), frameX + 6, ry + 11.5);
-    ry += 30;
+    doc.text(wrap(doc, `Do this: ${shot.guide.tip}`, frameW - 14).slice(0, 4), frameX + 7, ry + 13);
+    ry += 35;
     // content rows inside the frame
     doc.setFont('helvetica', 'normal');
     for (const p of rows) {
       doc.setFillColor(248, 250, 252);
       doc.roundedRect(frameX + 3, ry, frameW - 6, rowH - 1.5, 1.5, 1.5, 'F');
-      doc.setFontSize(6.5);
+      doc.setFontSize(7.5);
       doc.setTextColor(...INK);
-      doc.text(wrap(doc, p, frameW - 12).slice(0, 2), frameX + 6, ry + 4.6);
+      doc.text(wrap(doc, p, frameW - 14).slice(0, 2), frameX + 7, ry + 5);
       ry += rowH;
     }
     doc.setFontSize(8);
     doc.setTextColor(...MUTED);
-    doc.text(footer, 20, H - 10);
+    doc.text(footer, 20, LH - 8);
   };
 
   model.screenshots.forEach((shot, index) => {
@@ -162,7 +165,7 @@ export function buildDemoPDF(model: DemoModel): jsPDF {
     }
 
     // 2) brief page — caption, sticky note, live points, purpose/impact/outcome, industries
-    doc.addPage();
+    doc.addPage('a4', 'portrait');
     let by = 26;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(17);
@@ -200,7 +203,7 @@ export function buildDemoPDF(model: DemoModel): jsPDF {
     by += 7;
     const ensure = (need: number) => {
       if (by + need > H - 16) {
-        doc.addPage();
+        doc.addPage('a4', 'portrait');
         by = 24;
       }
     };
@@ -245,7 +248,7 @@ export function buildDemoPDF(model: DemoModel): jsPDF {
   });
 
   /* ---- Features page ---- */
-  doc.addPage();
+  doc.addPage('a4', 'portrait');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
   doc.setTextColor(...INK);
@@ -267,7 +270,7 @@ export function buildDemoPDF(model: DemoModel): jsPDF {
     doc.setTextColor(...MUTED);
     y = bullets(doc, [f.detail], 28, y + 5, 160, 4.8) + 5;
     if (y > H - 30 && i < model.features.length - 1) {
-      doc.addPage();
+      doc.addPage('a4', 'portrait');
       y = 24;
     }
   });
