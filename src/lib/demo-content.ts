@@ -15,6 +15,13 @@ import { AI_GUIDE } from './ai-guide';
 /* AI guide sticky note content, so the tour covers the whole app.    */
 /* ------------------------------------------------------------------ */
 
+export interface DemoBrief {
+  purpose: string;
+  impact: string;
+  outcome: string;
+  examples: { industry: string; example: string }[];
+}
+
 export interface DemoScreenshot {
   id: string;
   /** The portal view this screenshot miniatures. */
@@ -24,6 +31,8 @@ export interface DemoScreenshot {
   points: string[];
   /** AI guide sticky-note content shown inside the screenshot. */
   guide: { title: string; subtitle: string; tip: string; watch: string };
+  /** AI-generated brief: purpose, impact, outcome + industry examples. */
+  brief: DemoBrief;
 }
 
 export interface DemoFeature {
@@ -227,6 +236,15 @@ export function buildDemoModel(fullState: StoreState, tenant: Tenant | undefined
         tip: guide.tips[0] ?? guide.blurb.slice(0, 120),
         watch: guide.watch ?? '',
       },
+      brief: buildBrief(view, {
+        deptName: topDept?.name ?? 'the department',
+        project: topProject ? `${topProject.code} ${topProject.name}` : null,
+        people: employees.length,
+        departments: departments.length,
+        activities: thisWeek.length,
+        projects: projects.length,
+        entityName: entity.name,
+      }),
     };
   });
 
@@ -271,4 +289,150 @@ export function demoEntityOptions(fullState: StoreState, tenantId: string) {
   const state = scopeStateToTenant(fullState, tenantId);
   const departments = state.departments;
   return scopeEntityOptions(state.entities, departments);
+}
+
+/* ------------------------------------------------------------------ */
+/* AI-generated brief per screen: purpose, impact, outcome + examples  */
+/* ------------------------------------------------------------------ */
+
+interface BriefContext {
+  deptName: string;
+  project: string | null;
+  people: number;
+  departments: number;
+  activities: number;
+  projects: number;
+  entityName: string;
+}
+
+const BRIEF_TEXT: Partial<Record<ViewKey, (c: BriefContext) => { purpose: string; impact: string; outcome: string }>> = {
+  dashboard: (c) => ({
+    purpose: 'Give leadership one live command centre instead of a dozen spreadsheets.',
+    impact: `Every number on screen is computed from the same snapshot — ${c.departments} departments and ${c.people} people for ${c.entityName} can no longer disagree about the week.`,
+    outcome: `Decisions move from "what is the number?" to "what do we do about it" — e.g. ${c.deptName} spotting slipping RAG before the board asks.`,
+  }),
+  calendar: (c) => ({
+    purpose: 'Make the whole department’s week visible and shareable in one calendar.',
+    impact: `${c.activities} activities this week become one collective view; double-booking and ghost meetings disappear.`,
+    outcome: 'Teams plan around real commitments; clients and sites see a professional, coordinated schedule.',
+  }),
+  activities: () => ({
+    purpose: 'Turn every task, meeting and audit into a tracked register with owners and criteria.',
+    impact: 'Nothing lives only in someone’s head — each item carries a status, priority, subtasks and acceptance criteria.',
+    outcome: 'Delivery becomes auditable: completion rates and overdue items are measurable, not anecdotal.',
+  }),
+  roadmap: () => ({
+    purpose: 'Show the year → month → week → day plan so strategy and daily work connect.',
+    impact: `${0} placeholder`,
+    outcome: '',
+  }),
+  timesheet: () => ({
+    purpose: 'Capture effort once and let it roll up everywhere it matters.',
+    impact: 'Hours log to a single activity and automatically feed department scores, project cost and funding reports.',
+    outcome: 'Timesheet completion stops being a Friday battle; finance and PMO read the same numbers.',
+  }),
+  standups: () => ({
+    purpose: 'Run a 10-minute daily check-in that surfaces blockers before they cost days.',
+    impact: 'Feeling, blockers and support callouts are recorded daily — patterns appear within a week, not a quarter.',
+    outcome: 'Support requests get an owner and a status; morale issues surface while they are still small.',
+  }),
+  'one-on-ones': () => ({
+    purpose: 'Give managers a private, structured check-in with every report.',
+    impact: 'Notes stay between the two people involved; AI summaries capture actions without manual minutes.',
+    outcome: 'Retention and performance conversations happen continuously instead of only at review season.',
+  }),
+  leave: () => ({
+    purpose: 'Approve PTO in one place and keep capacity math honest.',
+    impact: 'Approved leave automatically reduces capacity in workload calculations — no more over-promising.',
+    outcome: 'Planning reflects reality; holiday clashes are visible before they break a deadline.',
+  }),
+  delivery: (c) => ({
+    purpose: 'Connect the DevOps backlog to the workday and the PMO tool to the portfolio.',
+    impact: `${c.projects} projects and the epic → feature → ticket hierarchy stay in one place; PMO requests flow request → approval → project → epic.`,
+    outcome: `Leadership sees delivery status weekly without chasing updates — ${c.project ?? 'each project'} has milestones, risks and an update log.`,
+  }),
+  'effort-reports': () => ({
+    purpose: 'Answer "where did the hours go?" by backlog item, person, department, stream or funding class.',
+    impact: 'Planned vs logged is reconciled in one report; capex and opex are never mixed.',
+    outcome: 'Client billing, board packs and capitalisation all read from the same ledger.',
+  }),
+  projects: (c) => ({
+    purpose: 'Run the capital and operational portfolio as managed projects, not wish lists.',
+    impact: `${c.projects} projects each carry budget, stage, sponsor, PM and capitalisation window.`,
+    outcome: `Board reporting is a filter, not a fire drill — ${c.project ?? 'the largest project'} shows budget, stage and progress together.`,
+  }),
+  capitalisation: () => ({
+    purpose: 'Produce a defensible AASB 138 capitalisation pack every month.',
+    impact: 'Eligible phases, rates and evidence are attached to every hour; exclusions carry reason codes.',
+    outcome: 'Audit season becomes a export-and-review exercise instead of a reconstruction.',
+  }),
+  performance: () => ({
+    purpose: 'Score departments and people on the same formula, and escalate early.',
+    impact: 'Utilisation, on-time rate and workload index are computed per period; open escalations carry owners and follow-ups.',
+    outcome: 'Problem teams are coached with data, and the escalation log shows what was done about it.',
+  }),
+  integrations: () => ({
+    purpose: 'Keep Outlook and Google calendars in sync without double entry.',
+    impact: 'Every activity can push to the calendars people already live in; sync jobs are tracked and visible.',
+    outcome: 'Adoption is high because the tool meets people where they already are.',
+  }),
+  organisation: () => ({
+    purpose: 'Maintain one reporting hierarchy that every screen respects.',
+    impact: `${' '}People, visibility and approvals all follow the org chart — drag to re-parent, no re-keying.`,
+    outcome: 'New joiners and restructures take minutes, and access rules follow automatically.',
+  }),
+  admin: () => ({
+    purpose: 'Configure tenants, entities, departments, people and holidays in one master setup.',
+    impact: 'DevOps enablement, calendar scope and holidays are switches — the demo you are reading re-renders per tenant from exactly these settings.',
+    outcome: 'A new company in the group is onboarded in an afternoon, branded and isolated.',
+  }),
+  'whats-new': () => ({
+    purpose: 'Keep every user informed with release notes that link to the real screens.',
+    impact: 'The screen and the changelog render from one source, so they can never disagree.',
+    outcome: 'New features are discovered in-app instead of via hallway announcements.',
+  }),
+  'dept-report': (c) => ({
+    purpose: 'Produce the weekly one-page status pack per department in seconds.',
+    impact: `RAG, feeling, workload, milestones and risks for ${c.deptName} are computed live — and exportable to PDF, PPTX (with a Copilot reformat prompt) or CSV.`,
+    outcome: 'Leadership meetings start from a shared, current document instead of a stitched-together deck.',
+  }),
+  demo: () => ({
+    purpose: 'Show any prospect or new tenant exactly what their company gets — branded and live.',
+    impact: 'This very tour re-renders per tenant and entity: icon, colors, stats and every screenshot follow the selection.',
+    outcome: 'Onboarding conversations become "here is your workspace" instead of "imagine a workspace".',
+  }),
+  'theme-studio': (c) => ({
+    purpose: `Give ${c.entityName} its own identity across the whole portal.`,
+    impact: 'Brand color, fonts, logo and header/footer apply everywhere — including this demo and the status-pack exports.',
+    outcome: 'Every company in the group feels the portal is theirs, not a generic tool.',
+  }),
+};
+
+// Fill the roadmap template properly (kept out of the literal above for readability).
+BRIEF_TEXT.roadmap = (c) => ({
+  purpose: 'Show the year → month → week → day plan so strategy and daily work connect.',
+  impact: `${c.projects} projects and ${c.activities} activities this week are plotted on one timeline; the anchor walks the plan forward and back.`,
+  outcome: 'Stakeholders see the shape of the year at a glance and spot collisions months ahead.',
+});
+
+const INDUSTRY_EXAMPLES: { industry: string; example: (c: BriefContext) => string }[] = [
+  { industry: 'Retail', example: (c) => `A store-rollout programme tracks ${c.projects} projects on the roadmap and posts the weekly status pack to the COO every Friday.` },
+  { industry: 'Construction & contracting', example: () => 'Site mobilisations and handover milestones live on the shared calendar; PTO reduces crew capacity automatically before rostering.' },
+  { industry: 'Facilities management', example: () => 'Contract SLAs become activities with owners; effort reports feed client billing without re-keying timesheets.' },
+  { industry: 'IT & digital services', example: (c) => `The PMO tool runs intake → delivery for ${c.projects} projects, with the epic backlog imported from Azure DevOps.` },
+  { industry: 'Advisory & consulting', example: () => 'Consultants log effort once; capitalisation packs and client reports read from the same ledger at month-end.' },
+];
+
+function buildBrief(view: ViewKey, ctx: BriefContext): DemoBrief {
+  const t = BRIEF_TEXT[view]?.(ctx) ?? {
+    purpose: 'One more screen in the workspace, computed live from the same data.',
+    impact: 'Everything on screen comes from the shared tenant snapshot.',
+    outcome: 'Less chasing, more deciding.',
+  };
+  return {
+    purpose: t.purpose,
+    impact: t.impact,
+    outcome: t.outcome,
+    examples: INDUSTRY_EXAMPLES.map((e) => ({ industry: e.industry, example: e.example(ctx) })),
+  };
 }
