@@ -88,11 +88,12 @@ export const RELEASES: Release[] = [
     tone: 'brand',
     icon: 'sparkles',
     description:
-      'A new App demo screen presents the portal like a mobile-app store listing — branded app icon, name, star rating and review count, live stats strip, phone-framed screenshots and a "why every company needs it" feature grid. Tenant and entity selectors re-render the entire demo for the chosen company: brand colors and logo, department/people/project/activity counts, and every screenshot, which is miniature live UI drawn from that tenant’s real data rather than stock images. The whole demo exports to a shareable PDF (branded cover, stats, one page per screenshot, features page) so the wider audience can see exactly what each company gets.',
+      'A new App demo screen presents the portal like a mobile-app store listing — branded app icon, name, star rating and review count, live stats strip, 20" monitor-framed screenshots and a "why every company needs it" feature grid. Tenant and entity selectors re-render the entire demo for the chosen company: brand colors and logo, department/people/project/activity counts, and every screenshot — which is now the real portal screen itself, rendered live inside an auto-adjusting 20" 16:9 monitor frame, pixel-identical to what users see in the app, complete with the yellow AI guide sticky note. A built-in demo video plays a cinematic tour of all screens with AI voiceover narration. The whole demo exports to a shareable PDF (branded cover, stats, one page per screen, features page) so the wider audience can see exactly what each company gets.',
     bullets: [
       'New App demo screen styled like a Google Play listing: icon, rating, stats, screenshots, feature grid',
-      'Screenshots now render in auto-adjusting 20" 16:9 monitor frames — one full-width block per screen, so every tab is shown complete, not cropped to a phone',
-      'All 20 portal tabs are covered: each screen shows the mini sidebar with every tab, the top bar, the yellow AI guide sticky note (title, tip, watch) and a detailed live data panel',
+      'Screenshots are the real screens: each of the 20 tabs is rendered by its actual page component inside an auto-adjusting 20" 16:9 monitor frame — one full-width block per screen, pixel-identical to the app',
+      'All 20 portal tabs are covered: every screen is the live page with the real yellow AI guide sticky note (title, tip, watch) rendered on top',
+      'Watch demo video: a cinematic in-app player that auto-advances through all 20 real screens with per-scene captions and human-sounding AI voiceover narration, branded by the selected tenant',
       'Each screenshot ships with an AI-generated brief — purpose, impact, outcome and real examples by industry (retail, construction, facilities, IT services, advisory)',
       'Tenant + entity selection drives everything — brand, logo, colors and all numbers/screenshots follow the selection and stay tenant-scoped',
       'Export demo PDF: branded cover, one page per screen (sticky note + AI brief drawn in) and a features page — ready to share with the wider audience',

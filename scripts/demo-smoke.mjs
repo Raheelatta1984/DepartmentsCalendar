@@ -85,13 +85,20 @@ assert.ok(html.includes('Screenshots'), 'screenshots section renders');
 assert.ok(html.includes('Why every company needs it'), 'features section renders');
 assert.ok(html.includes('Export demo PDF'), 'PDF export action renders');
 assert.ok(html.includes('Orbit ·'), 'store-style app name renders');
-// every 20" screen block carries the AI guide sticky note and an AI brief
+// every 20" screen block renders the real page with its real AI guide sticky note
 const shots = document.querySelectorAll('[data-demo-shot]');
 assert.equal(shots.length, NAV_ITEMS.length, `one 20" screen per tab: ${shots.length}`);
-const guideNotes = document.querySelectorAll('[data-mini-guide="true"]');
-assert.equal(guideNotes.length, NAV_ITEMS.length, `one sticky guide note per screenshot: ${guideNotes.length}`);
+const guideNotes = document.querySelectorAll('[data-demo-shot] [role="complementary"][aria-label="AI guide"]');
+assert.equal(guideNotes.length, NAV_ITEMS.length, `one real AI guide sticky note per screenshot: ${guideNotes.length}`);
 assert.ok(guideNotes[0].textContent.includes('Guide'), 'sticky note shows the GUIDE chip');
-assert.ok(html.includes('Department calendar') && html.includes('Master setup'), 'sidebar lists every tab inside the screenshots');
+// the screens are the real app pages, not mocks: first frame shows a real dashboard widget
+assert.ok(shots[0].textContent.length > 2000, 'real screen content renders inside the frame (dashboard page)');
+assert.ok(html.includes('Department calendar') && html.includes('Master setup'), 'every tab title appears in the demo blocks');
+// demo video entry point + script coverage
+assert.ok(html.includes('Watch demo video'), 'demo video button renders');
+const { DEMO_SCENES } = await import('../src/data/demo-script.ts');
+assert.equal(DEMO_SCENES.length, NAV_ITEMS.length, 'one video scene per tab');
+assert.ok(DEMO_SCENES.every((s) => s.audio.startsWith('/demo-audio/') && s.narration.length > 40), 'every scene has narration audio');
 const briefs = [...document.querySelectorAll('dl')].filter((dl) => dl.textContent.includes('Purpose') && dl.textContent.includes('Impact') && dl.textContent.includes('Outcome'));
 assert.equal(briefs.length, NAV_ITEMS.length, `one AI brief (purpose/impact/outcome) per screenshot: ${briefs.length}`);
 assert.ok(html.includes('By industry'), 'industry examples render in the briefs');

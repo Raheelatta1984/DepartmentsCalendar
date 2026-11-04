@@ -5,7 +5,7 @@ import type { DemoModel } from './demo-content';
 /* App demo — shareable PDF                                            */
 /*                                                                     */
 /* A marketing-style PDF of the store-listing demo: branded cover,     */
-/* stats, one page per "screenshot" (drawn as a mini phone panel with  */
+/* stats, one page per "screenshot" (drawn as a 20" 16:9 monitor frame with  */
 /* the live caption + bullets) and a features page. Same DemoModel as  */
 /* the screen, so the PDF always matches what was on screen.          */
 /* ------------------------------------------------------------------ */
@@ -92,24 +92,24 @@ export function buildDemoPDF(model: DemoModel): jsPDF {
   /* ---- One page per screenshot ---- */
   model.screenshots.forEach((shot, index) => {
     doc.addPage();
-    // mini phone panel on the left
+    // 20" 16:9 monitor frame on the left, like the demo page
     const px = 20;
     const py = 24;
-    const pw = 62;
-    const ph = 120;
+    const pw = 78;
+    const ph = Math.round((pw * 9) / 16);
     doc.setDrawColor(15, 23, 42);
     doc.setLineWidth(1.6);
-    doc.roundedRect(px, py, pw, ph, 8, 8, 'S');
+    doc.roundedRect(px, py, pw, ph, 4, 4, 'S');
     doc.setFillColor(15, 23, 42);
-    doc.roundedRect(px + pw / 2 - 10, py + 2.5, 20, 3, 1.5, 1.5, 'F');
+    doc.rect(px + pw / 2 - 6, py + ph, 12, 3, 'F'); // monitor stand
     doc.setFillColor(...brand);
-    doc.rect(px + 3, py + 9, pw - 6, 12, 'F');
+    doc.rect(px + 2.5, py + 4, pw - 5, 8, 'F');
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7);
+    doc.setFontSize(6.5);
     doc.setTextColor(255, 255, 255);
-    doc.text(shot.title, px + 5, py + 17);
-    // AI guide sticky note inside the mini screen
-    let ry = py + 26;
+    doc.text(wrap(doc, shot.title, pw - 8).slice(0, 1), px + 4.5, py + 9.5);
+    // AI guide sticky note inside the real screen
+    let ry = py + 15;
     doc.setFillColor(246, 230, 162);
     doc.roundedRect(px + 3, ry, pw - 6, 24, 1.5, 1.5, 'F');
     doc.setFillColor(255, 255, 255);
@@ -129,9 +129,9 @@ export function buildDemoPDF(model: DemoModel): jsPDF {
     doc.setTextColor(87, 82, 47);
     doc.text(wrap(doc, `Do this: ${shot.guide.tip}`, pw - 10).slice(0, 3), px + 5, ry + 9);
     ry += 27;
-    // content rows
+    // content rows (fit inside the 16:9 frame)
     doc.setFont('helvetica', 'normal');
-    shot.points.forEach((p) => {
+    shot.points.slice(0, 2).forEach((p) => {
       doc.setFillColor(248, 250, 252);
       doc.roundedRect(px + 3, ry, pw - 6, 10, 1.5, 1.5, 'F');
       doc.setFontSize(5.5);
