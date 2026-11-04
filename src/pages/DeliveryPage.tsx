@@ -10,6 +10,7 @@ import { hoursLabel } from '../lib/capitalisation';
 import { toISO } from '../lib/dates';
 import { Avatar, Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, SectionHeader, Select, StatCard, Tabs, Textarea } from '../components/ui';
 import { useToast } from '../components/toast';
+import { PmoPanel, isItDepartment } from '../components/PmoPanel';
 
 const PHASES = ['discovery', 'design', 'build', 'test', 'deploy', 'hypercare', 'support', 'training'];
 const STATUSES = ['not_started', 'in_progress', 'blocked', 'completed', 'cancelled'];
@@ -61,6 +62,8 @@ export function DeliveryPage({ onNewActivity, onNavigate }: { onNewActivity: (de
   return <div>
     <PageHeader eyebrow="Delivery workspace · epic → feature → ticket" title="Connect the backlog to the workday" description="A shared delivery hierarchy for enabled departments. Plan work on the calendar, log actual hours once, and see effort roll up to features, epics, projects and funding." actions={<><Button size="sm" onClick={() => onNavigate('effort-reports')}><Layers className="h-3.5 w-3.5" /> Effort reports</Button>{canManage && !hasSample && activeDepartment ? <Button size="sm" onClick={() => { const sampleError = loadDevopsSample(activeDepartment.id); if (sampleError) toast.push({ tone: 'error', title: 'Sample not loaded', description: sampleError }); else toast.push({ tone: 'success', title: 'Sample DevOps epic loaded', description: 'Epic, features and work items with acceptance criteria. No calendar bookings or actual hours were created.' }); }}><Sparkles className="h-3.5 w-3.5" /> Sample epic</Button> : null}<Button size="sm" variant="primary" disabled={!canManage || !activeDepartment} onClick={() => newItem()}><Plus className="h-3.5 w-3.5" /> New epic</Button></>} />
     {!departments.length ? <Card><EmptyState title="DevOps delivery is not enabled in this calendar scope" description="An administrator can enable it on IT (or another department) in Master setup → Departments. Existing calendar and project data is unchanged." action={<Button onClick={() => onNavigate('admin')} size="sm">Open master setup</Button>} /></Card> : <>
+      {/* The PMO tool sits on top of the DevOps delivery tab under the IT department. */}
+      {isItDepartment(activeDepartment) ? <PmoPanel departmentId={activeDepartment.id} /> : null}
       <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Epics" value={items.filter((i) => i.kind === 'epic').length} hint={`${activeDepartment?.name} · owning department`} icon={<GitBranch className="h-4 w-4" />} tone="purple" />
         <StatCard label="Features / tickets" value={`${items.filter((i) => i.kind === 'feature').length} / ${items.filter((i) => i.kind === 'ticket').length}`} hint="Dependent delivery hierarchy" icon={<Layers className="h-4 w-4" />} />

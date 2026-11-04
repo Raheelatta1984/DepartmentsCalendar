@@ -3,7 +3,23 @@
 
 The portal’s **What’s new** tab renders this same log from `src/data/releases.ts`, so the screen and this file can never disagree. Newest first.
 
-**24 releases · last updated 3 November 2026**
+**25 releases · last updated 4 November 2026**
+
+---
+
+## PMO tool on top of the DevOps delivery tab for the IT department
+
+**4 November 2026 · Just added**
+
+The IT department now has a PMO section at the top of the DevOps delivery tab — the PM Planner flow made real in the portal. Business requests are raised on a project request form and wait in the PMO / TO review queue; approving one onboards a project (with a PM allocated) and drops a new epic on top of the backlog. Each project has a landing page with an informative overview (RACI status, value raised, budget), a weekly update log, a delivery tab (milestones, risks & issues, supporting decisions) and a stakeholder registry fed from Active Directory or vendor entry. A Portfolio tab gives leadership the counts, filters, stage distribution, PM allocation and a 12-month Gantt, and a Resources tab shows allocations and capacity per person. PMO members and project resources can update work status and estimate hours on projects and their subtasks directly from the project.
+
+- PMO tool pinned to the top of the DevOps delivery tab under the IT department, with Requests, Projects, Portfolio and Resources tabs
+- Project request form → PMO / TO approval queue → approval onboards the project and places a new epic on top of the backlog
+- Per-project landing page: overview, weekly update log, delivery (milestones, risks, decisions) and stakeholder registry (Active Directory or vendors)
+- Portfolio leadership view: project counts, filters, stage distribution, allocation by PM and a 12-month portfolio Gantt
+- Resources tab with per-person allocations, estimates and capacity; PMO and resources can edit work and estimate hours on projects and subtasks
+
+_Where to look: **DevOps delivery** (`#/delivery`) — Open DevOps delivery._
 
 ---
 

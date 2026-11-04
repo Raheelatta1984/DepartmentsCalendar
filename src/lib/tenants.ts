@@ -280,7 +280,27 @@ export function scopeStateToTenant(state: StoreState, tenantId: string): StoreSt
     capitalisationApprovals: (state.capitalisationApprovals ?? []).filter(
       (approval) => entities.some((entity) => entity.id === approval.entityId),
     ),
+    // PMO rows hang off a project, so they inherit that project's department
+    // tenant; pending requests (no project yet) follow the requester instead.
+    pmoRequests: (state.pmoRequests ?? []).filter((row) => (pmoProjectTenant(state, index, row.projectId) ?? pmoRequestTenant(state, index, row.requestedById)) === tenantId),
+    pmoUpdates: (state.pmoUpdates ?? []).filter((row) => pmoProjectTenant(state, index, row.projectId) === tenantId),
+    pmoRisks: (state.pmoRisks ?? []).filter((row) => pmoProjectTenant(state, index, row.projectId) === tenantId),
+    pmoMilestones: (state.pmoMilestones ?? []).filter((row) => pmoProjectTenant(state, index, row.projectId) === tenantId),
+    pmoDecisions: (state.pmoDecisions ?? []).filter((row) => pmoProjectTenant(state, index, row.projectId) === tenantId),
+    pmoStakeholders: (state.pmoStakeholders ?? []).filter((row) => pmoProjectTenant(state, index, row.projectId) === tenantId),
   };
+}
+
+/** Tenant of a PMO row that hangs off a project: project → department → tenant. */
+function pmoProjectTenant(state: StoreState, index: TenantIndex, projectId: string | undefined): string | undefined {
+  if (!projectId) return undefined;
+  const project = (state.projects ?? []).find((row) => row.id === projectId);
+  return project ? index.departmentTenant.get(project.departmentId) : undefined;
+}
+
+/** Requests have no project yet: attribute them to the requester's tenant. */
+function pmoRequestTenant(state: StoreState, index: TenantIndex, employeeId: string | undefined): string | undefined {
+  return tenantOfEmployee(index, employeeId);
 }
 
 /* ------------------------------------------------------------------ */
@@ -382,6 +402,42 @@ export function mergeTenantState(full: StoreState, edited: StoreState, tenantId:
       edited.projects ?? [],
       (row) => fullIndex.departmentTenant.get(row.departmentId),
       (row) => editedIndex.departmentTenant.get(row.departmentId),
+    ),
+    pmoRequests: mergeOwned(
+      full.pmoRequests ?? [],
+      edited.pmoRequests ?? [],
+      (row) => pmoProjectTenant(full, fullIndex, row.projectId) ?? tenantOfEmployee(fullIndex, row.requestedById),
+      (row) => pmoProjectTenant(edited, editedIndex, row.projectId) ?? tenantOfEmployee(editedIndex, row.requestedById),
+    ),
+    pmoUpdates: mergeOwned(
+      full.pmoUpdates ?? [],
+      edited.pmoUpdates ?? [],
+      (row) => pmoProjectTenant(full, fullIndex, row.projectId),
+      (row) => pmoProjectTenant(edited, editedIndex, row.projectId),
+    ),
+    pmoRisks: mergeOwned(
+      full.pmoRisks ?? [],
+      edited.pmoRisks ?? [],
+      (row) => pmoProjectTenant(full, fullIndex, row.projectId),
+      (row) => pmoProjectTenant(edited, editedIndex, row.projectId),
+    ),
+    pmoMilestones: mergeOwned(
+      full.pmoMilestones ?? [],
+      edited.pmoMilestones ?? [],
+      (row) => pmoProjectTenant(full, fullIndex, row.projectId),
+      (row) => pmoProjectTenant(edited, editedIndex, row.projectId),
+    ),
+    pmoDecisions: mergeOwned(
+      full.pmoDecisions ?? [],
+      edited.pmoDecisions ?? [],
+      (row) => pmoProjectTenant(full, fullIndex, row.projectId),
+      (row) => pmoProjectTenant(edited, editedIndex, row.projectId),
+    ),
+    pmoStakeholders: mergeOwned(
+      full.pmoStakeholders ?? [],
+      edited.pmoStakeholders ?? [],
+      (row) => pmoProjectTenant(full, fullIndex, row.projectId),
+      (row) => pmoProjectTenant(edited, editedIndex, row.projectId),
     ),
     leaves: mergeOwned(
       full.leaves ?? [],
