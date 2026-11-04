@@ -26,6 +26,7 @@ import {
   Wallet,
   Users,
   Network,
+  Presentation,
   X,
 } from 'lucide-react';
 import { useStore } from '../store';
@@ -55,6 +56,7 @@ export const NAV_ITEMS: { id: ViewKey; label: string; icon: React.ReactNode; gro
   { id: 'leave', label: 'Leave & PTO', icon: <Plane className="h-4 w-4" />, group: 'Workspace', hint: 'Holidays plan, approvals, PH' },
   { id: 'delivery', label: 'DevOps delivery', icon: <GitBranch className="h-4 w-4" />, group: 'Delivery', hint: 'Epics, features, tickets & streams' },
   { id: 'effort-reports', label: 'Effort reports', icon: <ChartNoAxesCombined className="h-4 w-4" />, group: 'Delivery', hint: 'Hours by backlog, resource & department' },
+  { id: 'dept-report', label: 'Department status pack', icon: <Presentation className="h-4 w-4" />, group: 'Delivery', hint: 'Per-department RAG pack · export PPTX / PDF / CSV' },
   { id: 'projects', label: 'IT projects & capex', icon: <Wallet className="h-4 w-4" />, group: 'Workspace', hint: 'Capital and operational portfolio' },
   { id: 'capitalisation', label: 'Capitalisation pack', icon: <Landmark className="h-4 w-4" />, group: 'Governance', hint: 'Board approval of IT effort' },
   { id: 'performance', label: 'Performance & escalation', icon: <TrendingUp className="h-4 w-4" />, group: 'Governance', hint: 'Scores, alerts, escalation log' },

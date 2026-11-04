@@ -112,6 +112,18 @@ export const AI_GUIDE: Record<ViewKey, ViewGuide> = {
     tips: ['Enable the department in Master setup, then create nested streams and assign a lead.', 'Import a CSV/JSON index or fetch an Azure DevOps work-item link. Review before committing.', 'Open a ticket and schedule an activity. Log actual time against that activity in Timesheets.'],
     watch: 'Backlog estimates, calendar plans and logged hours are different measures. A capex tag is not accounting approval.', sections: [], subTabs: [],
   },
+  'dept-report': {
+    title: 'Department status pack', subtitle: 'The weekly one-pager per department, exportable',
+    blurb: 'Each selected department gets an attachment-style status card — executive RAG, feeling, workload, support need, priority clusters, delivered outcomes, key milestones, risks and governance commitments — computed live from the same workspace data every other screen reads.',
+    tips: [
+      'Use the Choose departments section to render all, several or a single department — the chips toggle instantly.',
+      'Switch the period between week and month to change the reporting window.',
+      'Export the pack as PPTX (one slide per department), print to PDF, or take the CSV for downstream tooling.',
+    ],
+    watch: 'RAG reflects confidence in hitting the target date, not effort spent — a green score with overdue items is still amber in practice.',
+    sections: [],
+    subTabs: [],
+  },
   'effort-reports': {
     title: 'Delivery effort reports', subtitle: 'Plan, actuals and funding — without double counting',
     blurb: 'Report the same time entries by epic, feature, ticket, resource, department, stream or funding class. Ancestor rollups include descendant effort exactly once.',

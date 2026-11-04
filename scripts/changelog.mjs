@@ -41,6 +41,7 @@ const SCREENS = {
   standups: 'Daily stand-up',
   'one-on-ones': 'One-on-ones',
   performance: 'Performance & escalation',
+  'dept-report': 'Department status pack',
 };
 
 const problems = [];
