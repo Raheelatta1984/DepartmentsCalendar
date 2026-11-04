@@ -108,8 +108,28 @@ export function buildDemoPDF(model: DemoModel): jsPDF {
     doc.setFontSize(7);
     doc.setTextColor(255, 255, 255);
     doc.text(shot.title, px + 5, py + 17);
-    // fake UI rows
+    // AI guide sticky note inside the mini screen
     let ry = py + 26;
+    doc.setFillColor(246, 230, 162);
+    doc.roundedRect(px + 3, ry, pw - 6, 24, 1.5, 1.5, 'F');
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(px + 6, ry - 2, 12, 3, 1, 1, 'F');
+    doc.setFillColor(34, 32, 15);
+    doc.roundedRect(px + 5, ry + 2, 10, 3.5, 1, 1, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(4);
+    doc.setTextColor(247, 236, 198);
+    doc.text('GUIDE', px + 6, ry + 4.8);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(47, 44, 24);
+    doc.text(wrap(doc, shot.guide.title, pw - 22).slice(0, 1), px + 17, ry + 4.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(5);
+    doc.setTextColor(87, 82, 47);
+    doc.text(wrap(doc, `Do this: ${shot.guide.tip}`, pw - 10).slice(0, 3), px + 5, ry + 9);
+    ry += 27;
+    // content rows
     doc.setFont('helvetica', 'normal');
     shot.points.forEach((p) => {
       doc.setFillColor(248, 250, 252);
@@ -128,9 +148,20 @@ export function buildDemoPDF(model: DemoModel): jsPDF {
     doc.setFontSize(10);
     doc.setTextColor(...MUTED);
     doc.text(wrap(doc, shot.caption, 95), 95, 38);
+    // sticky-note summary on the right too
+    doc.setFillColor(246, 230, 162);
+    doc.roundedRect(95, 42, 95, 16, 2, 2, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(47, 44, 24);
+    doc.text(`AI GUIDE — ${shot.guide.title}`, 98, 47);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(87, 82, 47);
+    doc.text(wrap(doc, `Do this: ${shot.guide.tip}`, 90).slice(0, 2), 98, 51.5);
     doc.setFontSize(9.5);
     doc.setTextColor(...INK);
-    bullets(doc, shot.points, 95, 48, 95, 5.5);
+    bullets(doc, shot.points, 95, 64, 95, 5.5);
     doc.setFontSize(8);
     doc.setTextColor(...MUTED);
     doc.text(`${model.appName} · screen ${index + 1} of ${model.screenshots.length}`, 20, H - 10);

@@ -13,10 +13,11 @@ The portal’s **What’s new** tab renders this same log from `src/data/release
 
 A new App demo screen presents the portal like a mobile-app store listing — branded app icon, name, star rating and review count, live stats strip, phone-framed screenshots and a "why every company needs it" feature grid. Tenant and entity selectors re-render the entire demo for the chosen company: brand colors and logo, department/people/project/activity counts, and every screenshot, which is miniature live UI drawn from that tenant’s real data rather than stock images. The whole demo exports to a shareable PDF (branded cover, stats, one page per screenshot, features page) so the wider audience can see exactly what each company gets.
 
-- New App demo screen styled like a Google Play listing: icon, rating, stats, screenshots carousel, feature grid
+- New App demo screen styled like a Google Play listing: icon, rating, stats, screenshots grid, feature grid
+- Detailed screenshots cover every one of the 20 portal tabs — each phone frame shows the mini sidebar with all tabs, the top bar, the yellow AI guide sticky note (title, tip, watch) and a live data panel for that screen
 - Tenant + entity selection drives everything — brand, logo, colors and all numbers/screenshots follow the selection and stay tenant-scoped
-- Screenshots are phone-framed miniature live UI (command centre, calendar, status pack, PMO tool) built from real workspace data
-- Export demo PDF: branded cover, stats, one page per screenshot and a features page — ready to share with the wider audience
+- Screenshots are miniature live UI built from real workspace data, not stock images
+- Export demo PDF: branded cover, stats, one page per screen (with the AI guide note drawn in) and a features page — ready to share with the wider audience
 
 _Where to look: **App demo** (`#/demo`) — Open the app demo._
 
