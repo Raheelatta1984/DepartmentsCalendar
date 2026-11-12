@@ -40,7 +40,7 @@
     "@neondatabase/serverless": "^1.2.0",
     "date-fns": "^4.1.0",
     "jspdf": "^4.2.1",
-    "lucide-react": "^1.66.0",
+    "lucide-react": "^1.70.0",
     "memcached": "^2.2.2",
     "pptxgenjs": "^4.0.1",
     "react": "^19.0.0",
