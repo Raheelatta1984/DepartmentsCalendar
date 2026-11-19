@@ -37,10 +37,10 @@
     "changelog:check": "vite-node scripts/changelog.mjs --check"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.2.0",
+    "@neondatabase/serverless": "^1.2.1",
     "date-fns": "^4.1.0",
     "jspdf": "^4.2.1",
-    "lucide-react": "^1.66.0",
+    "lucide-react": "^1.73.0",
     "memcached": "^2.2.2",
     "pptxgenjs": "^4.0.1",
     "react": "^19.0.0",
